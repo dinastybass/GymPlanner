@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "gymapp-d8ae7"
+    "default": "gymapp-d8ae7",
+    "prod": "gymapp-d8ae7",
+    "dev": "gymplanner-dev-574ea"
   }
 }

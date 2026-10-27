@@ -3,6 +3,9 @@
     "public": ".",
     "ignore": [
       "firebase.json",
+      "firebase-key*.json",
+      "*-firebase-adminsdk-*.json",
+      "*.py",
       "**/.*",
       "**/node_modules/**"
     ]
