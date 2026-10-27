@@ -2,7 +2,7 @@
 import { db } from '../firebase-config.js';
 import { collection, getDocs, getDoc, doc, setDoc, updateDoc, deleteField } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
 
-const CACHE_KEY = 'gym_maestros_doc_map_v2';
+const CACHE_KEY = 'gym_maestros_doc_map_v3';
 
 export const ESTRUCTURA_MAESTROS = {
     "Ejercicios": [
@@ -17,13 +17,25 @@ export const ESTRUCTURA_MAESTROS = {
         "Series y Repeticiones"
     ],
     "Clientes": [
-        "Estado"
+        "Estado",
+        "Tipo de Cliente"
     ],
     "Agenda": [
         "Horarios Sesiones Individuales",
         "Horarios Small Groups",
         "Días de la semana"
     ]
+};
+
+const VALORES_INICIALES_MAESTROS = {
+    "Clientes": {
+        "Tipo de Cliente": [
+            "1 Sesion por semana",
+            "2 sesiones por semana",
+            "3 sesiones por semana",
+            "SmallGroup"
+        ]
+    }
 };
 
 export function limpiarNombreDoc(clave) {
@@ -60,8 +72,10 @@ export async function cargarTodosLosMaestros(forzar = false) {
 
     const snap = await getDocs(collection(db, "maestros"));
     const mapa = {};
+    const docsExistentes = new Set();
 
     snap.forEach(docSnap => {
+        docsExistentes.add(docSnap.id);
         const d = docSnap.data();
         const sec = d.seccion;
         const clv = d.clave;
@@ -84,6 +98,40 @@ export async function cargarTodosLosMaestros(forzar = false) {
             return a.valor.localeCompare(b.valor);
         });
     });
+
+    // Inicializar automáticamente en Firestore claves nuevas si aún no existen
+    for (const [sec, clavesObj] of Object.entries(VALORES_INICIALES_MAESTROS)) {
+        for (const [clv, listaVals] of Object.entries(clavesObj)) {
+            const docKey = limpiarNombreDoc(clv);
+            if (!docsExistentes.has(docKey)) {
+                if (!mapa[sec]) mapa[sec] = {};
+                mapa[sec][clv] = [];
+                const nuevosValores = {};
+
+                listaVals.forEach((val, idx) => {
+                    const itemId = generarIdItem(val);
+                    const orden = idx + 1;
+                    mapa[sec][clv].push({ id: itemId, valor: val, orden });
+                    nuevosValores[itemId] = {
+                        seccion: sec,
+                        clave: clv,
+                        valor: val,
+                        orden
+                    };
+                });
+
+                try {
+                    await setDoc(doc(db, "maestros", docKey), {
+                        seccion: sec,
+                        clave: clv,
+                        valores: nuevosValores
+                    }, { merge: true });
+                } catch (e) {
+                    console.warn(`No se pudo inicializar maestro ${clv}:`, e);
+                }
+            }
+        }
+    }
 
     sessionStorage.setItem(CACHE_KEY, JSON.stringify(mapa));
     return mapa;
@@ -237,7 +285,8 @@ export async function comprobarDependenciasMaestro(clave, valor) {
         "Posición": [{ col: "ejercicios", campo: "Posición" }, { col: "ejercicios", campo: "Posicion" }],
         "Patrón Motor": [{ col: "ejercicios", campo: "Patron_Movimiento" }, { col: "ejercicios", campo: "Patron_Motor" }],
         "Series y Repeticiones": [{ col: "agenda_sesiones", campo: "ejercicios.Series" }, { col: "plantillas_sesiones", campo: "ejercicios.Series" }],
-        "Estado": [{ col: "clientes", campo: "Estado_Cliente" }]
+        "Estado": [{ col: "clientes", campo: "Estado_Cliente" }],
+        "Tipo de Cliente": [{ col: "clientes", campo: "Tipo_Cliente" }]
     };
 
     const reglas = camposARevisar[clave];
@@ -286,7 +335,8 @@ export async function reasignarOQuitarDependencia(clave, valorAntiguo, valorNuev
         "Posición": [{ col: "ejercicios", campo: "Posición" }, { col: "ejercicios", campo: "Posicion" }],
         "Patrón Motor": [{ col: "ejercicios", campo: "Patron_Movimiento" }, { col: "ejercicios", campo: "Patron_Motor" }],
         "Series y Repeticiones": [{ col: "agenda_sesiones", campo: "ejercicios.Series" }, { col: "plantillas_sesiones", campo: "ejercicios.Series" }],
-        "Estado": [{ col: "clientes", campo: "Estado_Cliente" }]
+        "Estado": [{ col: "clientes", campo: "Estado_Cliente" }],
+        "Tipo de Cliente": [{ col: "clientes", campo: "Tipo_Cliente" }]
     };
 
     const reglas = camposARevisar[clave];

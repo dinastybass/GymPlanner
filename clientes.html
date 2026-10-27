@@ -52,6 +52,24 @@
             color: #991b1b;
         }
 
+        .type-header {
+            padding: 10px 20px;
+            background: var(--hover-bg);
+            border-bottom: 1px solid var(--border);
+            font-weight: bold;
+            font-size: 0.9rem;
+            color: var(--text-main);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: background-color 0.15s;
+        }
+
+        .type-header:hover {
+            background-color: #f1f5f9;
+        }
+
         th {
             cursor: pointer;
             white-space: nowrap;
@@ -87,10 +105,13 @@
                 <input type="text" id="searchInput" placeholder="Buscar por alias, nombre, objetivo o lesión...">
             </div>
             <select class="filter-select" id="statusFilter">
-                <option value="Todos">Todos</option>
+                <option value="Todos">Todos los estados</option>
                 <option value="Activo">Activos</option>
                 <option value="En pausa">En pausa</option>
                 <option value="De baja">De baja</option>
+            </select>
+            <select class="filter-select" id="typeFilter">
+                <option value="Todos">Todos los tipos</option>
             </select>
             <span class="total-count" id="totalClientesText">Verificando sesión segura...</span>
         </div>
@@ -113,6 +134,12 @@
                     <input type="text" id="alta_alias" placeholder="Ej. Ana P.">
                 </div>
                 <div class="form-group">
+                    <label>Tipo de Cliente</label>
+                    <select id="alta_tipo" class="form-control">
+                        <option value="">Sin asignar</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label>ID Cliente (Código automático)</label>
                     <input type="text" id="alta_codigo" readonly style="background:#e5e7eb; cursor:not-allowed;">
                 </div>
@@ -129,10 +156,14 @@
         import { auth, db } from './firebase-config.js';
         import { collection, getDocs, doc, deleteDoc, setDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+        import { getValoresMaestro, getMapaOrdenMaestro, poblarSelect } from './js/maestros-service.js';
         import { normalizarTexto, getChevronSVG, iconTrash } from './js/utils.js';
 
         let todosLosClientes = [];
         let currentSort = { column: 'Nombre_Cliente', dir: 'asc' };
+        let ordenEstados = {};
+        let ordenTipos = {};
+        let listaEstadosMaestro = ['Activo', 'En pausa', 'De baja'];
 
         // OBTENER ROL DESDE EL NAVEGADOR Y OCULTAR BOTÓN SI ES PROGRAMADOR
         const userRole = localStorage.getItem('userRole') || 'programador';
@@ -143,6 +174,39 @@
 
         const chevronSVG = getChevronSVG(true, 18);
         const delSVG = iconTrash;
+
+        async function initCatalogo() {
+            const [estVals, tipVals, mapEst, mapTip] = await Promise.all([
+                getValoresMaestro('Clientes', 'Estado'),
+                getValoresMaestro('Clientes', 'Tipo de Cliente'),
+                getMapaOrdenMaestro('Clientes', 'Estado'),
+                getMapaOrdenMaestro('Clientes', 'Tipo de Cliente')
+            ]);
+
+            if (estVals && estVals.length > 0) listaEstadosMaestro = estVals;
+            ordenEstados = mapEst || {};
+            ordenTipos = mapTip || {};
+
+            // Poblar filtro de Estado
+            const statusSelect = document.getElementById('statusFilter');
+            if (statusSelect && listaEstadosMaestro.length > 0) {
+                statusSelect.innerHTML = '<option value="Todos">Todos los estados</option>' +
+                    listaEstadosMaestro.map(e => `<option value="${e}">${e === 'Activo' ? 'Activos' : e}</option>`).join('');
+            }
+
+            // Poblar filtro de Tipo de Cliente
+            const typeSelect = document.getElementById('typeFilter');
+            if (typeSelect) {
+                typeSelect.innerHTML = '<option value="Todos">Todos los tipos</option>' +
+                    (tipVals || []).map(t => `<option value="${t}">${t}</option>`).join('') +
+                    '<option value="Sin asignar">Sin asignar</option>';
+            }
+
+            // Poblar select del modal de alta rápida
+            await poblarSelect('alta_tipo', 'Clientes', 'Tipo de Cliente', 'Sin asignar');
+
+            await loadClientes();
+        }
 
         async function loadClientes() {
             const querySnapshot = await getDocs(collection(db, "clientes"));
@@ -158,20 +222,52 @@
             }
         };
 
+        function getEstadoConfig(estado) {
+            if (estado === 'Activo') return { id: 'Activo', title: 'Activos', class: 'activos' };
+            if (estado === 'En pausa') return { id: 'En pausa', title: 'En pausa', class: 'pausa' };
+            if (estado === 'De baja') return { id: 'De baja', title: 'De baja', class: 'baja' };
+            return { id: estado, title: estado, class: 'activos' };
+        }
+
         function renderUI() {
+            const container = document.getElementById('clientesContainer');
+
+            // Guardar acordeones cerrados antes de re-renderizar (por defecto todos abiertos)
+            const closedStatuses = new Set();
+            const closedTypes = new Set();
+            if (container) {
+                container.querySelectorAll('.status-accordion').forEach(acc => {
+                    const stId = acc.getAttribute('data-status');
+                    const body = acc.querySelector('.status-body');
+                    if (stId && body && body.style.display === 'none') {
+                        closedStatuses.add(stId);
+                    }
+                    acc.querySelectorAll('.type-section').forEach(sec => {
+                        const tpKey = sec.getAttribute('data-type-key');
+                        const tbl = sec.querySelector('.table-responsive');
+                        if (tpKey && tbl && tbl.style.display === 'none') {
+                            closedTypes.add(tpKey);
+                        }
+                    });
+                });
+            }
+
             // Normalizar el texto introducido en la barra de búsqueda
             const rawTxt = document.getElementById('searchInput').value;
             const searchText = normalizarTexto(rawTxt);
             const statusFilter = document.getElementById('statusFilter').value;
+            const typeFilter = document.getElementById('typeFilter') ? document.getElementById('typeFilter').value : 'Todos';
 
             let filtrados = todosLosClientes.filter(c => {
-                // Normalizar los campos del cliente para realizar la comparación limpia
+                const tipoCliente = c.Tipo_Cliente || 'Sin asignar';
                 const matchText = normalizarTexto(c.Nombre_Cliente).includes(searchText)
                     || normalizarTexto(c.Alias).includes(searchText)
                     || normalizarTexto(c.Objetivo_Global).includes(searchText)
-                    || normalizarTexto(c.Lesiones_Historial).includes(searchText);
-                const matchStatus = statusFilter === 'Todos' || c.Estado_Cliente === statusFilter;
-                return matchText && matchStatus;
+                    || normalizarTexto(c.Lesiones_Historial).includes(searchText)
+                    || normalizarTexto(tipoCliente).includes(searchText);
+                const matchStatus = statusFilter === 'Todos' || (c.Estado_Cliente || 'Activo') === statusFilter;
+                const matchType = typeFilter === 'Todos' || tipoCliente === typeFilter;
+                return matchText && matchStatus && matchType;
             });
 
             filtrados.sort((a, b) => {
@@ -184,67 +280,108 @@
 
             document.getElementById('totalClientesText').innerText = `${filtrados.length} clientes`;
 
-            const grupos = { 'Activo': [], 'En pausa': [], 'De baja': [] };
+            // 1. Agrupar por Estado
+            const gruposPorEstado = {};
+            listaEstadosMaestro.forEach(est => { gruposPorEstado[est] = []; });
+
             filtrados.forEach(c => {
-                const estado = grupos[c.Estado_Cliente] ? c.Estado_Cliente : 'Activo';
-                grupos[estado].push(c);
+                const estado = c.Estado_Cliente || 'Activo';
+                if (!gruposPorEstado[estado]) gruposPorEstado[estado] = [];
+                gruposPorEstado[estado].push(c);
             });
 
-            const container = document.getElementById('clientesContainer');
+            const estadosOrdenados = Object.keys(gruposPorEstado).sort((a, b) => (ordenEstados[a] || 99) - (ordenEstados[b] || 99));
+
             container.innerHTML = '';
 
-            const configs = [
-                { id: 'Activo', title: 'Activos', class: 'activos' },
-                { id: 'En pausa', title: 'En pausa', class: 'pausa' },
-                { id: 'De baja', title: 'De baja', class: 'baja' }
-            ];
+            const sortIcon = currentSort.dir === 'asc' ? ' ↑↓' : ' ↓↑';
+            const thAcciones = userRole !== 'programador' ? '<th>Acciones</th>' : '';
 
-            configs.forEach(cfg => {
-                const lista = grupos[cfg.id];
-                if (lista.length === 0) return;
+            estadosOrdenados.forEach(estadoKey => {
+                const listaEstado = gruposPorEstado[estadoKey];
+                if (!listaEstado || listaEstado.length === 0) return;
 
-                let filasHTML = lista.map(c => {
-                    let btnEliminarHTML = '';
-                    if (userRole !== 'programador') {
-                        btnEliminarHTML = `
-                            <td>
-                                <div class="action-btns">
-                                    <button class="btn-icon danger" onclick="event.stopPropagation(); window.borrarCliente('${c.id}')" title="Eliminar">${delSVG}</button>
-                                </div>
-                            </td>
+                const cfg = getEstadoConfig(estadoKey);
+                const isStatusOpen = !closedStatuses.has(cfg.id);
+                const statusDisplay = isStatusOpen ? 'block' : 'none';
+                const statusChevron = getChevronSVG(isStatusOpen, 18);
+
+                // 2. Sub-agrupar por Tipo de Cliente debajo de Estado
+                const subGruposTipo = {};
+                listaEstado.forEach(c => {
+                    const tipo = (c.Tipo_Cliente && String(c.Tipo_Cliente).trim()) ? String(c.Tipo_Cliente).trim() : 'Sin asignar';
+                    if (!subGruposTipo[tipo]) subGruposTipo[tipo] = [];
+                    subGruposTipo[tipo].push(c);
+                });
+
+                const tiposOrdenados = Object.keys(subGruposTipo).sort((a, b) => {
+                    const ordA = a === 'Sin asignar' ? 999 : (ordenTipos[a] ?? 99);
+                    const ordB = b === 'Sin asignar' ? 999 : (ordenTipos[b] ?? 99);
+                    if (ordA !== ordB) return ordA - ordB;
+                    return a.localeCompare(b);
+                });
+
+                let seccionesTipoHTML = '';
+
+                tiposOrdenados.forEach(tipoKey => {
+                    const listaTipo = subGruposTipo[tipoKey];
+                    const compositeKey = `${cfg.id}__${tipoKey}`;
+                    const isTypeOpen = !closedTypes.has(compositeKey);
+                    const typeDisplay = isTypeOpen ? 'block' : 'none';
+                    const typeChevron = getChevronSVG(isTypeOpen, 16);
+
+                    const filasHTML = listaTipo.map(c => {
+                        let btnEliminarHTML = '';
+                        if (userRole !== 'programador') {
+                            btnEliminarHTML = `
+                                <td>
+                                    <div class="action-btns">
+                                        <button class="btn-icon danger" onclick="event.stopPropagation(); window.borrarCliente('${c.id}')" title="Eliminar">${delSVG}</button>
+                                    </div>
+                                </td>
+                            `;
+                        }
+                        return `
+                            <tr class="client-row" onclick="window.location.href='ficha_cliente.html?id=${c.id}'">
+                                <td>${c.Nombre_Cliente || '-'}</td>
+                                <td>${c.Alias || '-'}</td>
+                                <td style="color: var(--text-muted); font-weight: normal;">${c.Objetivo_Global || '-'}</td>
+                                ${btnEliminarHTML}
+                            </tr>
                         `;
-                    }
-                    return `
-                        <tr class="client-row" onclick="window.location.href='ficha_cliente.html?id=${c.id}'">
-                            <td>${c.Nombre_Cliente || '-'}</td>
-                            <td>${c.Alias || '-'}</td>
-                            <td style="color: var(--text-muted); font-weight: normal;">${c.Objetivo_Global || '-'}</td>
-                            ${btnEliminarHTML}
-                        </tr>
-                    `;
-                }).join('');
+                    }).join('');
 
-                const sortIcon = currentSort.dir === 'asc' ? ' ↑↓' : ' ↓↑';
-                const thAcciones = userRole !== 'programador' ? '<th>Acciones</th>' : '';
+                    seccionesTipoHTML += `
+                        <div class="type-section" data-type-key="${compositeKey.replace(/"/g, '&quot;')}">
+                            <div class="type-header" onclick="const t = this.nextElementSibling; const s = this.querySelector('svg'); if(t.style.display==='none'){t.style.display='block';s.style.transform='rotate(0deg)';}else{t.style.display='none';s.style.transform='rotate(-90deg)';}">
+                                <span>TIPO: ${tipoKey}</span>
+                                <span style="display:flex; align-items:center; gap:8px; font-weight:normal; font-size:0.85rem; color:var(--text-muted);">${listaTipo.length} ${listaTipo.length === 1 ? 'cliente' : 'clientes'} ${typeChevron}</span>
+                            </div>
+                            <div class="table-responsive" style="display:${typeDisplay};">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th onclick="window.setSort('Nombre_Cliente')">Nombre completo${currentSort.column === 'Nombre_Cliente' ? sortIcon : ''}</th>
+                                            <th onclick="window.setSort('Alias')">Alias${currentSort.column === 'Alias' ? sortIcon : ''}</th>
+                                            <th onclick="window.setSort('Objetivo_Global')">Objetivo global${currentSort.column === 'Objetivo_Global' ? sortIcon : ''}</th>
+                                            ${thAcciones}
+                                        </tr>
+                                    </thead>
+                                    <tbody>${filasHTML}</tbody>
+                                </table>
+                            </div>
+                        </div>
+                    `;
+                });
 
                 container.innerHTML += `
-                    <div class="status-accordion">
+                    <div class="status-accordion" data-status="${cfg.id.replace(/"/g, '&quot;')}">
                         <div class="acc-header ${cfg.class}" onclick="const t = this.nextElementSibling; const s = this.querySelector('svg'); if(t.style.display==='none'){t.style.display='block';s.style.transform='rotate(0deg)';}else{t.style.display='none';s.style.transform='rotate(-90deg)';}">
                             <span style="display:flex; align-items:center; gap:10px;">${cfg.title}</span>
-                            <span style="display:flex; align-items:center; gap:10px; font-weight:normal; font-size:0.85rem;">${lista.length} clientes ${chevronSVG}</span>
+                            <span style="display:flex; align-items:center; gap:10px; font-weight:normal; font-size:0.85rem;">${listaEstado.length} clientes ${statusChevron}</span>
                         </div>
-                        <div class="table-responsive">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th onclick="window.setSort('Nombre_Cliente')">Nombre completo${currentSort.column === 'Nombre_Cliente' ? sortIcon : ''}</th>
-                                        <th onclick="window.setSort('Alias')">Alias${currentSort.column === 'Alias' ? sortIcon : ''}</th>
-                                        <th onclick="window.setSort('Objetivo_Global')">Objetivo global${currentSort.column === 'Objetivo_Global' ? sortIcon : ''}</th>
-                                        ${thAcciones}
-                                    </tr>
-                                </thead>
-                                <tbody>${filasHTML}</tbody>
-                            </table>
+                        <div class="status-body" style="display:${statusDisplay};">
+                            ${seccionesTipoHTML}
                         </div>
                     </div>
                 `;
@@ -271,6 +408,7 @@
             const idGenerado = document.getElementById('alta_codigo').value;
             const nombre = document.getElementById('alta_nombre').value;
             const alias = document.getElementById('alta_alias').value || nombre.split(' ')[0];
+            const tipoCliente = document.getElementById('alta_tipo') ? document.getElementById('alta_tipo').value : "";
 
             const activeUser = auth.currentUser;
             const autor = activeUser ? activeUser.email : "Usuario desconocido";
@@ -280,6 +418,7 @@
                 Nombre_Cliente: nombre,
                 Alias: alias,
                 Estado_Cliente: "Activo",
+                Tipo_Cliente: tipoCliente,
                 Usa_Kids: "NO",
                 Objetivo_Global: "Sin registrar",
                 Objetivo_Especifico: "Sin registrar",
@@ -304,10 +443,11 @@
 
         document.getElementById('searchInput').addEventListener('input', renderUI);
         document.getElementById('statusFilter').addEventListener('change', renderUI);
+        document.getElementById('typeFilter').addEventListener('change', renderUI);
 
         // ESPERAR A CONFIRMAR IDENTIDAD
         onAuthStateChanged(auth, (user) => {
-            if (user) loadClientes();
+            if (user) initCatalogo();
             else window.location.href = "index.html";
         });
     </script>

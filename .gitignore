@@ -31,6 +31,7 @@ env/
 ENV/
 *.egg-info/
 .pytest_cache/
+import/
 
 # Node.js / Dependencias
 node_modules/
