@@ -266,6 +266,188 @@
             text-transform: uppercase;
             font-size: 0.75rem;
         }
+
+        /* Calendario semanal de Reprogramación (estilo Agenda) */
+        .reprog-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+            background: var(--hover-bg);
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        .reprog-nav-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .reprog-nav-arrow {
+            background: var(--surface);
+            border: 2px solid var(--accent-dark);
+            color: var(--accent-dark);
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            transition: all 0.15s;
+        }
+
+        .reprog-nav-arrow:hover {
+            background: var(--accent-light);
+        }
+
+        .reprog-week-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text-main);
+            min-width: 190px;
+            text-align: center;
+        }
+
+        .reprog-calendar-wrapper {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow-x: auto;
+            background: var(--surface);
+        }
+
+        .reprog-calendar-grid {
+            display: grid;
+            background: var(--surface);
+            position: relative;
+            min-width: 680px;
+        }
+
+        .reprog-day-header {
+            padding: 8px 10px;
+            font-size: 0.8rem;
+            border-bottom: 2px solid var(--text-main);
+            border-right: 1px solid var(--border);
+            background: var(--surface);
+            z-index: 2;
+            text-align: center;
+        }
+
+        .reprog-day-header strong {
+            display: block;
+            color: var(--text-main);
+        }
+
+        .reprog-day-header span {
+            color: var(--text-muted);
+            font-size: 0.72rem;
+        }
+
+        .reprog-time-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.72rem;
+            font-weight: bold;
+            color: var(--text-main);
+            border-right: 2px solid var(--border);
+            border-bottom: 1px solid var(--border);
+            padding-right: 4px;
+            background: #f8fafc;
+        }
+
+        .reprog-bg-cell {
+            border-right: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            transition: background 0.12s;
+            position: relative;
+        }
+
+        .reprog-bg-cell:hover {
+            background: #ccfbf1;
+            box-shadow: inset 0 0 0 1px var(--accent-dark);
+        }
+
+        .reprog-noon-separator {
+            grid-column: 1 / -1;
+            background: var(--hover-bg);
+            border-bottom: 2px solid var(--border);
+            border-top: 1px solid var(--border);
+        }
+
+        .reprog-event-card {
+            border-radius: 5px;
+            padding: 4px 6px;
+            margin: 1px 2px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            line-height: 1.2;
+            overflow: hidden;
+            z-index: 5;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+            box-sizing: border-box;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+
+        .reprog-event-card:hover {
+            transform: scale(1.01);
+            z-index: 10;
+            box-shadow: 0 3px 6px rgba(0, 0, 0, 0.12);
+        }
+
+        .reprog-event-origin {
+            background: #fef3c7;
+            border: 2px dashed #d97706;
+            color: #92400e;
+        }
+
+        .reprog-event-other {
+            background: #e0f2fe;
+            border: 1px solid #38bdf8;
+            color: #0369a1;
+        }
+
+        .reprog-event-completed {
+            background: #dcfce7;
+            border: 1px solid #86efac;
+            color: #166534;
+            cursor: not-allowed;
+            opacity: 0.85;
+        }
+
+        .reprog-legend {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            margin-top: 10px;
+            align-items: center;
+        }
+
+        .reprog-legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .reprog-legend-box {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+            display: inline-block;
+        }
     </style>
 </head>
 
@@ -453,34 +635,57 @@
         </div>
     </div>
 
-    <!-- MODAL REPROGRAMAR SESIÓN CON LÓGICA DE CONFLICTOS -->
+    <!-- MODAL REPROGRAMAR SESIÓN CON CALENDARIO DEL CLIENTE -->
     <div class="modal-overlay" id="modalReprogramar">
-        <div class="modal-content" style="max-width: 450px;">
+        <div class="modal-content" style="max-width: 940px; width: 95%;">
             <button class="modal-close" onclick="cerrarModalReprogramar()">&times;</button>
-            <h2 style="margin:0 0 10px 0;">Reprogramar Sesión</h2>
+            <h2 style="margin:0 0 6px 0;">Reprogramar Sesión</h2>
 
-            <!-- Paso 1: Seleccionar Fecha y Hora -->
+            <!-- Paso 1: Seleccionar Fecha y Hora en el Calendario Semanal del Cliente -->
             <div id="reprog-step-1">
-                <p style="color:var(--text-muted); font-size:0.9rem; margin-top:0;">Mueve esta sesión a una nueva fecha
-                    y hora. Pasará a estado "Pendiente".</p>
-                <form id="formReprogramar">
-                    <input type="hidden" id="r_id_sesion">
-                    <div class="form-group">
-                        <label>Nueva Fecha</label>
-                        <input type="date" id="r_fecha" required class="form-control">
+                <div id="reprog-origin-banner"
+                    style="background:#fffbeb; border:1px solid #fcd34d; color:#92400e; padding:10px 14px; border-radius:8px; font-size:0.88rem; margin-bottom:12px;">
+                    Selecciona en el calendario el nuevo día y hora haciendo clic en cualquier casilla.
+                </div>
+
+                <div class="reprog-toolbar">
+                    <div class="reprog-nav-group">
+                        <button type="button" class="reprog-nav-arrow" onclick="window.cambiarSemanaReprog(-1)"
+                            title="Semana anterior">&lt;</button>
+                        <span class="reprog-week-title" id="reprog-week-title">Cargando semana...</span>
+                        <button type="button" class="reprog-nav-arrow" onclick="window.cambiarSemanaReprog(1)"
+                            title="Semana siguiente">&gt;</button>
                     </div>
-                    <div class="form-group">
-                        <label>Nueva Hora de inicio</label>
-                        <input type="time" id="r_hora" required class="form-control">
+                    <div style="display:flex; gap:8px;">
+                        <button type="button" class="btn-secondary" style="padding:6px 12px; font-size:0.8rem;"
+                            onclick="window.irSemanaHoyReprog()">Semana actual</button>
+                        <button type="button" class="btn-secondary" style="padding:6px 12px; font-size:0.8rem;"
+                            onclick="window.irSemanaOrigenReprog()">Semana de la sesión</button>
                     </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn-secondary" onclick="cerrarModalReprogramar()">Cancelar</button>
-                        <button type="submit" class="btn-primary">Siguiente</button>
-                    </div>
-                </form>
+                </div>
+
+                <div class="reprog-calendar-wrapper">
+                    <div id="reprog-calendar-container"></div>
+                </div>
+
+                <div class="reprog-legend">
+                    <span class="reprog-legend-item"><span class="reprog-legend-box"
+                            style="background:#fef3c7; border:2px dashed #d97706;"></span> Sesión a mover</span>
+                    <span class="reprog-legend-item"><span class="reprog-legend-box"
+                            style="background:#e0f2fe; border:1px solid #38bdf8;"></span> Otras sesiones del
+                        cliente</span>
+                    <span class="reprog-legend-item"><span class="reprog-legend-box"
+                            style="background:#dcfce7; border:1px solid #86efac;"></span> Completada (bloqueada)</span>
+                    <span style="margin-left:auto; font-weight:600; color:var(--accent-dark);">💡 Haz clic en una hora
+                        para elegir dónde moverla</span>
+                </div>
+
+                <div class="modal-footer" style="margin-top: 15px;">
+                    <button type="button" class="btn-secondary" onclick="cerrarModalReprogramar()">Cancelar</button>
+                </div>
             </div>
 
-            <!-- Paso 2: Resolución de Conflicto -->
+            <!-- Paso 2: Opciones de Cascada / Mantener -->
             <div id="reprog-step-2" style="display:none;" class="conflict-options"></div>
         </div>
     </div>
@@ -614,7 +819,7 @@
         import { auth, db } from './firebase-config.js';
         import { doc, getDoc, setDoc, deleteDoc, collection, query, where, getDocs, writeBatch, addDoc, updateDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
-        import { getMapaOrdenMaestro, poblarSelect } from './js/maestros-service.js';
+        import { getMapaOrdenMaestro, poblarSelect, getValoresMaestro } from './js/maestros-service.js';
         import { iconChevron as chevronSVG, iconDumbbell as dumbbellSVG, iconTrash as trashSVG, iconCalendar as calendarSVG, iconArrowRight as arrowRightSVG } from './js/utils.js';
 
         const urlParams = new URLSearchParams(window.location.search);
@@ -1055,28 +1260,195 @@
             }
         });
 
-        // --- REPROGRAMAR SESIÓN ---
-        window.abrirModalReprogramar = (idSesion) => {
-            document.getElementById('r_id_sesion').value = idSesion;
+        // --- REPROGRAMAR SESIÓN CON CALENDARIO SEMANAL DEL CLIENTE ---
+        let reprogSourceSessionId = null;
+        let reprogCurrentMonday = null;
+        let reprogOriginMonday = null;
+        let reprogDiasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+        let reprogTimeSlots = [];
+        let reprogTimeToRowMap = {};
+        let reprogSeparatorRow = 12;
+        const mesNamesReprog = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+        function obtenerLunesUTC(dateObj) {
+            const d = new Date(Date.UTC(dateObj.getUTCFullYear(), dateObj.getUTCMonth(), dateObj.getUTCDate(), 0, 0, 0, 0));
+            const day = d.getUTCDay();
+            const diff = day === 0 ? -6 : 1 - day;
+            d.setUTCDate(d.getUTCDate() + diff);
+            return d;
+        }
+
+        async function asegurarMaestrosCalendarioReprog() {
+            if (reprogTimeSlots.length > 0) return;
+            const [diasDB, horasIndDB] = await Promise.all([
+                getValoresMaestro('Agenda', 'Días de la semana'),
+                getValoresMaestro('Agenda', 'Horarios Sesiones Individuales')
+            ]);
+            if (diasDB && diasDB.length > 0) reprogDiasSemana = diasDB;
+            reprogTimeSlots = (horasIndDB && horasIndDB.length > 0) ? horasIndDB : [
+                '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30',
+                '16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00'
+            ];
+
+            reprogTimeToRowMap = {};
+            const manana = reprogTimeSlots.filter(t => parseInt(t.split(':')[0], 10) < 14);
+            const tarde = reprogTimeSlots.filter(t => parseInt(t.split(':')[0], 10) >= 14);
+            let r = 2;
+            manana.forEach(t => { reprogTimeToRowMap[t] = r++; });
+            reprogSeparatorRow = r++;
+            tarde.forEach(t => { reprogTimeToRowMap[t] = r++; });
+        }
+
+        window.abrirModalReprogramar = async (idSesion) => {
+            reprogSourceSessionId = idSesion;
             const s = allSessions.find(x => x.id === idSesion);
+            if (!s) return;
 
-            const now = new Date();
-            const hoyStr = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())).toISOString().split('T')[0];
-            const inputFecha = document.getElementById('r_fecha');
-            inputFecha.min = hoyStr;
+            await asegurarMaestrosCalendarioReprog();
 
-            const fechaOriginalStr = s.fechaObj.toISOString().split('T')[0];
+            const horaOrigen = s.horaStr.split(' - ')[0];
+            const numEj = s.ejercicios ? s.ejercicios.length : 0;
+            const banner = document.getElementById('reprog-origin-banner');
+            if (banner) {
+                banner.innerHTML = `📍 <strong>Sesión a reprogramar:</strong> ${s.diaStr} ${s.fechaStr} a las <strong>${horaOrigen}</strong> (${numEj} ejercicio${numEj === 1 ? '' : 's'}) &mdash; Haz clic en cualquier hora del calendario para ubicarla.`;
+            }
 
-            if (fechaOriginalStr < hoyStr) inputFecha.value = hoyStr;
-            else inputFecha.value = fechaOriginalStr;
-
-            const hora = s.horaStr.split(' - ')[0];
-            document.getElementById('r_hora').value = hora;
+            reprogOriginMonday = obtenerLunesUTC(s.fechaObj);
+            reprogCurrentMonday = new Date(reprogOriginMonday);
 
             document.getElementById('reprog-step-1').style.display = 'block';
             document.getElementById('reprog-step-2').style.display = 'none';
             document.getElementById('modalReprogramar').style.display = 'flex';
+
+            renderCalendarioReprog();
         };
+
+        window.cambiarSemanaReprog = (deltaSemanas) => {
+            if (!reprogCurrentMonday) return;
+            reprogCurrentMonday.setUTCDate(reprogCurrentMonday.getUTCDate() + deltaSemanas * 7);
+            renderCalendarioReprog();
+        };
+
+        window.irSemanaHoyReprog = () => {
+            const now = new Date();
+            const hoyUTC = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+            reprogCurrentMonday = obtenerLunesUTC(hoyUTC);
+            renderCalendarioReprog();
+        };
+
+        window.irSemanaOrigenReprog = () => {
+            if (!reprogOriginMonday) return;
+            reprogCurrentMonday = new Date(reprogOriginMonday);
+            renderCalendarioReprog();
+        };
+
+        window.volverAlCalendarioReprog = () => {
+            document.getElementById('reprog-step-2').style.display = 'none';
+            document.getElementById('reprog-step-1').style.display = 'block';
+        };
+
+        function renderCalendarioReprog() {
+            const container = document.getElementById('reprog-calendar-container');
+            const titleEl = document.getElementById('reprog-week-title');
+            if (!container || !reprogCurrentMonday) return;
+
+            const numDias = reprogDiasSemana.length;
+            const startDay = new Date(reprogCurrentMonday);
+            const endDay = new Date(reprogCurrentMonday);
+            endDay.setUTCDate(endDay.getUTCDate() + (numDias - 1));
+
+            titleEl.innerText = `📅 ${startDay.getUTCDate()} ${mesNamesReprog[startDay.getUTCMonth()]} - ${endDay.getUTCDate()} ${mesNamesReprog[endDay.getUTCMonth()]} ${endDay.getUTCFullYear()}`;
+
+            const mananaCount = reprogTimeSlots.filter(t => parseInt(t.split(':')[0], 10) < 14).length;
+            const tardeCount = reprogTimeSlots.filter(t => parseInt(t.split(':')[0], 10) >= 14).length;
+            const dynamicGridStyle = `grid-template-columns: 60px repeat(${numDias}, 1fr); grid-template-rows: auto repeat(${mananaCount}, 32px) 14px repeat(${tardeCount}, 32px);`;
+
+            let headersHTML = `<div class="reprog-day-header" style="grid-column: 1; grid-row: 1; border-right: 2px solid var(--border);">Hora</div>`;
+            const now = new Date();
+            const hoyISO = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())).toISOString().split('T')[0];
+
+            let tempDay = new Date(reprogCurrentMonday);
+            for (let i = 0; i < numDias; i++) {
+                const dateISO = tempDay.toISOString().split('T')[0];
+                const isToday = dateISO === hoyISO;
+                const bgHeader = isToday ? 'background:#f0fdfa;' : '';
+                headersHTML += `
+                    <div class="reprog-day-header" style="grid-column: ${i + 2}; grid-row: 1; ${bgHeader}">
+                        <strong>${reprogDiasSemana[i]}${isToday ? ' (Hoy)' : ''}</strong>
+                        <span>${tempDay.getUTCDate()} ${mesNamesReprog[tempDay.getUTCMonth()]}</span>
+                    </div>
+                `;
+                tempDay.setUTCDate(tempDay.getUTCDate() + 1);
+            }
+
+            let cellsHTML = '';
+            for (let i = 0; i < reprogTimeSlots.length; i++) {
+                const time = reprogTimeSlots[i];
+                const row = reprogTimeToRowMap[time];
+                cellsHTML += `<div class="reprog-time-label" style="grid-column: 1; grid-row: ${row};">${time}</div>`;
+
+                let dIter = new Date(reprogCurrentMonday);
+                for (let col = 2; col <= numDias + 1; col++) {
+                    const dateStrID = dIter.toISOString().split('T')[0];
+                    cellsHTML += `<div class="reprog-bg-cell" style="grid-column: ${col}; grid-row: ${row};" onclick="window.seleccionarHuecoReprogramar('${dateStrID}', '${time}')" title="Mover sesión al ${dateStrID} a las ${time}"></div>`;
+                    dIter.setUTCDate(dIter.getUTCDate() + 1);
+                }
+            }
+
+            // Filtrar solo las sesiones de este cliente que caen en esta semana (Lunes a Viernes)
+            const weekStartUTC = new Date(reprogCurrentMonday);
+            weekStartUTC.setUTCHours(0, 0, 0, 0);
+            const weekEndUTC = new Date(reprogCurrentMonday);
+            weekEndUTC.setUTCDate(weekEndUTC.getUTCDate() + numDias);
+            weekEndUTC.setUTCHours(0, 0, 0, 0);
+
+            const sesionesSemanaCliente = allSessions.filter(s => s.fechaObj >= weekStartUTC && s.fechaObj < weekEndUTC);
+
+            let eventsHTML = '';
+            sesionesSemanaCliente.forEach(s => {
+                const dayIndex = s.fechaObj.getUTCDay(); // 1=Lunes .. 5=Viernes
+                if (dayIndex < 1 || dayIndex > numDias) return;
+
+                const col = dayIndex + 1;
+                const timeStr = s.horaStr.split(' - ')[0];
+                const row = reprogTimeToRowMap[timeStr];
+                if (!row) return;
+
+                const dateStrID = s.fechaObj.toISOString().split('T')[0];
+                const isOrigin = s.id === reprogSourceSessionId;
+                const isCompleted = s.estado === 'Completada';
+                const numEj = s.ejercicios ? s.ejercicios.length : 0;
+                const ejLabel = numEj > 0 ? `${numEj} ej.` : 'Vacía';
+
+                let cardClass = 'reprog-event-other';
+                let titleBadge = `📅 ${timeStr} (${ejLabel})`;
+                let clickHandler = `onclick="window.seleccionarHuecoReprogramar('${dateStrID}', '${timeStr}')"`;
+
+                if (isOrigin) {
+                    cardClass = 'reprog-event-origin';
+                    titleBadge = `📍 Sesión a mover (${ejLabel})`;
+                } else if (isCompleted) {
+                    cardClass = 'reprog-event-completed';
+                    titleBadge = `✅ Completada (${ejLabel})`;
+                    clickHandler = `onclick="alert('No puedes reprogramar sobre un día que ya tiene una sesión completada.')"`;
+                }
+
+                eventsHTML += `
+                    <div class="reprog-event-card ${cardClass}" style="grid-column: ${col}; grid-row: ${row} / span 2;" ${clickHandler} title="Haz clic para elegir ${dateStrID} a las ${timeStr}">
+                        <div>${titleBadge}</div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = `
+                <div class="reprog-calendar-grid" style="${dynamicGridStyle}">
+                    ${headersHTML}
+                    ${cellsHTML}
+                    <div class="reprog-noon-separator" style="grid-row: ${reprogSeparatorRow};"></div>
+                    ${eventsHTML}
+                </div>
+            `;
+        }
 
         window.cerrarModalReprogramar = () => {
             document.getElementById('modalReprogramar').style.display = 'none';
@@ -1085,18 +1457,18 @@
             pendingReprogData = null;
         };
 
-        document.getElementById('formReprogramar').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const idSesion = document.getElementById('r_id_sesion').value;
-            const fechaStr = document.getElementById('r_fecha').value;
-            const horaStr = document.getElementById('r_hora').value;
+        window.seleccionarHuecoReprogramar = (fechaStr, horaStr) => {
+            const idSesion = reprogSourceSessionId;
+            if (!idSesion) return;
 
             const [y, m, d] = fechaStr.split('-');
             const [h, min] = horaStr.split(':');
             const targetFechaStr = `${d}/${m}/${y}`;
-            const nuevaFechaObj = new Date(Date.UTC(parseInt(y), parseInt(m) - 1, parseInt(d), parseInt(h), parseInt(min), 0));
+            const nuevaFechaObj = new Date(Date.UTC(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10), parseInt(h, 10), parseInt(min, 10), 0));
 
             const sourceSession = allSessions.find(x => x.id === idSesion);
+            if (!sourceSession) return;
+
             const sesionesDestino = allSessions.filter(s => s.fechaStr === targetFechaStr && s.id !== idSesion);
 
             if (sesionesDestino.some(s => s.estado === 'Completada')) {
@@ -1104,40 +1476,42 @@
                 return;
             }
 
-            const targetSession = sesionesDestino[0];
+            const targetSession = sesionesDestino[0] || null;
             const sessionsToPull = allSessions.filter(s => s.fechaObj > nuevaFechaObj && s.id !== idSesion).sort((a, b) => a.fechaObj - b.fechaObj);
             const autor = localStorage.getItem('gym_user_name') || "Usuario desconocido";
 
             pendingReprogData = { sourceSession, targetSession, sessionsToPull, autor, nuevaFechaObj };
 
+            const diaDestinoNombre = nuevaFechaObj.toLocaleDateString('es-ES', { weekday: 'long', timeZone: 'UTC' }).replace(/^\w/, c => c.toUpperCase());
+
             const step2 = document.getElementById('reprog-step-2');
             let menuHTML = `<div style="background:#fffbeb; border:1px solid #fcd34d; padding:15px; border-radius:8px; margin-bottom:20px;">
-                <h4 style="color:#d97706; margin:0 0 5px 0;">Opciones de Planificación</h4>
-                <p style="margin:0; font-size:0.9rem; color:#92400e;">Has seleccionado una nueva fecha. ¿Cómo deseas organizar las rutinas de la línea temporal?</p>
+                <h4 style="color:#d97706; margin:0 0 6px 0;">Opciones de Planificación</h4>
+                <p style="margin:0 0 6px 0; font-size:0.9rem; color:#92400e;">
+                    Mover del <strong>${sourceSession.diaStr} ${sourceSession.fechaStr} (${sourceSession.horaStr.split(' - ')[0]})</strong>
+                    al <strong>${diaDestinoNombre} ${targetFechaStr} a las ${horaStr}</strong>.
+                </p>
+                <p style="margin:0; font-size:0.85rem; color:#92400e;">¿Cómo deseas organizar las rutinas de la línea temporal?</p>
             </div>`;
 
             menuHTML += `<button type="button" class="btn-primary" style="width:100%; margin-bottom:10px; text-align:left; padding:12px; background:#0f172a;" onclick="ejecutarSustitucion()">
-                <strong>Mantener / Sustituir rutina</strong><br><span style="font-size:0.8rem; font-weight:normal;">Mueve la sesión conservando su rutina original. Si hay otra sesión, se sobrescribe.</span>
+                <strong>Mantener / Sustituir rutina</strong><br><span style="font-size:0.8rem; font-weight:normal;">Mueve la sesión a la nueva hora conservando su rutina original. Si hay otra sesión ese día, se sobrescribe.</span>
             </button>`;
 
-            if (targetSession && targetSession.ejercicios && targetSession.ejercicios.length > 0) {
-                menuHTML += `<button type="button" class="btn-primary" style="width:100%; margin-bottom:10px; text-align:left; padding:12px; background:#0284c7;" onclick="ejecutarDesplazamiento()">
-                    <strong>Desplazar rutinas hacia adelante (Cascada)</strong><br><span style="font-size:0.8rem; font-weight:normal;">Mueve la sesión y empuja la rutina del destino hacia el futuro.</span>
-                </button>`;
-            }
+            menuHTML += `<button type="button" class="btn-primary" style="width:100%; margin-bottom:10px; text-align:left; padding:12px; background:#0284c7;" onclick="ejecutarDesplazamiento()">
+                <strong>Mover rutinas hacia adelante (Cascada Adelante)</strong><br><span style="font-size:0.8rem; font-weight:normal;">Empuja las rutinas siguientes una sesión hacia adelante y, si la última tiene programación, crea una nueva sesión el día hábil siguiente para no perderla.</span>
+            </button>`;
 
-            if (sessionsToPull.length > 0) {
-                menuHTML += `<button type="button" class="btn-primary" style="width:100%; margin-bottom:10px; text-align:left; padding:12px; background:#16a34a;" onclick="ejecutarRecogidaCascada()">
-                    <strong>Recoger rutinas (Cascada Atrás)</strong><br><span style="font-size:0.8rem; font-weight:normal;">Adelanta la rutina de la siguiente sesión a este hueco. La última se quedará vacía.</span>
-                </button>`;
-            }
+            menuHTML += `<button type="button" class="btn-primary" style="width:100%; margin-bottom:10px; text-align:left; padding:12px; background:#16a34a;" onclick="ejecutarRecogidaCascada()">
+                <strong>Mover rutinas hacia atrás / Recoger (Cascada Atrás)</strong><br><span style="font-size:0.8rem; font-weight:normal;">Ubica la sesión en la nueva hora y adelanta la rutina de la siguiente sesión a este hueco (la última quedará vacía).</span>
+            </button>`;
 
-            menuHTML += `<button type="button" class="btn-secondary" style="width:100%; text-align:center; padding:12px;" onclick="cerrarModalReprogramar()">Volver</button>`;
+            menuHTML += `<button type="button" class="btn-secondary" style="width:100%; text-align:center; padding:12px;" onclick="window.volverAlCalendarioReprog()">⬅️ Volver al calendario</button>`;
 
             step2.innerHTML = menuHTML;
             document.getElementById('reprog-step-1').style.display = 'none';
             step2.style.display = 'block';
-        });
+        };
 
         window.ejecutarSustitucion = async () => {
             if (!pendingReprogData) return;
@@ -1164,39 +1538,108 @@
             } catch (err) { console.error(err); alert("Error al sustituir la rutina."); }
         };
 
+        function obtenerSiguienteDiaHabilUTC(fechaBase) {
+            const sig = new Date(fechaBase.getTime());
+            sig.setUTCDate(sig.getUTCDate() + 1);
+            // 0 = Domingo, 6 = Sábado -> avanzar hasta el próximo día hábil (Lunes a Viernes)
+            while (sig.getUTCDay() === 0 || sig.getUTCDay() === 6) {
+                sig.setUTCDate(sig.getUTCDate() + 1);
+            }
+            return sig;
+        }
+
         window.ejecutarDesplazamiento = async () => {
             if (!pendingReprogData) return;
             const { sourceSession, targetSession, autor, nuevaFechaObj } = pendingReprogData;
-            if (!targetSession) return ejecutarSustitucion();
 
             try {
-                const futureSessions = allSessions
-                    .filter(s => s.fechaObj >= targetSession.fechaObj && s.id !== sourceSession.id)
-                    .sort((a, b) => a.fechaObj - b.fechaObj);
-
                 const batch = writeBatch(db);
                 let prevExercises = sourceSession.ejercicios || [];
+                let lastAffectedSession = null;
 
-                for (let i = 0; i < futureSessions.length; i++) {
-                    const s = futureSessions[i];
-                    const currentExercises = s.ejercicios || [];
+                if (targetSession) {
+                    const futureSessions = allSessions
+                        .filter(s => s.fechaObj >= targetSession.fechaObj && s.id !== sourceSession.id)
+                        .sort((a, b) => a.fechaObj - b.fechaObj);
 
-                    const updateData = {
-                        ejercicios: prevExercises,
-                        ultimo_modificado_por: autor,
-                        fecha_modificacion: new Date()
-                    };
+                    for (let i = 0; i < futureSessions.length; i++) {
+                        const s = futureSessions[i];
+                        const currentExercises = s.ejercicios || [];
 
-                    if (s.id === targetSession.id) {
-                        updateData.fecha_hora_inicio = nuevaFechaObj;
-                        updateData.utc_migrado = true;
+                        const updateData = {
+                            ejercicios: prevExercises,
+                            ultimo_modificado_por: autor,
+                            fecha_modificacion: new Date()
+                        };
+
+                        if (s.id === targetSession.id) {
+                            updateData.fecha_hora_inicio = nuevaFechaObj;
+                            updateData.utc_migrado = true;
+                        }
+
+                        batch.update(doc(db, "agenda_sesiones", s.id), updateData);
+                        prevExercises = currentExercises;
+                        lastAffectedSession = s;
                     }
 
-                    batch.update(doc(db, "agenda_sesiones", s.id), updateData);
-                    prevExercises = currentExercises;
+                    batch.delete(doc(db, "agenda_sesiones", sourceSession.id));
+                } else {
+                    const futureSessions = allSessions
+                        .filter(s => s.fechaObj > nuevaFechaObj && s.id !== sourceSession.id)
+                        .sort((a, b) => a.fechaObj - b.fechaObj);
+
+                    batch.set(doc(db, "agenda_sesiones", sourceSession.id), {
+                        fecha_hora_inicio: nuevaFechaObj,
+                        estado: "Pendiente",
+                        ejercicios: futureSessions.length > 0 ? [] : prevExercises,
+                        ultimo_modificado_por: autor,
+                        fecha_modificacion: new Date(),
+                        utc_migrado: true
+                    }, { merge: true });
+
+                    for (let i = 0; i < futureSessions.length; i++) {
+                        const s = futureSessions[i];
+                        const currentExercises = s.ejercicios || [];
+                        batch.update(doc(db, "agenda_sesiones", s.id), {
+                            ejercicios: prevExercises,
+                            ultimo_modificado_por: autor,
+                            fecha_modificacion: new Date()
+                        });
+                        prevExercises = currentExercises;
+                        lastAffectedSession = s;
+                    }
                 }
 
-                batch.delete(doc(db, "agenda_sesiones", sourceSession.id));
+                // Si la última sesión desplazada tenía programación, creamos una nueva sesión el día hábil siguiente para no perderla
+                if (lastAffectedSession && prevExercises && prevExercises.length > 0) {
+                    const fechaUltima = (targetSession && lastAffectedSession.id === targetSession.id)
+                        ? nuevaFechaObj
+                        : lastAffectedSession.fechaObj;
+                    const nuevaFechaExtra = obtenerSiguienteDiaHabilUTC(fechaUltima);
+
+                    const newDocId = `SES-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+                    const codeCli = clientData.ID_Cliente || clientId;
+                    const aliasCli = (clientData.Alias && clientData.Alias.trim() !== '') ? clientData.Alias : (clientData.Nombre_Cliente || 'Sin nombre');
+
+                    batch.set(doc(db, "agenda_sesiones", newDocId), {
+                        id_sesion_global: newDocId,
+                        id_cliente: codeCli,
+                        alias: aliasCli,
+                        nombre_cliente: clientData.Nombre_Cliente || aliasCli,
+                        estado: "Pendiente",
+                        tipo_sesion: lastAffectedSession.tipo_sesion || "Individual",
+                        fecha_hora_inicio: nuevaFechaExtra,
+                        ejercicios: prevExercises,
+                        orden_customizado: true,
+                        creado_por: autor,
+                        programado_por: autor,
+                        ultimo_modificado_por: autor,
+                        fecha_creacion: new Date(),
+                        fecha_modificacion: new Date(),
+                        utc_migrado: true
+                    });
+                }
+
                 await batch.commit();
 
                 cerrarModalReprogramar();
