@@ -268,7 +268,8 @@
                 }
 
                 document.getElementById('ui-plantilla-name').innerText = plantillaData.nombre;
-                document.getElementById('ui-plantilla-meta').innerText = `Nivel Objetivo: ${plantillaData.nivel}`;
+                const tipoTxt = plantillaData.tipo_sesion ? `Tipo de Sesión: ${plantillaData.tipo_sesion} · ` : '';
+                document.getElementById('ui-plantilla-meta').innerText = `${tipoTxt}Nivel Objetivo: ${plantillaData.nivel || '-'}`;
                 renderSesionActual();
                 initSortable();
             }

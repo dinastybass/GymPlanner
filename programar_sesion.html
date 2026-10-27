@@ -196,6 +196,10 @@
 
             <form id="formImportar">
                 <div class="form-group" style="margin-bottom: 15px;">
+                    <label>Filtrar por Tipo de Sesión</label>
+                    <select id="imp_tipo" onchange="filtrarPlantillas()"></select>
+                </div>
+                <div class="form-group" style="margin-bottom: 15px;">
                     <label>Filtrar por Nivel</label>
                     <select id="imp_nivel" onchange="filtrarPlantillas()"></select>
                 </div>
@@ -423,6 +427,7 @@
                 poblarSelect('m_filter_grupo', 'Ejercicios', 'Grupos de Ejercicios', 'Todos'),
                 poblarSelect('m_bloque_sesion', 'Ejercicios', 'Bloques', null),
                 poblarSelect('m_reps', 'Ejercicios', 'Series y Repeticiones', null),
+                poblarSelect('imp_tipo', 'Sesiones', 'Tipo de Sesión', 'Todos los tipos'),
                 poblarSelect('imp_nivel', 'Ejercicios', 'Niveles', 'Todos los niveles')
             ]);
 
@@ -984,15 +989,18 @@
         };
 
         window.filtrarPlantillas = () => {
+            const tipoFiltro = document.getElementById('imp_tipo') ? document.getElementById('imp_tipo').value : '';
             const nivelFiltro = document.getElementById('imp_nivel').value;
             const selectPlantilla = document.getElementById('imp_plantilla');
             selectPlantilla.innerHTML = '<option value="">Elige una plantilla...</option>';
 
             let filtradas = plantillasCargadas;
-            if (nivelFiltro) filtradas = plantillasCargadas.filter(p => p.nivel === nivelFiltro);
+            if (tipoFiltro) filtradas = filtradas.filter(p => p.tipo_sesion === tipoFiltro);
+            if (nivelFiltro) filtradas = filtradas.filter(p => p.nivel === nivelFiltro);
 
-            filtradas.sort((a, b) => a.nombre.localeCompare(b.nombre)).forEach(p => {
-                selectPlantilla.innerHTML += `<option value="${p.id}">${p.nombre} (${p.ejercicios ? p.ejercicios.length : 0} ej.)</option>`;
+            filtradas.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '')).forEach(p => {
+                const prefix = p.tipo_sesion ? `[${p.tipo_sesion}] ` : '';
+                selectPlantilla.innerHTML += `<option value="${p.id}">${prefix}${p.nombre} (${p.ejercicios ? p.ejercicios.length : 0} ej.)</option>`;
             });
         };
 
