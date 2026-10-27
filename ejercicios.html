@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ejercicios - GO & train</title>
+    <link rel="icon" type="image/png" href="assets/logo.png">
+
+    <link rel="stylesheet" href="styles.css">
+    <script src="nav-component.js" defer></script>
+
+    <style>
+        .controls-bar {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .search-box {
+            position: relative;
+            flex-grow: 1;
+            max-width: 300px;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 10px 10px 10px 35px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.9rem;
+            box-sizing: border-box;
+            background: var(--hover-bg);
+        }
+
+        .search-box svg {
+            position: absolute;
+            left: 10px;
+            top: 10px;
+            color: var(--text-muted);
+        }
+
+        .filter-select {
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--hover-bg);
+            font-size: 0.9rem;
+            color: var(--text-main);
+            flex-grow: 1;
+            border: none;
+            min-width: 150px;
+        }
+
+        .total-count {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            width: 100%;
+            margin-top: -10px;
+            margin-bottom: 10px;
+        }
+
+        .level-accordion {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 20px;
+            overflow: hidden;
+            background: var(--surface);
+        }
+
+        .level-header {
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.95rem;
+            background-color: #e0f2fe;
+            color: #0369a1;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .block-header {
+            padding: 10px 20px;
+            background: var(--hover-bg);
+            border-bottom: 1px solid var(--border);
+            font-weight: bold;
+            font-size: 0.9rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .table-responsive {
+            width: 100%;
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            padding: 8px 8px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.75rem;
+            line-height: 1.3;
+            vertical-align: middle;
+        }
+
+        th {
+            color: var(--text-muted);
+            font-weight: 600;
+            user-select: none;
+        }
+
+        td {
+            color: var(--text-main);
+            font-weight: 500;
+        }
+
+        .ex-link {
+            color: var(--text-main);
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.2s;
+        }
+
+        .ex-link:hover {
+            color: var(--accent-dark);
+            text-decoration: underline;
+        }
+
+        .text-light {
+            color: var(--text-muted);
+            font-weight: normal;
+        }
+
+        .action-btns {
+            display: flex;
+            gap: 8px;
+            flex-wrap: nowrap;
+        }
+
+        .btn-icon {
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 6px;
+            cursor: pointer;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-icon:hover {
+            background: var(--hover-bg);
+        }
+
+        .chevron-icon {
+            display: flex;
+            align-items: center;
+        }
+
+        .modal-header {
+            margin-bottom: 25px;
+        }
+
+        .modal-header h2 {
+            margin: 0 0 5px 0;
+            font-size: 1.4rem;
+            color: var(--text-main);
+        }
+
+        .modal-header p {
+            margin: 0;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .form-group.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .form-label {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: var(--text-main);
+        }
+
+        .form-control {
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.95rem;
+            background: var(--hover-bg);
+            width: 100%;
+            box-sizing: border-box;
+            font-family: inherit;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--accent-dark);
+            background: var(--surface);
+        }
+
+        textarea.form-control {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        /* Dropdown customizado */
+        .custom-dropdown {
+            position: relative;
+            width: 100%;
+        }
+
+        .dropdown-trigger {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--hover-bg);
+            cursor: pointer;
+            font-size: 0.95rem;
+            user-select: none;
+        }
+
+        .dropdown-trigger:hover {
+            border-color: #d1d5db;
+            background: var(--surface);
+        }
+
+        .dropdown-panel {
+            position: absolute;
+            top: calc(100% + 5px);
+            left: 0;
+            width: 100%;
+            background: var(--surface);
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            z-index: 1001;
+            display: none;
+            flex-direction: column;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        .dropdown-panel.active {
+            display: flex;
+        }
+
+        .dropdown-search-container {
+            position: relative;
+            margin-bottom: 10px;
+        }
+
+        .dropdown-search-container input {
+            width: 100%;
+            padding: 8px 10px;
+            border: 2px solid var(--text-main);
+            border-radius: 6px;
+            font-size: 0.9rem;
+            box-sizing: border-box;
+            outline: none;
+        }
+
+        .dropdown-options {
+            max-height: 200px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding-right: 5px;
+        }
+
+        .dropdown-options::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .dropdown-options::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+
+        .dropdown-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px;
+            cursor: pointer;
+            border-radius: 6px;
+            font-size: 0.95rem;
+        }
+
+        .dropdown-option:hover {
+            background: var(--hover-bg);
+        }
+
+        .dropdown-option input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            margin: 0;
+        }
+
+        .dropdown-actions {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border);
+        }
+
+        .btn-limpiar {
+            background: var(--hover-bg);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.9rem;
+            color: var(--text-main);
+        }
+
+        .btn-listo {
+            background: var(--text-main);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 30px;
+        }
+
+        @media (max-width: 600px) {
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <gym-navbar active="ejercicios"></gym-navbar>
+
+    <div class="container">
+        <div class="page-header">
+            <h1>Catálogo de Ejercicios</h1>
+            <div style="display:flex; gap:10px;">
+                <button class="btn-primary" id="btnNuevoEjercicio">+ Nuevo ejercicio</button>
+            </div>
+        </div>
+
+        <div class="controls-bar">
+            <div class="search-box">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input type="text" id="searchInput" placeholder="Buscar por nombre, acrónimo o músculo...">
+            </div>
+            <select class="filter-select" id="filterGrupo">
+                <option value="">Todos los grupos</option>
+            </select>
+            <select class="filter-select" id="filterMaterial">
+                <option value="">Todos los materiales</option>
+            </select>
+            <select class="filter-select" id="filterSub">
+                <option value="">Todas las subcategorías</option>
+            </select>
+        </div>
+        <div class="total-count" id="totalEjerciciosText">Verificando sesión segura...</div>
+
+        <div id="ejerciciosContainer"></div>
+    </div>
+
+    <!-- MODAL DE EJERCICIO -->
+    <div class="modal-overlay" id="ejercicioModal">
+        <div class="modal-content">
+            <button class="modal-close" id="btnCerrarModal">&times;</button>
+            <div class="modal-header">
+                <h2 id="modalTitle">Nuevo ejercicio en catálogo</h2>
+                <p id="modalSubtitle">Añade un ejercicio a la biblioteca para asignarlo a las sesiones.</p>
+            </div>
+
+            <form id="formEjercicio">
+                <input type="hidden" id="formId">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Nombre del ejercicio *</label>
+                        <input type="text" id="formNombre" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Acrónimo</label>
+                        <input type="text" id="formAcronimo" class="form-control">
+                    </div>
+
+                    <!-- 1. PATRÓN MOTOR -->
+                    <div class="form-group">
+                        <label class="form-label">Patrón de movimiento</label>
+                        <div class="custom-dropdown">
+                            <div class="dropdown-trigger" onclick="toggleDropdown('panelPatron')">
+                                <span id="triggerTextPatron">Selecciona opciones</span>
+                                <span class="chevron-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2.5">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg></span>
+                            </div>
+                            <div class="dropdown-panel" id="panelPatron">
+                                <div class="dropdown-search-container"><input type="text" id="searchPatron"
+                                        placeholder="Buscar opción..."
+                                        onkeyup="filterDropdown('Patron', this.value, true)"></div>
+                                <div class="dropdown-options" id="optionsPatron"></div>
+                                <div class="dropdown-actions">
+                                    <button type="button" class="btn-limpiar"
+                                        onclick="clearDropdown('Patron')">Limpiar</button>
+                                    <button type="button" class="btn-listo"
+                                        onclick="closeDropdown('panelPatron')">Listo</button>
+                                </div>
+                            </div>
+                            <input type="hidden" id="formPatron">
+                        </div>
+                    </div>
+
+                    <!-- 2. GRUPO MUSCULAR -->
+                    <div class="form-group">
+                        <label class="form-label">Grupo muscular</label>
+                        <div class="custom-dropdown">
+                            <div class="dropdown-trigger" onclick="toggleDropdown('panelGrupo')">
+                                <span id="triggerTextGrupo">Selecciona opciones</span>
+                                <span class="chevron-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2.5">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg></span>
+                            </div>
+                            <div class="dropdown-panel" id="panelGrupo">
+                                <div class="dropdown-search-container"><input type="text" id="searchGrupo"
+                                        placeholder="Buscar opción..."
+                                        onkeyup="filterDropdown('Grupo', this.value, true)"></div>
+                                <div class="dropdown-options" id="optionsGrupo"></div>
+                                <div class="dropdown-actions">
+                                    <button type="button" class="btn-limpiar"
+                                        onclick="clearDropdown('Grupo')">Limpiar</button>
+                                    <button type="button" class="btn-listo"
+                                        onclick="closeDropdown('panelGrupo')">Listo</button>
+                                </div>
+                            </div>
+                            <input type="hidden" id="formGrupo">
+                        </div>
+                    </div>
+
+                    <!-- 3. BLOQUE -->
+                    <div class="form-group">
+                        <label class="form-label">Bloque de recomendación</label>
+                        <div class="custom-dropdown">
+                            <div class="dropdown-trigger" onclick="toggleDropdown('panelBloque')">
+                                <span id="triggerTextBloque">Selecciona opciones</span>
+                                <span class="chevron-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2.5">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg></span>
+                            </div>
+                            <div class="dropdown-panel" id="panelBloque">
+                                <div class="dropdown-search-container"><input type="text" id="searchBloque"
+                                        placeholder="Buscar opción..."
+                                        onkeyup="filterDropdown('Bloque', this.value, true)"></div>
+                                <div class="dropdown-options" id="optionsBloque"></div>
+                                <div class="dropdown-actions">
+                                    <button type="button" class="btn-limpiar"
+                                        onclick="clearDropdown('Bloque')">Limpiar</button>
+                                    <button type="button" class="btn-listo"
+                                        onclick="closeDropdown('panelBloque')">Listo</button>
+                                </div>
+                            </div>
+                            <input type="hidden" id="formBloque">
+                        </div>
+                    </div>
+
+                    <!-- 4. NIVEL -->
+                    <div class="form-group">
+                        <label class="form-label">Nivel de Dificultad</label>
+                        <div class="custom-dropdown">
+                            <div class="dropdown-trigger" onclick="toggleDropdown('panelNivel')">
+                                <span id="triggerTextNivel">Selecciona opciones</span>
+                                <span class="chevron-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2.5">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg></span>
+                            </div>
+                            <div class="dropdown-panel" id="panelNivel">
+                                <div class="dropdown-search-container"><input type="text" id="searchNivel"
+                                        placeholder="Buscar opción..."
+                                        onkeyup="filterDropdown('Nivel', this.value, true)"></div>
+                                <div class="dropdown-options" id="optionsNivel"></div>
+                                <div class="dropdown-actions">
+                                    <button type="button" class="btn-limpiar"
+                                        onclick="clearDropdown('Nivel')">Limpiar</button>
+                                    <button type="button" class="btn-listo"
+                                        onclick="closeDropdown('panelNivel')">Listo</button>
+                                </div>
+                            </div>
+                            <input type="hidden" id="formNivel">
+                        </div>
+                    </div>
+
+                    <!-- 5. MATERIAL -->
+                    <div class="form-group">
+                        <label class="form-label">Material sugerido</label>
+                        <div class="custom-dropdown">
+                            <div class="dropdown-trigger" onclick="toggleDropdown('panelMaterial')">
+                                <span id="triggerTextMaterial">Selecciona opciones</span>
+                                <span class="chevron-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2.5">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg></span>
+                            </div>
+                            <div class="dropdown-panel" id="panelMaterial">
+                                <div class="dropdown-search-container"><input type="text" id="searchMaterial"
+                                        placeholder="Buscar opción..."
+                                        onkeyup="filterDropdown('Material', this.value, true)"></div>
+                                <div class="dropdown-options" id="optionsMaterial"></div>
+                                <div class="dropdown-actions">
+                                    <button type="button" class="btn-limpiar"
+                                        onclick="clearDropdown('Material')">Limpiar</button>
+                                    <button type="button" class="btn-listo"
+                                        onclick="closeDropdown('panelMaterial')">Listo</button>
+                                </div>
+                            </div>
+                            <input type="hidden" id="formMaterial">
+                        </div>
+                    </div>
+
+                    <!-- 6. SUBCATEGORÍA -->
+                    <div class="form-group">
+                        <label class="form-label">Subcategoría</label>
+                        <div class="custom-dropdown">
+                            <div class="dropdown-trigger" onclick="toggleDropdown('panelSubcategoria')">
+                                <span id="triggerTextSubcategoria">Selecciona opciones</span>
+                                <span class="chevron-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2.5">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg></span>
+                            </div>
+                            <div class="dropdown-panel" id="panelSubcategoria">
+                                <div class="dropdown-search-container"><input type="text" id="searchSubcategoria"
+                                        placeholder="Buscar opción..."
+                                        onkeyup="filterDropdown('Subcategoria', this.value, true)"></div>
+                                <div class="dropdown-options" id="optionsSubcategoria"></div>
+                                <div class="dropdown-actions">
+                                    <button type="button" class="btn-limpiar"
+                                        onclick="clearDropdown('Subcategoria')">Limpiar</button>
+                                    <button type="button" class="btn-listo"
+                                        onclick="closeDropdown('panelSubcategoria')">Listo</button>
+                                </div>
+                            </div>
+                            <input type="hidden" id="formSubcategoria">
+                        </div>
+                    </div>
+
+                    <!-- 7. ZONA / ARTICULACIÓN -->
+                    <div class="form-group">
+                        <label class="form-label">Zona / Articulación</label>
+                        <div class="custom-dropdown">
+                            <div class="dropdown-trigger" onclick="toggleDropdown('panelZona')">
+                                <span id="triggerTextZona">Selecciona opciones</span>
+                                <span class="chevron-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2.5">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg></span>
+                            </div>
+                            <div class="dropdown-panel" id="panelZona">
+                                <div class="dropdown-search-container"><input type="text" id="searchZona"
+                                        placeholder="Buscar opción..."
+                                        onkeyup="filterDropdown('Zona', this.value, true)"></div>
+                                <div class="dropdown-options" id="optionsZona"></div>
+                                <div class="dropdown-actions">
+                                    <button type="button" class="btn-limpiar"
+                                        onclick="clearDropdown('Zona')">Limpiar</button>
+                                    <button type="button" class="btn-listo"
+                                        onclick="closeDropdown('panelZona')">Listo</button>
+                                </div>
+                            </div>
+                            <input type="hidden" id="formZona">
+                        </div>
+                    </div>
+
+                    <!-- 8. POSICIÓN -->
+                    <div class="form-group">
+                        <label class="form-label">Posición</label>
+                        <div class="custom-dropdown">
+                            <div class="dropdown-trigger" onclick="toggleDropdown('panelPosicion')">
+                                <span id="triggerTextPosicion">Selecciona opciones</span>
+                                <span class="chevron-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2.5">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg></span>
+                            </div>
+                            <div class="dropdown-panel" id="panelPosicion">
+                                <div class="dropdown-search-container"><input type="text" id="searchPosicion"
+                                        placeholder="Buscar opción..."
+                                        onkeyup="filterDropdown('Posicion', this.value, true)"></div>
+                                <div class="dropdown-options" id="optionsPosicion"></div>
+                                <div class="dropdown-actions">
+                                    <button type="button" class="btn-limpiar"
+                                        onclick="clearDropdown('Posicion')">Limpiar</button>
+                                    <button type="button" class="btn-listo"
+                                        onclick="closeDropdown('panelPosicion')">Listo</button>
+                                </div>
+                            </div>
+                            <input type="hidden" id="formPosicion">
+                        </div>
+                    </div>
+
+                    <!-- SERIES Y REPETICIONES (ÚNICO SELECT ESTÁNDAR DE LA LISTA) -->
+                    <div class="form-group full-width">
+                        <label class="form-label">Series y Repeticiones (Por defecto)</label>
+                        <select id="formSeriesReps" class="form-control"></select>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label class="form-label">URL del vídeo (Opcional)</label>
+                        <input type="url" id="formVideo" class="form-control" placeholder="Ej: https://youtu.be/..."
+                            pattern="https?://.*">
+                    </div>
+
+                    <div class="form-group full-width"
+                        style="background:#f0fdfa; padding:15px; border-radius:8px; border:1px solid #14b8a6; margin-top: 15px;">
+                        <label
+                            style="display:flex; align-items:center; gap:10px; margin:0; cursor:pointer; color:#0f766e; font-weight:bold;">
+                            <input type="checkbox" id="inputProgreso" style="width:20px; height:20px;">
+                            📈 Este es un "Ejercicio de Progreso" (Registra Marcas Personales)
+                        </label>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" id="btnCancelarModal">Cancelar</button>
+                    <button type="submit" class="btn-primary" id="btnGuardar">Guardar Ejercicio</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script type="module">
+        import { auth, db } from './firebase-config.js';
+        import { collection, getDocs, doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
+        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+        import { poblarSelect, getValoresMaestro, getMapaOrdenMaestro } from './maestros-service.js';
+
+        function normalizarTexto(texto) {
+            if (!texto) return "";
+            return texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        }
+
+        const iconChevron = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="transition: transform 0.2s;"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+        const iconTrash = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+
+        let allEjercicios = [];
+        let ordenBloques = {};
+        let ordenNiveles = {};
+
+        async function init() {
+            ordenBloques = await getMapaOrdenMaestro('Ejercicios', 'Bloques');
+            ordenNiveles = await getMapaOrdenMaestro('Ejercicios', 'Niveles');
+
+            await Promise.all([
+                poblarSelect('filterGrupo', 'Ejercicios', 'Grupos de Ejercicios', 'Todos los grupos'),
+                poblarSelect('filterMaterial', 'Ejercicios', 'Materiales', 'Todos los materiales'),
+                poblarSelect('filterSub', 'Ejercicios', 'Subcategorías', 'Todas las subcategorías'),
+                poblarSelect('formSeriesReps', 'Ejercicios', 'Series y Repeticiones', 'Selecciona series/reps...')
+            ]);
+
+            await initDropdowns();
+            await loadData();
+        }
+
+        async function initDropdowns() {
+            const patrones = await getValoresMaestro('Ejercicios', 'Patrón Motor');
+            const grupos = await getValoresMaestro('Ejercicios', 'Grupos de Ejercicios');
+            const materiales = await getValoresMaestro('Ejercicios', 'Materiales');
+            const subs = await getValoresMaestro('Ejercicios', 'Subcategorías');
+            const niveles = await getValoresMaestro('Ejercicios', 'Niveles');
+            const bloques = await getValoresMaestro('Ejercicios', 'Bloques');
+            const zonas = await getValoresMaestro('Ejercicios', 'Zona / Articulación');
+            const posiciones = await getValoresMaestro('Ejercicios', 'Posición');
+
+            buildDropdownOptions('Patron', patrones, true);
+            buildDropdownOptions('Grupo', grupos, true);
+            buildDropdownOptions('Material', materiales, true);
+            buildDropdownOptions('Subcategoria', subs, true);
+            buildDropdownOptions('Nivel', niveles, true);
+            buildDropdownOptions('Bloque', bloques, true);
+            buildDropdownOptions('Zona', zonas, true);
+            buildDropdownOptions('Posicion', posiciones, true);
+        }
+
+        function buildDropdownOptions(idRef, list, isMulti) {
+            const container = document.getElementById(`options${idRef}`);
+            if (!container) return;
+            container.innerHTML = list.map(item => {
+                if (isMulti) {
+                    return `<label class="dropdown-option"><input type="checkbox" value="${item}" onchange="updateMultiSelection('${idRef}')"> <span>${item}</span></label>`;
+                } else {
+                    return `<div class="dropdown-option" onclick="selectSingleOption('${idRef}', '${item}')"><span>${item}</span></div>`;
+                }
+            }).join('');
+        }
+
+        window.toggleDropdown = (panelId) => {
+            document.querySelectorAll('.dropdown-panel.active').forEach(p => { if (p.id !== panelId) p.classList.remove('active'); });
+            document.getElementById(panelId).classList.toggle('active');
+        };
+
+        window.closeDropdown = (panelId) => { document.getElementById(panelId).classList.remove('active'); };
+
+        window.selectSingleOption = (idRef, val) => {
+            document.getElementById(`form${idRef}`).value = val;
+            document.getElementById(`triggerText${idRef}`).innerText = val;
+            closeDropdown(`panel${idRef}`);
+        };
+
+        window.updateMultiSelection = (idRef) => {
+            const checks = document.querySelectorAll(`#options${idRef} input[type="checkbox"]:checked`);
+            const vals = Array.from(checks).map(c => c.value);
+            document.getElementById(`form${idRef}`).value = vals.join(', ');
+            document.getElementById(`triggerText${idRef}`).innerText = vals.length > 0 ? `${vals.length} seleccionado(s)` : 'Selecciona opciones';
+        };
+
+        window.clearDropdown = (idRef) => {
+            document.querySelectorAll(`#options${idRef} input[type="checkbox"]`).forEach(c => c.checked = false);
+            document.getElementById(`form${idRef}`).value = '';
+            document.getElementById(`triggerText${idRef}`).innerText = 'Selecciona opciones';
+        };
+
+        window.filterDropdown = (idRef, searchRaw, isMulti) => {
+            const searchTxt = normalizarTexto(searchRaw);
+            const container = document.getElementById(`options${idRef}`);
+            if (!container) return;
+            const items = isMulti ? container.querySelectorAll('label') : container.querySelectorAll('.dropdown-option');
+            items.forEach(el => {
+                const txt = normalizarTexto(el.innerText);
+                el.style.display = txt.includes(searchTxt) ? 'flex' : 'none';
+            });
+        };
+
+        async function loadData() {
+            const snapshot = await getDocs(collection(db, "ejercicios"));
+            allEjercicios = [];
+            snapshot.forEach(doc => allEjercicios.push({ id_doc: doc.id, ...doc.data() }));
+            renderTable();
+        }
+
+        function renderTable() {
+            const inputSearch = document.getElementById('searchInput');
+            if (!inputSearch) return;
+
+            // 1. GUARDAR ESTADO DE LOS ACORDEONES ABIERTOS ANTES DE BORRAR
+            const container = document.getElementById('ejerciciosContainer');
+            const openLevels = [];
+            const openBlocks = [];
+
+            if (container) {
+                // Capturar niveles abiertos
+                container.querySelectorAll('.level-accordion > div:nth-child(2)').forEach(content => {
+                    if (content.style.display === 'block') {
+                        const headerSpan = content.previousElementSibling.querySelector('span').innerText;
+                        openLevels.push(headerSpan);
+                    }
+                });
+
+                // Capturar bloques abiertos
+                container.querySelectorAll('.block-header + div.table-responsive').forEach(content => {
+                    if (content.style.display === 'block') {
+                        const headerSpan = content.previousElementSibling.querySelector('span').innerText;
+                        openBlocks.push(headerSpan);
+                    }
+                });
+            }
+
+            const searchTxt = normalizarTexto(inputSearch.value);
+            const fGrupo = document.getElementById('filterGrupo') ? document.getElementById('filterGrupo').value : '';
+            const fMaterial = document.getElementById('filterMaterial') ? document.getElementById('filterMaterial').value : '';
+            const fSub = document.getElementById('filterSub') ? document.getElementById('filterSub').value : '';
+
+            let filtrados = allEjercicios.filter(e => {
+                const matchSearch = normalizarTexto(e.Nombre_Ejercicio).includes(searchTxt)
+                    || normalizarTexto(e['Acrónimo'] || e.Acronimo).includes(searchTxt)
+                    || normalizarTexto(e.Grupo_Muscular).includes(searchTxt);
+
+                const matchGrupo = !fGrupo || (e.Grupo_Muscular && e.Grupo_Muscular.includes(fGrupo));
+                const matchMat = !fMaterial || (e.Material && e.Material.includes(fMaterial));
+                const matchSub = !fSub || (e['Subcategoría'] && e['Subcategoría'].includes(fSub)) || (e.Subcategoria && e.Subcategoria.includes(fSub));
+                return matchSearch && matchGrupo && matchMat && matchSub;
+            });
+
+            document.getElementById('totalEjerciciosText').innerText = `${filtrados.length} ejercicios encontrados`;
+
+            const agrupado = {};
+            filtrados.forEach(e => {
+                let baseNiv = e.Nivel_Dificultad || 'Sin asignar';
+                if (baseNiv.includes(',')) baseNiv = baseNiv.split(',')[0].trim();
+
+                if (!agrupado[baseNiv]) agrupado[baseNiv] = [];
+                agrupado[baseNiv].push(e);
+            });
+
+            const nivelesSorted = Object.keys(agrupado).sort((a, b) => (ordenNiveles[a] || 99) - (ordenNiveles[b] || 99));
+
+            container.innerHTML = '';
+
+            nivelesSorted.forEach(nivel => {
+                const listaNivel = agrupado[nivel];
+
+                const subAgrupado = {};
+                listaNivel.forEach(e => {
+                    let b = e.Bloque || 'Sin bloque';
+                    if (b.includes(',')) b = b.split(',')[0].trim();
+
+                    if (!subAgrupado[b]) subAgrupado[b] = [];
+                    subAgrupado[b].push(e);
+                });
+
+                const bloquesSorted = Object.keys(subAgrupado).sort((a, b) => (ordenBloques[a] || 99) - (ordenBloques[b] || 99));
+
+                // 2. RECUPERAR ESTADO DEL NIVEL
+                const nivelTitle = `NIVEL: ${nivel}`;
+                const isLevelOpen = openLevels.includes(nivelTitle);
+                const levelDisplayStyle = isLevelOpen ? 'block' : 'none';
+                const levelIconRot = isLevelOpen ? '0deg' : '-90deg';
+
+                let levelHTML = `<div class="level-accordion">
+                    <div class="level-header" onclick="const t=this.nextElementSibling; const s=this.querySelector('.chevron-icon svg'); if(t.style.display==='none'){t.style.display='block';s.style.transform='rotate(0deg)';}else{t.style.display='none';s.style.transform='rotate(-90deg)';}">
+                        <span>${nivelTitle}</span>
+                        <span style="display:flex; align-items:center; gap:8px;">${listaNivel.length} ej. <span class="chevron-icon" style="display:inline-flex;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="transition: transform 0.2s; transform: rotate(${levelIconRot});"><polyline points="6 9 12 15 18 9"></polyline></svg></span></span>
+                    </div>
+                    <div style="display:${levelDisplayStyle};">`;
+
+                bloquesSorted.forEach(bloque => {
+                    const listaBloque = subAgrupado[bloque];
+
+                    // MODIFICACIÓN: Ordenar la lista por Acrónimo y luego por Nombre_Ejercicio
+                    listaBloque.sort((a, b) => {
+                        const acroA = a['Acrónimo'] || a.Acronimo || a.Nombre_Ejercicio || '';
+                        const acroB = b['Acrónimo'] || b.Acronimo || b.Nombre_Ejercicio || '';
+                        return acroA.localeCompare(acroB);
+                    });
+
+                    let rows = listaBloque.map(ej => {
+                        const acro = ej['Acrónimo'] || ej.Acronimo || '-';
+                        const iconoPR = ej.es_de_progreso ? '<span title="Ejercicio de Progreso" style="font-size:1.1rem; margin-left:5px;">📈</span>' : '';
+
+                        return `<tr>
+                            <td><a href="#" class="ex-link" onclick="abrirModal(false, '${ej.id_doc}')">${acro}</a> ${iconoPR}</td>
+                            <td class="text-light">${ej.Nombre_Ejercicio}</td>
+                            <td class="text-light">${ej.Patron_Movimiento || ej.Patron_Motor || '-'}</td>
+                            <td class="text-light">${ej.Grupo_Muscular || '-'}</td>
+                            <td class="text-light">${ej.Material || '-'}</td>
+                            <td><div class="action-btns"><button class="btn-icon" onclick="borrarEjercicio('${ej.id_doc}')" title="Eliminar">${iconTrash}</button></div></td>
+                        </tr>`;
+                    }).join('');
+
+                    // 3. RECUPERAR ESTADO DEL BLOQUE
+                    const isBlockOpen = openBlocks.includes(bloque);
+                    const blockDisplayStyle = isBlockOpen ? 'block' : 'none';
+
+                    levelHTML += `
+                        <div class="block-header" onclick="const t=this.nextElementSibling; if(t.style.display==='none')t.style.display='block'; else t.style.display='none';">
+                            <span>${bloque}</span><span style="font-weight:normal; color:var(--text-muted);">${listaBloque.length}</span>
+                        </div>
+                        <div class="table-responsive" style="display:${blockDisplayStyle};">
+                            <table>
+                                <thead><tr><th>Acrónimo</th><th>Nombre</th><th>Patrón</th><th>Músculo</th><th>Material</th><th></th></tr></thead>
+                                <tbody>${rows}</tbody>
+                            </table>
+                        </div>
+                    `;
+                });
+
+                levelHTML += `</div></div>`;
+                container.innerHTML += levelHTML;
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const searchInput = document.getElementById('searchInput');
+            const filterGrupo = document.getElementById('filterGrupo');
+            const filterMaterial = document.getElementById('filterMaterial');
+            const filterSub = document.getElementById('filterSub');
+
+            if (searchInput) searchInput.addEventListener('input', renderTable);
+            if (filterGrupo) filterGrupo.addEventListener('change', renderTable);
+            if (filterMaterial) filterMaterial.addEventListener('change', renderTable);
+            if (filterSub) filterSub.addEventListener('change', renderTable);
+
+            const form = document.getElementById('formEjercicio');
+            const modal = document.getElementById('ejercicioModal');
+            const btnNuevoEjercicio = document.getElementById('btnNuevoEjercicio');
+            const btnCerrarModal = document.getElementById('btnCerrarModal');
+            const btnCancelarModal = document.getElementById('btnCancelarModal');
+
+            if (btnNuevoEjercicio) btnNuevoEjercicio.addEventListener('click', () => abrirModal(true));
+            if (btnCerrarModal) btnCerrarModal.addEventListener('click', () => modal.style.display = 'none');
+            if (btnCancelarModal) btnCancelarModal.addEventListener('click', () => modal.style.display = 'none');
+
+            if (form) {
+                form.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const btnSubmit = document.getElementById('btnGuardar');
+                    btnSubmit.innerText = 'Guardando...'; btnSubmit.disabled = true;
+
+                    const idDoc = document.getElementById('formId').value;
+                    const checkbox = document.getElementById('inputProgreso');
+
+                    const obj = {
+                        Nombre_Ejercicio: document.getElementById('formNombre').value,
+                        "Acrónimo": document.getElementById('formAcronimo').value,
+                        Patron_Movimiento: document.getElementById('formPatron').value,
+                        Grupo_Muscular: document.getElementById('formGrupo').value,
+                        Bloque: document.getElementById('formBloque').value,
+                        Nivel_Dificultad: document.getElementById('formNivel').value,
+                        Material: document.getElementById('formMaterial').value,
+                        "Subcategoría": document.getElementById('formSubcategoria').value,
+                        "Zona Articulación": document.getElementById('formZona').value,
+                        "Posición": document.getElementById('formPosicion').value,
+                        Video_URL: document.getElementById('formVideo').value,
+                        Series_Reps: document.getElementById('formSeriesReps').value,
+                        es_de_progreso: checkbox ? checkbox.checked : false
+                    };
+
+                    try {
+                        if (idDoc) await setDoc(doc(db, "ejercicios", idDoc), obj, { merge: true });
+                        else await setDoc(doc(collection(db, "ejercicios")), obj);
+                        modal.style.display = 'none';
+                        await loadData();
+                    } catch (err) {
+                        console.error(err); alert("Error al guardar.");
+                    } finally {
+                        btnSubmit.innerText = 'Guardar Ejercicio'; btnSubmit.disabled = false;
+                    }
+                });
+            }
+
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.custom-dropdown')) {
+                    document.querySelectorAll('.dropdown-panel').forEach(p => p.classList.remove('active'));
+                }
+            });
+        });
+
+        function setDropdownValues(idRef, commaString) {
+            if (!commaString) { clearDropdown(idRef); return; }
+            const vals = commaString.split(',').map(s => s.trim());
+            const checks = document.querySelectorAll(`#options${idRef} input[type="checkbox"]`);
+            if (checks.length > 0) {
+                checks.forEach(c => c.checked = vals.includes(c.value));
+                updateMultiSelection(idRef);
+            } else {
+                selectSingleOption(idRef, vals[0]);
+            }
+        }
+
+        window.abrirModal = (isNew, idDoc = null) => {
+            const form = document.getElementById('formEjercicio');
+            const modal = document.getElementById('ejercicioModal');
+            if (!form || !modal) return;
+
+            form.reset();
+            clearDropdown('Patron');
+            clearDropdown('Grupo');
+            clearDropdown('Material');
+            clearDropdown('Subcategoria');
+            clearDropdown('Nivel');
+            clearDropdown('Bloque');
+            clearDropdown('Zona');
+            clearDropdown('Posicion');
+            document.querySelectorAll('.dropdown-panel').forEach(p => p.classList.remove('active'));
+
+            const checkbox = document.getElementById('inputProgreso');
+
+            if (isNew) {
+                document.getElementById('modalTitle').innerText = 'Nuevo ejercicio';
+                document.getElementById('modalSubtitle').innerText = 'Añade un ejercicio a la base de datos central.';
+                document.getElementById('formId').value = '';
+                if (checkbox) checkbox.checked = false;
+            } else {
+                document.getElementById('modalTitle').innerText = 'Editar ejercicio';
+                document.getElementById('modalSubtitle').innerText = 'Modifica los datos del ejercicio seleccionado.';
+                document.getElementById('formId').value = idDoc;
+
+                const ej = allEjercicios.find(x => x.id_doc === idDoc);
+                if (ej) {
+                    document.getElementById('formNombre').value = ej.Nombre_Ejercicio || '';
+                    document.getElementById('formAcronimo').value = ej['Acrónimo'] || ej.Acronimo || '';
+                    document.getElementById('formVideo').value = ej.Video_URL || '';
+
+                    const repsField = document.getElementById('formSeriesReps');
+                    const repsValue = ej.Series_Reps || ej.Volumen_Series_Reps || ej.Series || '';
+                    if (repsValue && repsField.querySelector(`option[value="${repsValue}"]`)) {
+                        repsField.value = repsValue;
+                    } else if (repsField.options.length > 1) {
+                        repsField.selectedIndex = 1;
+                    }
+
+                    setDropdownValues('Patron', ej.Patron_Movimiento || ej.Patron_Motor);
+                    setDropdownValues('Grupo', ej.Grupo_Muscular);
+                    setDropdownValues('Material', ej.Material);
+                    setDropdownValues('Subcategoria', ej['Subcategoría'] || ej.Subcategoria);
+                    setDropdownValues('Nivel', ej.Nivel_Dificultad);
+                    setDropdownValues('Bloque', ej.Bloque || ej.Fase_Bloque);
+                    setDropdownValues('Zona', ej['Zona Articulación'] || ej.Zona_Articulacion);
+                    setDropdownValues('Posicion', ej.Posición || ej.Posicion);
+
+                    if (checkbox) checkbox.checked = !!ej.es_de_progreso;
+                }
+            }
+            modal.style.display = 'flex';
+        };
+
+        window.borrarEjercicio = async (idDoc) => {
+            if (confirm("¿Estás seguro de que deseas eliminar este ejercicio de la base de datos?")) {
+                await deleteDoc(doc(db, "ejercicios", idDoc));
+                await loadData();
+            }
+        };
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) init(); else window.location.href = "index.html";
+        });
+    </script>
+</body>
+
+</html>

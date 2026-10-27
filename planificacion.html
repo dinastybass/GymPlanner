@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planificación - GO & train</title>
+    <link rel="icon" type="image/png" href="assets/logo.png">
+
+    <link rel="stylesheet" href="styles.css">
+    <script src="nav-component.js" defer></script>
+
+    <style>
+        .btn-pantalla-sala {
+            background: var(--accent-light);
+            color: var(--accent-dark);
+            border: 1px solid #a5f3fc;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+
+        .btn-pantalla-sala:hover {
+            background: #99f6e4;
+        }
+
+        .date-bar {
+            background: var(--surface);
+            border: 2px solid var(--text-main);
+            border-radius: 12px;
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .date-selector {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .nav-arrow {
+            background: var(--hover-bg);
+            border: none;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+            color: var(--text-main);
+            flex-shrink: 0;
+        }
+
+        .nav-arrow:hover {
+            background: #e5e7eb;
+        }
+
+        .calendar-icon {
+            background: var(--hover-bg);
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            flex-shrink: 0;
+        }
+
+        .date-info {
+            white-space: nowrap;
+        }
+
+        .date-info strong {
+            display: block;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: -0.3px;
+        }
+
+        .date-info span {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .day-pills {
+            background: var(--hover-bg);
+            padding: 6px;
+            border-radius: 10px;
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .day-pills span {
+            padding: 6px 18px;
+            font-size: 0.9rem;
+            border-radius: 8px;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .day-pills span:hover:not(.active) {
+            background: #e5e7eb;
+            color: var(--text-main);
+        }
+
+        .day-pills span.active {
+            background: var(--accent-light);
+            color: var(--accent-dark);
+            font-weight: bold;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            padding: 15px 10px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.2s;
+            align-items: center;
+        }
+
+        .section-header:hover {
+            background-color: var(--hover-bg);
+        }
+
+        .section-header h3 {
+            margin: 0;
+            font-size: clamp(1rem, 2.5vw, 1.1rem);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .section-header span {
+            color: var(--text-muted);
+            font-size: clamp(0.8rem, 2vw, 0.9rem);
+            pointer-events: none;
+            text-align: right;
+        }
+
+        .section-content {
+            display: block;
+            margin-bottom: 20px;
+            padding: 0 10px;
+            overflow: hidden;
+        }
+
+        .empty-state {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-bottom: 30px;
+        }
+
+        .chevron-icon {
+            display: flex;
+            align-items: center;
+            color: #334155;
+        }
+
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 20px;
+        }
+
+        .card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.05);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            align-items: center;
+        }
+
+        .card-time {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .card-body {
+            border: 1px dashed var(--border);
+            padding: 15px;
+            border-radius: 8px;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            text-align: center;
+            margin-bottom: 15px;
+            transition: background 0.2s;
+        }
+
+        .card-body.has-data {
+            border-color: var(--accent-light);
+            background-color: #f0fdfa;
+            color: var(--text-main);
+            font-weight: 400;
+            border-style: solid;
+            text-align: left;
+            padding: 12px;
+        }
+
+        .card:hover .card-body:not(.has-data) {
+            background: var(--hover-bg);
+            border-color: #d1d5db;
+        }
+
+        .preview-block {
+            margin-bottom: 12px;
+        }
+
+        .preview-block:last-child {
+            margin-bottom: 0;
+        }
+
+        .preview-title {
+            font-size: 0.65rem;
+            font-weight: bold;
+            color: var(--accent-dark);
+            text-transform: uppercase;
+            margin-bottom: 4px;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid #cffafe;
+            padding-bottom: 2px;
+        }
+
+        /* Subgrupo visual en la tarjeta */
+        .preview-subgrupo {
+            background: #ffffff;
+            border: 1px solid #ccfbf1;
+            border-left: 3px solid var(--accent-dark);
+            border-radius: 6px;
+            padding: 5px 8px;
+            margin-bottom: 6px;
+        }
+
+        .subgrupo-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+            padding-bottom: 2px;
+            border-bottom: 1px dashed #99f6e4;
+            gap: 6px;
+        }
+
+        .subgrupo-title {
+            font-size: 0.7rem;
+            font-weight: 800;
+            color: #0e7490;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .subgrupo-reps {
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: #0f766e;
+            white-space: nowrap;
+        }
+
+        .preview-ex {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 3px;
+        }
+
+        .preview-ex-name {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-main);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex-grow: 1;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .preview-ex-name:hover {
+            color: var(--accent-dark);
+            text-decoration: underline;
+        }
+
+        .preview-ex-reps {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .card-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 10px;
+        }
+
+        .status {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status.pendiente {
+            background: var(--hover-bg);
+            color: var(--text-main);
+            border-color: var(--border);
+        }
+
+        .status.completada {
+            background: #dcfce7;
+            color: #166534;
+            border-color: #bbf7d0;
+        }
+
+        .status.vencida {
+            background: #fee2e2;
+            color: #991b1b;
+            border-color: #fca5a5;
+        }
+
+        .link {
+            color: var(--accent-dark);
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+
+        .link:hover {
+            background: var(--accent-light);
+        }
+
+        .sg-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .sg-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        .sg-time {
+            font-size: 0.9rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 10px;
+        }
+
+        .sg-clients {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+        }
+
+        @media (max-width: 768px) {
+            .date-bar {
+                flex-direction: column;
+                align-items: stretch;
+                padding: 15px;
+                gap: 15px;
+            }
+
+            .date-selector {
+                justify-content: space-between;
+                width: 100%;
+            }
+
+            .date-info {
+                text-align: center;
+                flex-grow: 1;
+            }
+
+            .day-pills {
+                width: 100%;
+                justify-content: flex-start;
+                padding-bottom: 5px;
+                box-sizing: border-box;
+            }
+
+            .cards-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <gym-navbar active="planificacion"></gym-navbar>
+    <div class="container">
+        <div class="page-header">
+            <h1>Entrenamientos · Visión de Día</h1>
+            <a href="pantalla_sala.html" class="btn-pantalla-sala">📺 Pantalla Sala</a>
+        </div>
+        <div class="date-bar">
+            <div class="date-selector">
+                <button class="nav-arrow" id="prev-day">&lt;</button>
+                <div class="calendar-icon">📅</div>
+                <div class="date-info"><strong id="display-date">CARGANDO...</strong><span
+                        id="display-total-sessions">...</span></div>
+                <button class="nav-arrow" id="next-day">&gt;</button>
+            </div>
+            <div class="day-pills" id="week-pills"></div>
+        </div>
+
+        <div class="section-header" id="header-manana">
+            <h3><span id="icon-manana" class="chevron-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                        style="transition: transform 0.2s ease;">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg></span>Mañana</h3>
+            <span id="counter-manana">08:00-12:30 · 0 sesiones</span>
+        </div>
+        <div id="content-manana" class="section-content">
+            <div class="empty-state" id="empty-manana">Cargando...</div>
+            <div class="cards-grid" id="grid-manana"></div>
+        </div>
+
+        <div class="section-header" id="header-tarde">
+            <h3><span id="icon-tarde" class="chevron-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                        style="transition: transform 0.2s ease;">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg></span>Tarde</h3>
+            <span id="counter-tarde">16:00-20:30 · 0 sesiones</span>
+        </div>
+        <div id="content-tarde" class="section-content">
+            <div class="empty-state" id="empty-tarde">Cargando...</div>
+            <div class="cards-grid" id="grid-tarde"></div>
+        </div>
+
+        <div class="section-header" id="header-sg">
+            <h3><span id="icon-sg" class="chevron-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                        style="transition: transform 0.2s ease;">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg></span>Small Groups</h3>
+            <span id="counter-sg">0 sesiones</span>
+        </div>
+        <div id="content-sg" class="section-content">
+            <div class="empty-state" id="empty-sg">Cargando...</div>
+            <div id="grid-sg"></div>
+        </div>
+    </div>
+
+    <!-- MODAL REGISTRO DE PR EN PLANIFICACIÓN -->
+    <div class="modal-overlay" id="modalPR"
+        style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center;">
+        <div class="modal-content"
+            style="background: var(--surface); padding: 25px; border-radius: 12px; width: 90%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); text-align: center;">
+            <h2 style="margin: 0 0 5px 0; color: var(--accent-dark); font-size: 1.5rem;" id="pr-title">Registrar PR</h2>
+            <p style="color: var(--text-muted); font-size: 0.95rem; margin-top: 0; margin-bottom: 20px;">
+                Introduce el peso máximo levantado por el cliente.
+            </p>
+            <form id="formPR">
+                <input type="hidden" id="pr_cliente">
+                <input type="hidden" id="pr_ejercicio">
+                <input type="hidden" id="pr_nombre_ejercicio">
+
+                <div style="display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:25px;">
+                    <input type="number" step="0.5" id="pr_peso" required
+                        style="width: 120px; padding: 12px; font-size: 1.5rem; text-align:center; border-radius: 8px; border: 2px solid var(--border);"
+                        placeholder="0">
+                    <span style="font-size: 1.5rem; font-weight: bold; color: var(--text-muted);">kg</span>
+                </div>
+
+                <div style="display:flex; justify-content:space-between; gap:10px;">
+                    <button type="button" onclick="document.getElementById('modalPR').style.display='none'"
+                        style="flex:1; padding:12px; border:none; border-radius:8px; background:var(--hover-bg); color:var(--text-muted); cursor:pointer; font-weight:bold; font-size:1rem;">Cancelar</button>
+                    <button type="submit" id="btnGuardarPR"
+                        style="flex:1; padding:12px; border:none; border-radius:8px; background:var(--accent); color:white; cursor:pointer; font-weight:bold; font-size:1rem;">Guardar
+                        Marca</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script type="module">
+        import { auth, db } from './firebase-config.js';
+        import { collection, query, where, getDocs, doc, updateDoc, addDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
+        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+        import { getValoresMaestro, getMapaOrdenMaestro } from './maestros-service.js';
+
+        let currentDate = new Date();
+        if (currentDate.getDay() === 0) currentDate.setDate(currentDate.getDate() + 1);
+        if (currentDate.getDay() === 6) currentDate.setDate(currentDate.getDate() + 2);
+
+        let ordenBloques = {};
+        let rangoMananaTexto = "08:00-12:30";
+        let rangoTardeTexto = "16:00-20:30";
+        const mapaDiaJS = { 'domingo': 0, 'lunes': 1, 'martes': 2, 'miércoles': 3, 'miercoles': 3, 'jueves': 4, 'viernes': 5, 'sábado': 6, 'sabado': 6 };
+
+        async function inicializarMaestrosPlanificacion() {
+            const [bloquesMap, diasDB, horasIndDB] = await Promise.all([
+                getMapaOrdenMaestro('Ejercicios', 'Bloques'),
+                getValoresMaestro('Agenda', 'Días de la semana'),
+                getValoresMaestro('Agenda', 'Horarios Sesiones Individuales')
+            ]);
+
+            ordenBloques = bloquesMap;
+
+            const diasFinal = diasDB.length > 0 ? diasDB : ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+            const pillsContainer = document.getElementById('week-pills');
+            pillsContainer.innerHTML = diasFinal.map(d => `<span data-day="${mapaDiaJS[d.toLowerCase()] ?? 1}">${d}</span>`).join('');
+
+            pillsContainer.querySelectorAll('span').forEach(pill => {
+                pill.addEventListener('click', (e) => {
+                    currentDate.setDate(currentDate.getDate() + (parseInt(e.target.getAttribute('data-day')) - currentDate.getDay()));
+                    updateDateUI();
+                });
+            });
+
+            if (horasIndDB.length > 0) {
+                const manana = horasIndDB.filter(h => parseInt(h.split(':')[0], 10) < 14);
+                const tarde = horasIndDB.filter(h => parseInt(h.split(':')[0], 10) >= 14);
+                if (manana.length > 0) rangoMananaTexto = `${manana[0]}-${manana[manana.length - 1]}`;
+                if (tarde.length > 0) rangoTardeTexto = `${tarde[0]}-${tarde[tarde.length - 1]}`;
+            }
+        }
+
+        function setupAccordion(headerId, contentId, iconId) {
+            document.getElementById(headerId).addEventListener('click', () => {
+                const content = document.getElementById(contentId);
+                const svg = document.getElementById(iconId).querySelector('svg');
+                if (content.style.display === 'none') { content.style.display = 'block'; if (svg) svg.style.transform = 'rotate(0deg)'; }
+                else { content.style.display = 'none'; if (svg) svg.style.transform = 'rotate(-90deg)'; }
+            });
+        }
+        setupAccordion('header-manana', 'content-manana', 'icon-manana');
+        setupAccordion('header-tarde', 'content-tarde', 'icon-tarde');
+        setupAccordion('header-sg', 'content-sg', 'icon-sg');
+
+        function updateDateUI() {
+            const diasStr = ['DOMINGO', 'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO'];
+            document.getElementById('display-date').innerText = `${diasStr[currentDate.getDay()]} · ${String(currentDate.getDate()).padStart(2, '0')}/${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+            document.querySelectorAll('.day-pills span').forEach(pill => {
+                if (parseInt(pill.getAttribute('data-day')) === currentDate.getDay()) pill.classList.add('active');
+                else pill.classList.remove('active');
+            });
+            loadDailySessions(currentDate);
+        }
+
+        function changeDay(delta) {
+            currentDate.setDate(currentDate.getDate() + delta);
+            if (currentDate.getDay() === 6) currentDate.setDate(currentDate.getDate() + (delta > 0 ? 2 : -1));
+            else if (currentDate.getDay() === 0) currentDate.setDate(currentDate.getDate() + (delta > 0 ? 1 : -2));
+            updateDateUI();
+        }
+
+        document.getElementById('prev-day').addEventListener('click', () => changeDay(-1));
+        document.getElementById('next-day').addEventListener('click', () => changeDay(1));
+
+        window.toggleEstado = async (idSesion, estadoActual) => {
+            const nuevoEstado = (estadoActual === 'Completada') ? 'Pendiente' : 'Completada';
+            try { await updateDoc(doc(db, "agenda_sesiones", idSesion), { estado: nuevoEstado }); loadDailySessions(currentDate); }
+            catch (error) { console.error("Error al cambiar el estado:", error); }
+        };
+
+        window.abrirModalPR = (idCliente, idEjercicio, nombreEjercicio) => {
+            if (!idCliente || idCliente === 'undefined') {
+                alert("No se pudo identificar al cliente.");
+                return;
+            }
+            document.getElementById('pr_cliente').value = idCliente;
+            document.getElementById('pr_ejercicio').value = idEjercicio;
+            document.getElementById('pr_nombre_ejercicio').value = nombreEjercicio;
+            document.getElementById('pr_peso').value = '';
+            document.getElementById('pr-title').innerText = `PR: ${nombreEjercicio}`;
+            document.getElementById('modalPR').style.display = 'flex';
+            setTimeout(() => document.getElementById('pr_peso').focus(), 100);
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const formPR = document.getElementById('formPR');
+            if (formPR) {
+                formPR.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const btn = document.getElementById('btnGuardarPR');
+                    btn.disabled = true;
+                    btn.innerText = 'Guardando...';
+
+                    const idCliente = document.getElementById('pr_cliente').value;
+                    const idEjercicio = document.getElementById('pr_ejercicio').value;
+                    const nombreEjercicio = document.getElementById('pr_nombre_ejercicio').value;
+                    const peso = parseFloat(document.getElementById('pr_peso').value);
+
+                    try {
+                        await addDoc(collection(db, "progreso_clientes"), {
+                            id_cliente: idCliente,
+                            id_ejercicio: idEjercicio,
+                            nombre_ejercicio: nombreEjercicio,
+                            peso_levantado: peso,
+                            fecha: new Date()
+                        });
+
+                        btn.innerText = '¡Guardado!';
+                        btn.style.background = '#16a34a';
+                        setTimeout(() => {
+                            document.getElementById('modalPR').style.display = 'none';
+                            btn.disabled = false;
+                            btn.innerText = 'Guardar Marca';
+                            btn.style.background = 'var(--accent)';
+                        }, 1000);
+                    } catch (err) {
+                        console.error("Error guardando PR:", err);
+                        alert("Error al guardar la marca en la base de datos.");
+                        btn.disabled = false;
+                        btn.innerText = 'Guardar Marca';
+                    }
+                });
+            }
+        });
+
+        function renderizarFilaEjercicioPlan(ej, idCliente) {
+            const aliasBase = ej.Acrónimo || ej.Acronimo || ej.acronimo || ej.alias || ej.Nombre_Ejercicio || ej.nombre_ejercicio || ej.ejercicio || '-';
+            const detalleText = ej.Detalle || ej.detalle || '';
+
+            let extraInfo = [];
+            if (detalleText) extraInfo.push(detalleText);
+            if (ej.Material_Adaptacion) extraInfo.push(`${ej.Material_Adaptacion}`);
+            const extras = extraInfo.join(' · ');
+
+            const fullTitle = extras ? `${aliasBase} (${extras})` : aliasBase;
+            const idEjercicioParaEnlace = ej.ID_Ejercicio || ej.id_ejercicio || '';
+
+            const s_raw = ej.Series || ej.series || '';
+            const r_raw = ej.Repeticiones || ej.repeticiones || '';
+            let reps = ej.Volumen_Series_Reps || ej.Series_Reps || ej.series_reps || s_raw;
+            if (!ej.Volumen_Series_Reps && !ej.Series_Reps && !ej.series_reps && r_raw) reps = s_raw ? `${s_raw} x ${r_raw}` : r_raw;
+            if (!reps) reps = '-';
+
+            const peso = ej.Peso || ej.peso || '';
+            if (peso && String(peso).trim() !== '') reps += ` ⚖️ ${peso}`;
+            const intens = ej.Intensidad || ej.intensidad || '';
+            if (intens && intens !== 'MED') reps += ` · ${intens}`;
+
+            let enlaceNameHTML = `<span class="preview-ex-name" title="${fullTitle}">${aliasBase}`;
+            if (extras) enlaceNameHTML += ` <i style="font-weight:normal; opacity:0.8;">- ${extras}</i>`;
+            enlaceNameHTML += `</span>`;
+
+            if (idEjercicioParaEnlace) {
+                enlaceNameHTML = `<a href="ficha_ejercicio.html?id=${idEjercicioParaEnlace}" onclick="event.stopPropagation();" class="preview-ex-name" title="Ver ficha del ejercicio: ${fullTitle}">${aliasBase}`;
+                if (extras) enlaceNameHTML += ` <i style="font-weight:normal; opacity:0.8;">- ${extras}</i>`;
+                enlaceNameHTML += `</a>`;
+            }
+
+            const iconoPR = ej.guardar_progreso ? '<span title="Registrará PR" style="font-size:1rem; margin-left:5px; flex-shrink:0;">📈</span>' : '';
+            const acroLimpio = aliasBase.replace(/'/g, "\\'");
+            let btnPR = '';
+            if (ej.guardar_progreso) {
+                btnPR = `
+                <div style="width: 100%; margin-top: 4px; margin-bottom: 6px;">
+                    <button style="background:#ccfbf1; color:#0f766e; border:1px solid #14b8a6; border-radius:6px; padding:2px 8px; font-size:0.75rem; font-weight:bold; cursor:pointer; display:inline-flex; align-items:center; gap:4px;" onclick="event.stopPropagation(); window.abrirModalPR('${idCliente}', '${idEjercicioParaEnlace}', '${acroLimpio}')">
+                        📈 Registrar PR
+                    </button>
+                </div>`;
+            }
+
+            const colNombre = `<div style="display:flex; align-items:center; overflow:hidden;">${enlaceNameHTML}${iconoPR}</div>`;
+
+            return `
+                <div style="display:flex; flex-direction:column; margin-bottom: 3px;">
+                    <div class="preview-ex">${colNombre}<span class="preview-ex-reps">${reps}</span></div>
+                    ${btnPR}
+                </div>`;
+        }
+
+        async function loadDailySessions(dateToLoad) {
+            const y = dateToLoad.getFullYear();
+            const m = dateToLoad.getMonth();
+            const d = dateToLoad.getDate();
+            const startOfDay = new Date(Date.UTC(y, m, d, 0, 0, 0, 0));
+            const endOfDay = new Date(Date.UTC(y, m, d, 23, 59, 59, 999));
+
+            const now = new Date();
+            const nowNominalUTC = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds()));
+
+            try {
+                const clientesMap = {};
+                const clientesSnap = await getDocs(collection(db, "clientes"));
+                clientesSnap.forEach(doc => { const c = doc.data(); if (c.ID_Cliente) clientesMap[c.ID_Cliente] = (c.Alias && c.Alias.trim() !== '') ? c.Alias : c.Nombre_Cliente; });
+
+                const q = query(collection(db, "agenda_sesiones"), where("fecha_hora_inicio", ">=", startOfDay), where("fecha_hora_inicio", "<=", endOfDay));
+                const querySnapshot = await getDocs(q);
+
+                let mananaHTML = ''; let countManana = 0; let tardeHTML = ''; let countTarde = 0; let sgGroups = {};
+
+                querySnapshot.forEach((documento) => {
+                    const data = documento.data(); const idSesion = documento.id;
+                    const fecha = data.fecha_hora_inicio.toDate();
+                    const horaFormateada = fecha.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+
+                    const idCliente = data.id_cliente || data.ID_Cliente;
+                    const nombreMostrar = (idCliente && clientesMap[idCliente]) ? clientesMap[idCliente] : (data.Alias || data.alias || data.Nombre_Cliente || data.nombre_cliente);
+
+                    if (data.tipo_sesion === 'Small Group') {
+                        if (!sgGroups[horaFormateada]) sgGroups[horaFormateada] = [];
+                        sgGroups[horaFormateada].push(nombreMostrar);
+                    } else {
+                        let estadoBase = data.estado || 'Pendiente'; let dot = '⚪'; let statusClass = 'pendiente';
+                        if (estadoBase === 'Completada') { dot = '🟢'; statusClass = 'completada'; }
+                        else if (estadoBase === 'Vencida' || (fecha < nowNominalUTC && estadoBase !== 'Completada')) { dot = '🔴'; statusClass = 'vencida'; estadoBase = 'Vencida'; }
+
+                        let bodyContent = '';
+                        if (data.ejercicios && data.ejercicios.length > 0) {
+                            let listaEjercicios = [...data.ejercicios];
+                            if (!data.orden_customizado) {
+                                listaEjercicios.sort((a, b) => {
+                                    const bA = a.Bloque || a.bloque || a.Fase_Bloque || 'General';
+                                    const bB = b.Bloque || b.bloque || b.Fase_Bloque || 'General';
+                                    return (ordenBloques[bA] || 99) - (ordenBloques[bB] || 99);
+                                });
+                            }
+
+                            let bloquesSecuenciales = [];
+                            let ultimoBloqueNombre = null;
+                            let bloqueActual = null;
+
+                            listaEjercicios.forEach(ej => {
+                                const bName = ej.Bloque || ej.bloque || ej.Fase_Bloque || 'General';
+                                if (bName !== ultimoBloqueNombre) {
+                                    bloqueActual = { nombre: bName, items: [] };
+                                    bloquesSecuenciales.push(bloqueActual);
+                                    ultimoBloqueNombre = bName;
+                                }
+                                bloqueActual.items.push(ej);
+                            });
+
+                            let exercisesHTML = '';
+                            bloquesSecuenciales.forEach(bloqueObj => {
+                                let subgruposSecuenciales = [];
+                                let ultimoSub = null;
+                                let grupoActual = null;
+
+                                bloqueObj.items.forEach(ej => {
+                                    const subName = (ej.Subgrupo || ej.subgrupo || '').trim();
+                                    if (subName) {
+                                        if (subName === ultimoSub && grupoActual && grupoActual.tipo === 'subgrupo') {
+                                            grupoActual.ejercicios.push(ej);
+                                        } else {
+                                            grupoActual = {
+                                                tipo: 'subgrupo',
+                                                nombre: subName,
+                                                detalle: ej.Subgrupo_Detalle || ej.subgrupo_detalle || '',
+                                                ejercicios: [ej]
+                                            };
+                                            subgruposSecuenciales.push(grupoActual);
+                                            ultimoSub = subName;
+                                        }
+                                    } else {
+                                        subgruposSecuenciales.push({ tipo: 'individual', ejercicio: ej });
+                                        ultimoSub = null;
+                                        grupoActual = null;
+                                    }
+                                });
+
+                                let contenidoBloqueHTML = '';
+                                subgruposSecuenciales.forEach(grupo => {
+                                    if (grupo.tipo === 'subgrupo') {
+                                        const itemsHTML = grupo.ejercicios.map(ej => renderizarFilaEjercicioPlan(ej, idCliente)).join('');
+                                        const repsHTML = grupo.detalle ? `<span class="subgrupo-reps">${grupo.detalle}</span>` : '';
+                                        contenidoBloqueHTML += `
+                                            <div class="preview-subgrupo">
+                                                <div class="subgrupo-header">
+                                                    <span class="subgrupo-title">🔄 ${grupo.nombre}</span>
+                                                    ${repsHTML}
+                                                </div>
+                                                ${itemsHTML}
+                                            </div>
+                                        `;
+                                    } else {
+                                        contenidoBloqueHTML += renderizarFilaEjercicioPlan(grupo.ejercicio, idCliente);
+                                    }
+                                });
+
+                                exercisesHTML += `<div class="preview-block"><div class="preview-title">${bloqueObj.nombre}</div>${contenidoBloqueHTML}</div>`;
+                            });
+
+                            bodyContent = `<div class="card-body has-data">${exercisesHTML}</div>`;
+                        } else {
+                            bodyContent = `<div class="card-body">Sin ejercicios asignados</div>`;
+                        }
+
+                        const cardHTML = `
+                            <div class="card" onclick="window.location.href='ficha_cliente.html?id=${idCliente}'">
+                                <div class="card-header"><span>${nombreMostrar}</span><span class="card-time">🕒 ${horaFormateada}</span></div>
+                                ${bodyContent}
+                                <div class="card-footer">
+                                    <span class="status ${statusClass}" onclick="event.stopPropagation(); toggleEstado('${idSesion}', '${estadoBase}')" title="Haz click para cambiar estado">${dot} ${estadoBase}</span>
+                                    <a href="programar_sesion.html?id_sesion=${idSesion}" onclick="event.stopPropagation();" class="link">+ Añadir Ejercicio</a>
+                                </div>
+                            </div>
+                        `;
+                        if (fecha.getUTCHours() < 14) { mananaHTML += cardHTML; countManana++; } else { tardeHTML += cardHTML; countTarde++; }
+                    }
+                });
+
+                let sgHTML = ''; let countSg = Object.keys(sgGroups).length;
+                for (const [hora, clientes] of Object.entries(sgGroups)) {
+                    const [h, m] = hora.split(':'); const horaFin = `${(parseInt(h) + 1).toString().padStart(2, '0')}:${m}`;
+                    sgHTML += `<div class="sg-card"><div class="sg-time">${hora}-${horaFin}</div><div class="sg-clients">${clientes.map(c => `<span>${c}</span>`).join('')}</div></div>`;
+                }
+
+                document.getElementById('display-total-sessions').innerText = (countManana + countTarde) === 1 ? '1 sesión programada' : `${countManana + countTarde} sesiones programadas`;
+
+                if (countManana > 0) { document.getElementById('grid-manana').innerHTML = mananaHTML; document.getElementById('empty-manana').style.display = 'none'; }
+                else { document.getElementById('grid-manana').innerHTML = ''; document.getElementById('empty-manana').style.display = 'block'; document.getElementById('empty-manana').innerText = "Sin sesiones de mañana para este día."; }
+                document.getElementById('counter-manana').innerText = `${rangoMananaTexto} · ${countManana} sesiones`;
+
+                if (countTarde > 0) { document.getElementById('grid-tarde').innerHTML = tardeHTML; document.getElementById('empty-tarde').style.display = 'none'; }
+                else { document.getElementById('grid-tarde').innerHTML = ''; document.getElementById('empty-tarde').style.display = 'block'; document.getElementById('empty-tarde').innerText = "Sin sesiones de tarde para este día."; }
+                document.getElementById('counter-tarde').innerText = `${rangoTardeTexto} · ${countTarde} sesiones`;
+
+                if (countSg > 0) { document.getElementById('grid-sg').innerHTML = sgHTML; document.getElementById('empty-sg').style.display = 'none'; }
+                else { document.getElementById('grid-sg').innerHTML = ''; document.getElementById('empty-sg').style.display = 'block'; document.getElementById('empty-sg').innerText = "Sin grupos programados para hoy."; }
+                document.getElementById('counter-sg').innerText = `${countSg} sesiones`;
+
+            } catch (error) { console.error("Error cargando sesiones: ", error); }
+        }
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                await inicializarMaestrosPlanificacion();
+                updateDateUI();
+            } else {
+                window.location.href = "index.html";
+            }
+        });
+    </script>
+</body>
+
+</html>

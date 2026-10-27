@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pendientes de programar - GO & train</title>
+    <link rel="icon" type="image/png" href="assets/logo.png">
+
+    <link rel="stylesheet" href="styles.css">
+    <script src="nav-component.js" defer></script>
+
+    <style>
+        .tabs-selector {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .tab-filter-btn {
+            background: #f8fafc;
+            color: #475569;
+            border: 1px solid var(--border);
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tab-filter-btn.active {
+            background: var(--accent-dark);
+            color: white;
+            border-color: var(--accent-dark);
+            box-shadow: 0 4px 12px rgba(8, 145, 178, 0.2);
+        }
+
+        .client-accordion {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 20px;
+            overflow: hidden;
+            background: var(--surface);
+        }
+
+        .client-header {
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1rem;
+            background-color: var(--hover-bg);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .client-header:hover {
+            background-color: #e5e7eb;
+        }
+
+        .table-responsive {
+            width: 100%;
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            padding: 12px 20px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
+        }
+
+        th {
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+        }
+
+        .btn-programar {
+            background: var(--accent-dark);
+            color: white;
+            border: none;
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.8rem;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-programar:hover {
+            background: #0b5c6b;
+        }
+
+        .chevron-icon {
+            display: flex;
+            align-items: center;
+            transition: transform 0.2s;
+        }
+
+        .empty-msg {
+            padding: 40px;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+    </style>
+</head>
+
+<body>
+    <gym-navbar active="agenda"></gym-navbar>
+
+    <div class="container">
+        <div class="breadcrumb"><a href="agenda.html">Agenda</a> &gt; Programaciones Pendientes</div>
+        <div class="page-header" style="margin-bottom: 15px;">
+            <h1>Sesiones pendientes de programar</h1>
+        </div>
+
+        <div class="tabs-selector">
+            <button class="tab-filter-btn active" id="btnTabInd"
+                onclick="cambiarVistaPendientes('individuales')">Sesiones individuales</button>
+            <button class="tab-filter-btn" id="btnTabSG" onclick="cambiarVistaPendientes('small_groups')">Small
+                Groups</button>
+        </div>
+
+        <div id="pendientesContainer">
+            <p style="color: var(--text-muted);">Analizando agenda...</p>
+        </div>
+    </div>
+
+    <!-- Script de Firebase unificado -->
+    <script type="module">
+        import { auth, db } from './firebase-config.js';
+        import { collection, query, where, getDocs, updateDoc, writeBatch } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
+        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+        import { getValoresMaestro } from './maestros-service.js';
+
+        const chevronSVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+
+        let todasLasPendientes = { individuales: [], small_groups: [] };
+        let vistaActual = 'individuales';
+
+        window.cambiarVistaPendientes = (tipo) => {
+            vistaActual = tipo;
+            document.getElementById('btnTabInd').className = (tipo === 'individuales') ? 'tab-filter-btn active' : 'tab-filter-btn';
+            document.getElementById('btnTabSG').className = (tipo === 'small_groups') ? 'tab-filter-btn active' : 'tab-filter-btn';
+            renderizarVistaActual();
+        };
+
+        async function loadPendientes() {
+            const container = document.getElementById('pendientesContainer');
+            try {
+                const sgMaster = await getValoresMaestro('Agenda', 'Horarios Small Groups');
+
+                const now = new Date();
+                const hoy = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0));
+
+                const fechaLimite = new Date(hoy);
+                fechaLimite.setUTCDate(fechaLimite.getUTCDate() + 14); // Buscamos a 14 días vista en UTC
+                fechaLimite.setUTCHours(23, 59, 59, 999);
+
+                const q = query(collection(db, "agenda_sesiones"), where("fecha_hora_inicio", ">=", hoy), where("fecha_hora_inicio", "<=", fechaLimite));
+                const snapshot = await getDocs(q);
+
+                todasLasPendientes = { individuales: [], small_groups: [] };
+
+                const dbSGs = [];
+                const indSessions = [];
+                const diasSemanaNombres = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+
+                // LÓGICA DE CORRECCIÓN: Usamos writeBatch para clonar rutinas de SG
+                const batch = writeBatch(db);
+                let countSGSync = 0;
+
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (data.estado === 'Completada') return;
+
+                    let tieneEjercicios = data.ejercicios && Array.isArray(data.ejercicios) && data.ejercicios.length > 0;
+
+                    if (data.tipo_sesion === 'Small Group') {
+                        dbSGs.push({ id: doc.id, data, ref: doc.ref, tieneEjercicios });
+                    } else {
+                        if (!tieneEjercicios) {
+                            const d = data.fecha_hora_inicio.toDate();
+                            indSessions.push({
+                                id: doc.id,
+                                fechaObj: d,
+                                fechaStr: d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }),
+                                diaStr: diasSemanaNombres[d.getUTCDay()],
+                                horaStr: d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
+                                cliente: data.alias || data.nombre_cliente || 'Desconocido'
+                            });
+                        }
+                    }
+                });
+
+                const sgGroupsByTime = {};
+                dbSGs.forEach(sg => {
+                    const timeKey = sg.data.fecha_hora_inicio.toMillis();
+                    if (!sgGroupsByTime[timeKey]) sgGroupsByTime[timeKey] = [];
+                    sgGroupsByTime[timeKey].push(sg);
+                });
+
+                const sgPendingList = [];
+
+                for (const timeKey in sgGroupsByTime) {
+                    const group = sgGroupsByTime[timeKey];
+                    const programmedSession = group.find(s => s.tieneEjercicios);
+
+                    if (programmedSession) {
+                        // Sincronización atómica al lote (Batch)
+                        const exercisesToCopy = programmedSession.data.ejercicios;
+                        for (const session of group) {
+                            if (!session.tieneEjercicios) {
+                                batch.update(session.ref, { ejercicios: exercisesToCopy });
+                                countSGSync++;
+                            }
+                        }
+                    } else {
+                        const firstSession = group[0];
+                        const d = firstSession.data.fecha_hora_inicio.toDate();
+                        sgPendingList.push({
+                            id: firstSession.id,
+                            fechaObj: d,
+                            fechaStr: d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }),
+                            diaStr: diasSemanaNombres[d.getUTCDay()],
+                            horaStr: d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })
+                        });
+                    }
+                }
+
+                // Ejecutamos la clonación de golpe en una sola transacción
+                if (countSGSync > 0) {
+                    await batch.commit().catch(e => console.error("Error sincronizando rutinas de SG:", e));
+                }
+
+                todasLasPendientes = {
+                    individuales: indSessions,
+                    small_groups: sgPendingList
+                };
+
+                renderizarVistaActual();
+            } catch (error) {
+                console.error("Error buscando pendientes:", error);
+                container.innerHTML = `<p style="color:red;">Error cargando las sesiones.</p>`;
+            }
+        }
+
+        function renderizarVistaActual() {
+            const container = document.getElementById('pendientesContainer');
+            const lista = todasLasPendientes[vistaActual] || [];
+
+            if (lista.length === 0) {
+                const tipoTexto = (vistaActual === 'individuales') ? 'individual' : 'de Small Group';
+                container.innerHTML = `<div class="empty-msg">🎉 ¡Genial! No hay ninguna sesión ${tipoTexto} pendiente de programación.</div>`;
+                return;
+            }
+
+            if (vistaActual === 'small_groups') {
+                // TABLA DIRECTA PARA SMALL GROUPS (UNA FILA POR HORARIO)
+                lista.sort((a, b) => a.fechaObj - b.fechaObj);
+
+                const filas = lista.map(s => `
+                    <tr style="border-bottom: 1px solid var(--border); transition: background 0.2s;">
+                        <td style="padding:15px 20px;">${s.fechaStr}</td>
+                        <td style="padding:15px 20px;">${s.diaStr}</td>
+                        <td style="padding:15px 20px; font-weight:bold;">${s.horaStr}</td>
+                        <td style="padding:15px 20px; text-align: right;"><a href="programar_sesion.html?id_sesion=${s.id}" class="btn-programar">Programar sesión</a></td>
+                    </tr>
+                `).join('');
+
+                container.innerHTML = `
+                    <div class="table-responsive" style="background:var(--surface); border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+                        <table style="width:100%; border-collapse:collapse;">
+                            <thead style="background:var(--hover-bg); border-bottom:1px solid var(--border); color:var(--text-muted); font-size:0.75rem;">
+                                <tr>
+                                    <th style="padding:12px 20px; text-align:left;">FECHA</th>
+                                    <th style="padding:12px 20px; text-align:left;">DÍA</th>
+                                    <th style="padding:12px 20px; text-align:left;">HORA</th>
+                                    <th style="padding:12px 20px; text-align:right;">ACCIÓN</th>
+                                </tr>
+                            </thead>
+                            <tbody style="font-size:0.95rem; color:var(--text-main);">
+                                ${filas}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            } else {
+                // ACORDEÓN POR CLIENTE PARA INDIVIDUALES
+                const agrupacion = {};
+                lista.forEach(s => {
+                    const clave = s.cliente;
+                    if (!agrupacion[clave]) agrupacion[clave] = [];
+                    agrupacion[clave].push(s);
+                });
+
+                let html = '';
+                const clavesOrdenadas = Object.keys(agrupacion).sort();
+
+                clavesOrdenadas.forEach(clave => {
+                    const sesiones = agrupacion[clave];
+                    sesiones.sort((a, b) => a.fechaObj - b.fechaObj);
+
+                    const filas = sesiones.map(s => `
+                        <tr>
+                            <td>${s.fechaStr}</td><td>${s.diaStr}</td><td>${s.horaStr}</td>
+                            <td style="text-align: right;"><a href="programar_sesion.html?id_sesion=${s.id}" class="btn-programar">Programar sesión</a></td>
+                        </tr>
+                    `).join('');
+
+                    html += `
+                        <div class="client-accordion">
+                            <div class="client-header" onclick="const t = this.nextElementSibling; const s = this.querySelector('svg'); if(t.style.display==='none'){t.style.display='block';s.style.transform='rotate(180deg)';}else{t.style.display='none';s.style.transform='rotate(0deg)';}">
+                                <span>${clave}</span>
+                                <span style="font-weight:normal; font-size:0.85rem; color:var(--text-muted); display:flex; align-items:center; gap:8px;">
+                                    <span style="color:#dc2626; font-weight:bold;">${sesiones.length} pendientes</span>
+                                    <span class="chevron-icon" style="transform:rotate(180deg);">${chevronSVG}</span>
+                                </span>
+                            </div>
+                            <div class="table-responsive" style="display:block;">
+                                <table>
+                                    <thead><tr><th>FECHA</th><th>DÍA</th><th>HORA</th><th style="text-align:right;">ACCIÓN</th></tr></thead>
+                                    <tbody>${filas}</tbody>
+                                </table>
+                            </div>
+                        </div>
+                    `;
+                });
+                container.innerHTML = html;
+            }
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) loadPendientes();
+            else window.location.href = "index.html";
+        });
+    </script>
+</body>
+
+</html>

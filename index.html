@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GO & train - Acceso</title>
+    <link rel="icon" type="image/png" href="assets/logo.png">
+
+    <!-- Enlazamos la nueva hoja de estilos unificada -->
+    <link rel="stylesheet" href="styles.css">
+
+    <style>
+        /* Mantenemos aquí únicamente los estilos específicos y únicos de esta pantalla de Login */
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .login-card {
+            background: var(--surface);
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            width: 100%;
+            max-width: 340px;
+            border: 1px solid #e5e7eb;
+            text-align: center;
+        }
+
+        .logo-container {
+            margin-bottom: 30px;
+        }
+
+        .logo-container img {
+            width: 180px;
+            height: auto;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 1rem;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(13, 116, 136, 0.1);
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #0b5c6b;
+        }
+
+        .error {
+            color: #dc2626;
+            font-size: 0.85rem;
+            margin-top: 15px;
+            display: none;
+            padding: 10px;
+            background: #fef2f2;
+            border-radius: 6px;
+            border: 1px solid #fecaca;
+        }
+
+        .loading {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="login-card">
+        <div class="logo-container">
+            <img src="assets/logo.png" alt="GO & train Logo">
+        </div>
+        <form id="loginForm">
+            <div class="input-group">
+                <label for="email">Correo electrónico</label>
+                <input type="email" id="email" placeholder="usuario@gogym.com" required autocomplete="email">
+            </div>
+            <div class="input-group">
+                <label for="password">Contraseña</label>
+                <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
+            </div>
+            <button type="submit" id="btnLogin">Iniciar Sesión</button>
+        </form>
+        <div id="errorMsg" class="error"></div>
+    </div>
+
+    <!-- Importamos Firebase desde el nuevo archivo unificado -->
+    <script type="module">
+        import { auth, db } from './firebase-config.js';
+        import { signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+        import { doc, getDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
+
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('errorMsg');
+            const btnLogin = document.getElementById('btnLogin');
+
+            errorDiv.style.display = 'none';
+            btnLogin.classList.add('loading');
+            btnLogin.innerText = 'Verificando...';
+
+            try {
+                const userCredential = await signInWithEmailAndPassword(auth, email, password);
+                const userEmail = userCredential.user.email;
+
+                const userDocRef = doc(db, "usuarios_app", userEmail);
+                const userDoc = await getDoc(userDocRef);
+
+                if (userDoc.exists()) {
+                    const userData = userDoc.data();
+                    localStorage.setItem('userRole', userData.rol);
+                    if (userData.nombre) localStorage.setItem('gym_user_name', userData.nombre);
+                } else {
+                    localStorage.setItem('userRole', 'programador');
+                    console.warn("Usuario sin documento de rol asignado. Se aplica rol restrictivo.");
+                }
+
+                window.location.href = "planificacion.html";
+            } catch (error) {
+                auth.signOut();
+                errorDiv.innerText = error.message.includes("sin rol") ? error.message : "Credenciales incorrectas.";
+                errorDiv.style.display = 'block';
+            } finally {
+                btnLogin.classList.remove('loading');
+                btnLogin.innerText = 'Iniciar Sesión';
+            }
+        });
+    </script>
+</body>
+
+</html>

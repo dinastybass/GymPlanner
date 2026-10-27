@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clientes - GO & train</title>
+    <link rel="icon" type="image/png" href="assets/logo.png">
+
+    <!-- Hoja de estilos centralizada -->
+    <link rel="stylesheet" href="styles.css">
+    <script src="nav-component.js" defer></script>
+
+    <style>
+        /* Estilos únicos de esta pantalla */
+        .controls-bar {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .search-box {
+            position: relative;
+            flex-grow: 1;
+            max-width: 400px;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 10px 10px 10px 35px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.9rem;
+            box-sizing: border-box;
+            background: var(--hover-bg);
+        }
+
+        .search-box svg {
+            position: absolute;
+            left: 10px;
+            top: 10px;
+            color: var(--text-muted);
+        }
+
+        .filter-select {
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--hover-bg);
+            font-size: 0.9rem;
+            color: var(--text-main);
+            border: none;
+        }
+
+        .total-count {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-left: auto;
+        }
+
+        .status-accordion {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 20px;
+            overflow: hidden;
+            background: var(--surface);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+        }
+
+        .acc-header {
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.95rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .acc-header.activos {
+            background-color: #dcfce7;
+            color: #166534;
+        }
+
+        .acc-header.pausa {
+            background-color: #fef08a;
+            color: #854d0e;
+        }
+
+        .acc-header.baja {
+            background-color: #fee2e2;
+            color: #991b1b;
+        }
+
+        .table-responsive {
+            width: 100%;
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        th {
+            color: var(--text-muted);
+            font-weight: 600;
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+        }
+
+        td {
+            color: var(--text-main);
+            font-weight: 500;
+        }
+
+        .client-row {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .client-row:hover {
+            background-color: var(--hover-bg);
+        }
+
+        .action-btns {
+            display: flex;
+            gap: 8px;
+            flex-wrap: nowrap;
+        }
+
+        .btn-icon {
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 6px 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #991b1b;
+            transition: background 0.2s;
+        }
+
+        .btn-icon:hover {
+            background: #fee2e2;
+        }
+
+        .chevron-icon {
+            display: flex;
+            align-items: center;
+        }
+    </style>
+</head>
+
+<body>
+    <gym-navbar active="clientes"></gym-navbar>
+
+    <div class="container">
+        <div class="page-header">
+            <h1>Fichas de clientes</h1>
+            <!-- Ocultado dinámicamente según rol -->
+            <button class="btn-primary" id="btn-nuevo-cliente" onclick="abrirModalAlta()">+ Nuevo cliente</button>
+        </div>
+
+        <div class="controls-bar">
+            <div class="search-box">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input type="text" id="searchInput" placeholder="Buscar por alias, nombre, objetivo o lesión...">
+            </div>
+            <select class="filter-select" id="statusFilter">
+                <option value="Todos">Todos</option>
+                <option value="Activo">Activos</option>
+                <option value="En pausa">En pausa</option>
+                <option value="De baja">De baja</option>
+            </select>
+            <span class="total-count" id="totalClientesText">Verificando sesión segura...</span>
+        </div>
+
+        <div id="clientesContainer"></div>
+    </div>
+
+    <!-- MODAL ALTA RÁPIDA DE CLIENTE -->
+    <div class="modal-overlay" id="modalAlta">
+        <div class="modal-content">
+            <button class="modal-close" onclick="cerrarModalAlta()">&times;</button>
+            <h2 style="margin:0 0 20px 0;">Alta rápida de Cliente</h2>
+            <form id="formAltaCliente">
+                <div class="form-group">
+                    <label>Nombre Completo *</label>
+                    <input type="text" id="alta_nombre" required>
+                </div>
+                <div class="form-group">
+                    <label>Alias (Opcional)</label>
+                    <input type="text" id="alta_alias" placeholder="Ej. Ana P.">
+                </div>
+                <div class="form-group">
+                    <label>ID Cliente (Código automático)</label>
+                    <input type="text" id="alta_codigo" readonly style="background:#e5e7eb; cursor:not-allowed;">
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 25px;">
+                    <button type="button" class="btn-secondary" onclick="cerrarModalAlta()">Cancelar</button>
+                    <button type="submit" class="btn-primary" id="btnGuardarAlta">Guardar Cliente</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Firebase y Lógica unificada -->
+    <script type="module">
+        import { auth, db } from './firebase-config.js';
+        import { collection, getDocs, doc, deleteDoc, setDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
+        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+
+        // Función de normalización de texto para ignorar tildes y mayúsculas/minúsculas
+        function normalizarTexto(texto) {
+            if (!texto) return "";
+            return texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        }
+
+        let todosLosClientes = [];
+        let currentSort = { column: 'Nombre_Cliente', dir: 'asc' };
+
+        // OBTENER ROL DESDE EL NAVEGADOR Y OCULTAR BOTÓN SI ES PROGRAMADOR
+        const userRole = localStorage.getItem('userRole') || 'programador';
+        if (userRole === 'programador') {
+            const btnNuevo = document.getElementById('btn-nuevo-cliente');
+            if (btnNuevo) btnNuevo.style.display = 'none';
+        }
+
+        const chevronSVG = `<span class="chevron-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="transition: transform 0.2s;"><polyline points="6 9 12 15 18 9"></polyline></svg></span>`;
+        const delSVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+
+        async function loadClientes() {
+            const querySnapshot = await getDocs(collection(db, "clientes"));
+            todosLosClientes = [];
+            querySnapshot.forEach((doc) => { todosLosClientes.push({ id: doc.id, ...doc.data() }); });
+            renderUI();
+        }
+
+        window.borrarCliente = async (id) => {
+            if (confirm("¿Seguro que deseas eliminar permanentemente este cliente de la base de datos?")) {
+                await deleteDoc(doc(db, "clientes", id));
+                loadClientes();
+            }
+        };
+
+        function renderUI() {
+            // Normalizar el texto introducido en la barra de búsqueda
+            const rawTxt = document.getElementById('searchInput').value;
+            const searchText = normalizarTexto(rawTxt);
+            const statusFilter = document.getElementById('statusFilter').value;
+
+            let filtrados = todosLosClientes.filter(c => {
+                // Normalizar los campos del cliente para realizar la comparación limpia
+                const matchText = normalizarTexto(c.Nombre_Cliente).includes(searchText)
+                    || normalizarTexto(c.Alias).includes(searchText)
+                    || normalizarTexto(c.Objetivo_Global).includes(searchText)
+                    || normalizarTexto(c.Lesiones_Historial).includes(searchText);
+                const matchStatus = statusFilter === 'Todos' || c.Estado_Cliente === statusFilter;
+                return matchText && matchStatus;
+            });
+
+            filtrados.sort((a, b) => {
+                let valA = (a[currentSort.column] || '').toString().toLowerCase();
+                let valB = (b[currentSort.column] || '').toString().toLowerCase();
+                if (valA < valB) return currentSort.dir === 'asc' ? -1 : 1;
+                if (valA > valB) return currentSort.dir === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            document.getElementById('totalClientesText').innerText = `${filtrados.length} clientes`;
+
+            const grupos = { 'Activo': [], 'En pausa': [], 'De baja': [] };
+            filtrados.forEach(c => {
+                const estado = grupos[c.Estado_Cliente] ? c.Estado_Cliente : 'Activo';
+                grupos[estado].push(c);
+            });
+
+            const container = document.getElementById('clientesContainer');
+            container.innerHTML = '';
+
+            const configs = [
+                { id: 'Activo', title: 'Activos', class: 'activos' },
+                { id: 'En pausa', title: 'En pausa', class: 'pausa' },
+                { id: 'De baja', title: 'De baja', class: 'baja' }
+            ];
+
+            configs.forEach(cfg => {
+                const lista = grupos[cfg.id];
+                if (lista.length === 0) return;
+
+                let filasHTML = lista.map(c => {
+                    let btnEliminarHTML = '';
+                    if (userRole !== 'programador') {
+                        btnEliminarHTML = `
+                            <td>
+                                <div class="action-btns">
+                                    <button class="btn-icon" onclick="event.stopPropagation(); window.borrarCliente('${c.id}')" title="Eliminar">${delSVG}</button>
+                                </div>
+                            </td>
+                        `;
+                    }
+                    return `
+                        <tr class="client-row" onclick="window.location.href='ficha_cliente.html?id=${c.id}'">
+                            <td>${c.Nombre_Cliente || '-'}</td>
+                            <td>${c.Alias || '-'}</td>
+                            <td style="color: var(--text-muted); font-weight: normal;">${c.Objetivo_Global || '-'}</td>
+                            ${btnEliminarHTML}
+                        </tr>
+                    `;
+                }).join('');
+
+                const sortIcon = currentSort.dir === 'asc' ? ' ↑↓' : ' ↓↑';
+                const thAcciones = userRole !== 'programador' ? '<th>Acciones</th>' : '';
+
+                container.innerHTML += `
+                    <div class="status-accordion">
+                        <div class="acc-header ${cfg.class}" onclick="const t = this.nextElementSibling; const s = this.querySelector('svg'); if(t.style.display==='none'){t.style.display='block';s.style.transform='rotate(0deg)';}else{t.style.display='none';s.style.transform='rotate(-90deg)';}">
+                            <span style="display:flex; align-items:center; gap:10px;">${cfg.title}</span>
+                            <span style="display:flex; align-items:center; gap:10px; font-weight:normal; font-size:0.85rem;">${lista.length} clientes ${chevronSVG}</span>
+                        </div>
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th onclick="window.setSort('Nombre_Cliente')">Nombre completo${currentSort.column === 'Nombre_Cliente' ? sortIcon : ''}</th>
+                                        <th onclick="window.setSort('Alias')">Alias${currentSort.column === 'Alias' ? sortIcon : ''}</th>
+                                        <th onclick="window.setSort('Objetivo_Global')">Objetivo global${currentSort.column === 'Objetivo_Global' ? sortIcon : ''}</th>
+                                        ${thAcciones}
+                                    </tr>
+                                </thead>
+                                <tbody>${filasHTML}</tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        window.setSort = (col) => {
+            if (currentSort.column === col) currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+            else { currentSort.column = col; currentSort.dir = 'asc'; }
+            renderUI();
+        };
+
+        window.abrirModalAlta = () => {
+            document.getElementById('formAltaCliente').reset();
+            document.getElementById('alta_codigo').value = `CLI-${Date.now().toString().slice(-6)}`;
+            document.getElementById('modalAlta').style.display = 'flex';
+        }
+        window.cerrarModalAlta = () => { document.getElementById('modalAlta').style.display = 'none'; }
+
+        document.getElementById('formAltaCliente').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            document.getElementById('btnGuardarAlta').innerText = "Guardando...";
+
+            const idGenerado = document.getElementById('alta_codigo').value;
+            const nombre = document.getElementById('alta_nombre').value;
+            const alias = document.getElementById('alta_alias').value || nombre.split(' ')[0];
+
+            const activeUser = auth.currentUser;
+            const autor = activeUser ? activeUser.email : "Usuario desconocido";
+
+            const nuevoCliente = {
+                ID_Cliente: idGenerado,
+                Nombre_Cliente: nombre,
+                Alias: alias,
+                Estado_Cliente: "Activo",
+                Usa_Kids: "NO",
+                Objetivo_Global: "Sin registrar",
+                Objetivo_Especifico: "Sin registrar",
+                Observaciones_Posteriores: "",
+                Lesiones_Historial: "Sin patologías registradas",
+                Observaciones_VAF: "",
+                creado_por: autor,
+                fecha_creacion: new Date()
+            };
+
+            try {
+                await setDoc(doc(db, "clientes", idGenerado), nuevoCliente);
+                cerrarModalAlta();
+                loadClientes();
+                document.getElementById('btnGuardarAlta').innerText = "Guardar Cliente";
+            } catch (error) {
+                console.error("Error al crear cliente:", error);
+                alert("Hubo un error de conexión.");
+                document.getElementById('btnGuardarAlta').innerText = "Reintentar";
+            }
+        });
+
+        document.getElementById('searchInput').addEventListener('input', renderUI);
+        document.getElementById('statusFilter').addEventListener('change', renderUI);
+
+        // ESPERAR A CONFIRMAR IDENTIDAD
+        onAuthStateChanged(auth, (user) => {
+            if (user) loadClientes();
+            else window.location.href = "index.html";
+        });
+    </script>
+</body>
+
+</html>

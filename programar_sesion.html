@@ -1,0 +1,1511 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Programar Sesión - GO & train</title>
+    <link rel="icon" type="image/png" href="assets/logo.png">
+
+    <link rel="stylesheet" href="styles.css">
+    <script src="nav-component.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+
+    <style>
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 30px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 20px;
+        }
+
+        .page-header h1 {
+            font-size: 1.8rem;
+            margin: 0 0 5px 0;
+        }
+
+        .header-meta {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+
+        .session-preview {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+            min-height: 200px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .empty-preview {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 40px;
+            font-size: 1rem;
+        }
+
+        .block-title {
+            font-size: 1rem;
+            font-weight: bold;
+            color: var(--text-main);
+            margin-top: 25px;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 2px solid var(--hover-bg);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .block-title:first-child {
+            margin-top: 0;
+        }
+
+        /* Estilos visuales de Subgrupos / Circuitos en el Preview */
+        .subgroup-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f0fdfa;
+            border: 1px solid #ccfbf1;
+            border-left: 4px solid var(--accent-dark);
+            border-radius: 8px;
+            padding: 8px 12px;
+            margin-top: 10px;
+            margin-bottom: 6px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .subgroup-title-box {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .subgroup-badge {
+            background: var(--accent-dark);
+            color: white;
+            font-size: 0.7rem;
+            font-weight: 800;
+            padding: 2px 7px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .subgroup-name {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .subgroup-pauta {
+            font-size: 0.85rem;
+            color: #0f766e;
+            font-weight: 600;
+            background: #ffffff;
+            padding: 2px 8px;
+            border-radius: 4px;
+            border: 1px solid #99f6e4;
+        }
+
+        .btn-add-subgroup-ex {
+            background: #ffffff;
+            border: 1px solid var(--accent-dark);
+            color: var(--accent-dark);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.2s;
+        }
+
+        .btn-add-subgroup-ex:hover {
+            background: #f0fdfa;
+            border-color: #0f766e;
+        }
+
+        .ex-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: var(--hover-bg);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: background 0.2s, box-shadow 0.2s;
+            border: 1px solid transparent;
+            gap: 10px;
+        }
+
+        .ex-item.in-subgroup {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-left: 4px solid #0891b2;
+            margin-left: 10px;
+            margin-bottom: 6px;
+        }
+
+        .ex-item:hover {
+            background: #f0fdfa;
+            border-color: #ccfbf1;
+        }
+
+        .ex-item.in-subgroup:hover {
+            background: #f0fdfa;
+            border-color: #99f6e4;
+            border-left-color: #0891b2;
+        }
+
+        .drag-handle {
+            color: #94a3b8;
+            font-size: 1.2rem;
+            cursor: grab;
+            padding: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.2s;
+            user-select: none;
+        }
+
+        .drag-handle:hover {
+            color: var(--accent-dark);
+        }
+
+        .ex-item.sortable-ghost {
+            opacity: 0.4;
+            background: #e2e8f0;
+            border: 1px dashed #94a3b8;
+        }
+
+        .ex-item-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex-grow: 1;
+            pointer-events: none;
+        }
+
+        .ex-item-title {
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: var(--text-main);
+        }
+
+        .ex-item-detail {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .ex-item-presc {
+            font-weight: bold;
+            font-size: 0.9rem;
+            color: var(--accent-dark);
+            pointer-events: none;
+            white-space: nowrap;
+        }
+
+        .btn-remove-ex {
+            background: none;
+            border: none;
+            color: #dc2626;
+            cursor: pointer;
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 4px;
+            transition: background 0.2s;
+            border-radius: 4px;
+        }
+
+        .btn-remove-ex:hover {
+            background: #fee2e2;
+        }
+
+        .modal-header h2 {
+            margin: 0 0 5px 0;
+            font-size: 1.4rem;
+            color: var(--text-main);
+        }
+
+        .modal-header p {
+            margin: 0 0 25px 0;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .form-group.full {
+            grid-column: 1 / -1;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 30px;
+        }
+
+        /* Dropdown customizado */
+        .custom-dropdown {
+            position: relative;
+            width: 100%;
+        }
+
+        .dropdown-trigger {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--hover-bg);
+            cursor: pointer;
+            font-size: 0.95rem;
+            user-select: none;
+        }
+
+        .dropdown-trigger:hover {
+            border-color: #d1d5db;
+            background: var(--surface);
+        }
+
+        .dropdown-panel {
+            position: absolute;
+            top: calc(100% + 5px);
+            left: 0;
+            width: 100%;
+            background: var(--surface);
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            z-index: 1001;
+            display: none;
+            flex-direction: column;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        .dropdown-panel.active {
+            display: flex;
+        }
+
+        .dropdown-search-container {
+            position: relative;
+            margin-bottom: 10px;
+        }
+
+        .dropdown-search-container input {
+            width: 100%;
+            padding: 8px 10px;
+            border: 2px solid var(--text-main);
+            border-radius: 6px;
+            font-size: 0.9rem;
+            box-sizing: border-box;
+            outline: none;
+        }
+
+        .dropdown-options {
+            max-height: 200px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding-right: 5px;
+        }
+
+        .dropdown-options::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .dropdown-options::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+
+        .dropdown-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px;
+            cursor: pointer;
+            border-radius: 6px;
+            font-size: 0.95rem;
+        }
+
+        .dropdown-option:hover {
+            background: var(--hover-bg);
+        }
+
+        .dropdown-option input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            margin: 0;
+        }
+
+        .dropdown-actions {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border);
+        }
+
+        .btn-limpiar {
+            background: var(--hover-bg);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.9rem;
+            color: var(--text-main);
+        }
+
+        .btn-listo {
+            background: var(--text-main);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+
+<body>
+    <gym-navbar active="agenda"></gym-navbar>
+
+    <div class="container">
+        <div class="breadcrumb"><a href="agenda.html">Agenda</a> &gt; Programar Sesión</div>
+        <div class="page-header">
+            <div>
+                <h1 id="ui-client-name">Verificando sesión segura...</h1>
+                <div class="header-meta" id="ui-session-meta">...</div>
+                <div class="header-meta" id="ui-programado-por"
+                    style="margin-top: 5px; color: var(--accent-dark); font-size: 0.85rem; font-weight: bold;"></div>
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap: wrap; justify-content: flex-end;">
+                <button class="btn-outline" onclick="abrirModalImportar()">📥 Importar Plantilla</button>
+                <button class="btn-primary" onclick="abrirModal()">+ Añadir ejercicio</button>
+                <button class="btn-outline" onclick="abrirModalEnviar()">➡️ Enviar a</button>
+            </div>
+        </div>
+
+        <div class="session-preview" id="previewContainer">
+            <div class="empty-preview">Cargando datos de la sesión...</div>
+        </div>
+    </div>
+
+    <!-- MODAL PLANIFICAR -->
+    <div class="modal-overlay" id="modalAdd">
+        <div class="modal-content">
+            <button class="modal-close" onclick="cerrarModal()">&times;</button>
+            <div class="modal-header">
+                <h2 id="modal-main-title">Planificar sesión</h2>
+                <p id="modal-meta-text">Añade o edita un ejercicio de esta sesión.</p>
+            </div>
+
+            <form id="formAddEx">
+                <div class="form-grid">
+                    <div class="form-group full"><label>Buscar ejercicio (Filtro rápido)</label><input type="text"
+                            id="m_search" placeholder="Escribe para filtrar..."></div>
+
+                    <!-- Filtros de clasificación -->
+                    <div class="form-group"><label>Grupo Muscular</label><select id="m_filter_grupo">
+                            <option value="">Todos</option>
+                        </select></div>
+
+                    <div class="form-group"><label>Bloque del ejercicio</label><select id="m_filter_bloque">
+                            <option value="">Todos</option>
+                        </select></div>
+                    <div class="form-group"><label>Nivel del ejercicio</label><select id="m_filter_nivel">
+                            <option value="">Todos</option>
+                        </select></div>
+
+                    <div class="form-group"><label>Subcategoría</label><select id="m_filter_subcategoria">
+                            <option value="">Todas</option>
+                        </select></div>
+
+                    <div class="form-group full"><label>Ejercicio del catálogo *</label><select id="m_ejercicio_select"
+                            required>
+                            <option value="">Selecciona un ejercicio...</option>
+                        </select></div>
+                    <div class="form-group full"><label>Detalle del ejercicio (Opcional)</label><input type="text"
+                            id="m_detalle" placeholder="Variación, alcance o indicación..."></div>
+
+                    <div class="form-group full"><label>Acrónimo del ejercicio (Adaptable)</label><input type="text"
+                            id="m_alias" placeholder="Se autocompleta, pero puedes editarlo para adaptaciones"></div>
+
+                    <!-- Material Adaptación MULTISELECCIÓN -->
+                    <div class="form-group full">
+                        <label>Material Adaptación (Opc.)</label>
+                        <div class="custom-dropdown">
+                            <div class="dropdown-trigger" onclick="toggleDropdown('panelMaterial')">
+                                <span id="triggerTextMaterial">Selecciona opciones</span>
+                                <span class="chevron-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2.5">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg></span>
+                            </div>
+                            <div class="dropdown-panel" id="panelMaterial">
+                                <div class="dropdown-search-container"><input type="text" id="searchMaterial"
+                                        placeholder="Buscar opción..."
+                                        onkeyup="filterDropdown('Material', this.value, true)"></div>
+                                <div class="dropdown-options" id="optionsMaterial"></div>
+                                <div class="dropdown-actions">
+                                    <button type="button" class="btn-limpiar"
+                                        onclick="clearDropdown('Material')">Limpiar</button>
+                                    <button type="button" class="btn-listo"
+                                        onclick="closeDropdown('panelMaterial')">Listo</button>
+                                </div>
+                            </div>
+                            <input type="hidden" id="m_material_adaptacion">
+                        </div>
+                    </div>
+
+                    <div class="form-group full">
+                        <label>Bloque en la sesión *</label>
+                        <select id="m_bloque_sesion" required></select>
+                    </div>
+
+                    <!-- SECCIÓN SUBGRUPOS / COMBINADOS (OPCIONAL) -->
+                    <div class="form-group full"
+                        style="background: #f8fafc; border: 1px solid var(--border); border-left: 4px solid var(--accent-dark); border-radius: 8px; padding: 14px; margin-bottom: 5px;">
+                        <div
+                            style="font-weight: bold; color: var(--accent-dark); font-size: 0.95rem; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+                            <span>🔄</span> Subgrupo / Combinado / Circuito (Opcional)
+                        </div>
+                        <div class="form-grid" style="margin-bottom: 0;">
+                            <div class="form-group">
+                                <label>Asignar a Subgrupo</label>
+                                <select id="m_subgrupo_select" onchange="onSubgrupoSelectChange()">
+                                    <option value="">Ninguno (Ejercicio individual)</option>
+                                    <option value="__nuevo__">+ Crear nuevo subgrupo...</option>
+                                </select>
+                                <input type="text" id="m_subgrupo_custom"
+                                    placeholder="Nombre (ej: Tabata, Circuito 1, Superserie A)"
+                                    style="display: none; margin-top: 8px; padding: 9px; border: 1px solid var(--border); border-radius: 6px;">
+                            </div>
+                            <div class="form-group">
+                                <label>Repeticiones / Pauta del Subgrupo (Caja abierta)</label>
+                                <input type="text" id="m_subgrupo_detalle"
+                                    placeholder="Ej: Repetir circuito 2 veces | 20'' ON / 10'' OFF | 3 vueltas" disabled
+                                    style="background: #f1f5f9; padding: 9px; border: 1px solid var(--border); border-radius: 6px;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SERIES Y REPETICIONES DEL EJERCICIO (DESPLEGABLE MAESTRO + TEXTO LIBRE) -->
+                    <div class="form-group">
+                        <label>Series y repeticiones *</label>
+                        <select id="m_reps" required></select>
+                        <input type="text" id="m_reps_custom" placeholder="Ej: 50 reps, 20 seg..."
+                            style="display: none; margin-top: 8px; padding: 9px; border: 1px solid var(--border); border-radius: 6px;">
+                    </div>
+                    <div class="form-group"><label>Peso / Carga</label><input type="text" id="m_peso"
+                            placeholder="Ej: 20 kg, Corporal"></div>
+                    <div class="form-group full"><label>Intensidad</label>
+                        <select id="m_intensidad">
+                            <option value="LOW">LOW</option>
+                            <option value="MED" selected>MED</option>
+                            <option value="HIGH">HIGH</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group full" id="box-progreso"
+                    style="display:none; background:#f0fdfa; padding:12px; border-radius:8px; border:1px solid #14b8a6; margin-top:10px; margin-bottom:10px;">
+                    <label
+                        style="display:flex; align-items:center; gap:10px; margin:0; cursor:pointer; color:#0f766e; font-weight:bold;">
+                        <input type="checkbox" id="m_guardar_progreso" style="width:20px; height:20px;">
+                        📈 Hacer seguimiento de Progreso (PR) en esta sesión
+                    </label>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="cerrarModal()">Cancelar</button>
+                    <button type="submit" class="btn-primary" id="btn-submit-modal">Añadir a la sesión</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL IMPORTAR PLANTILLA -->
+    <div class="modal-overlay" id="modalImportar">
+        <div class="modal-content" style="max-width: 500px;">
+            <button class="modal-close"
+                onclick="document.getElementById('modalImportar').style.display='none'">&times;</button>
+            <div class="modal-header">
+                <h2>Importar Plantilla</h2>
+                <p>Elige una sesión predefinida para cargar todos sus ejercicios.</p>
+            </div>
+
+            <form id="formImportar">
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label>Filtrar por Nivel</label>
+                    <select id="imp_nivel" onchange="filtrarPlantillas()"></select>
+                </div>
+                <div class="form-group">
+                    <label>Sesión Predefinida *</label>
+                    <select id="imp_plantilla" required>
+                        <option value="">Cargando plantillas...</option>
+                    </select>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary"
+                        onclick="document.getElementById('modalImportar').style.display='none'">Cancelar</button>
+                    <button type="submit" class="btn-primary" id="btn-submit-import">Importar Ejercicios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL ENVIAR A CLIENTE -->
+    <div class="modal-overlay" id="modalEnviar">
+        <div class="modal-content" style="max-width: 500px;">
+            <button class="modal-close"
+                onclick="document.getElementById('modalEnviar').style.display='none'">&times;</button>
+            <div class="modal-header">
+                <h2>Enviar Rutina a Cliente</h2>
+                <p>Envía y sobrescribe los ejercicios de esta sesión a una sesión futura de cualquier cliente.</p>
+            </div>
+
+            <form id="formEnviar">
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label>Seleccionar Cliente Destino</label>
+                    <select id="enviar_cliente" onchange="cargarSesionesClienteEnviar()" required>
+                        <option value="">Cargando clientes...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Seleccionar Sesión Destino *</label>
+                    <select id="enviar_sesion" required disabled>
+                        <option value="">Primero selecciona un cliente...</option>
+                    </select>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary"
+                        onclick="document.getElementById('modalEnviar').style.display='none'">Cancelar</button>
+                    <button type="submit" class="btn-primary" id="btn-submit-enviar">Enviar Ejercicios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script type="module">
+        import { auth, db } from './firebase-config.js';
+        import { doc, getDoc, setDoc, collection, getDocs, updateDoc, writeBatch, query, where } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
+        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+        import { poblarSelect, getValoresMaestro, getMapaOrdenMaestro } from './maestros-service.js';
+
+        function normalizarTexto(texto) {
+            if (!texto) return "";
+            return texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionId = urlParams.get('id_sesion') || urlParams.get('id');
+        if (!sessionId) window.location.href = "programaciones_pendientes.html";
+
+        let sessionData = {};
+        let catalogoEjercicios = [];
+        let ejerciciosSesion = [];
+        let plantillasCargadas = [];
+        let clientesCargados = [];
+        let sesionesClienteCargadas = [];
+        let editingIndex = -1;
+        let ordenBloques = {};
+        let seriePorDefecto = "3 x 10";
+        let sortableInstance = null;
+        let selectedGrupoMuscular = "";
+
+        // --- Manejo del Dropdown Customizado de Material ---
+        function buildDropdownOptions(idRef, list, isMulti) {
+            const container = document.getElementById(`options${idRef}`);
+            if (!container) return;
+            container.innerHTML = list.map(item => {
+                if (isMulti) {
+                    return `<label class="dropdown-option"><input type="checkbox" value="${item}" onchange="updateMultiSelection('${idRef}')"> <span>${item}</span></label>`;
+                } else {
+                    return `<div class="dropdown-option" onclick="selectSingleOption('${idRef}', '${item}')"><span>${item}</span></div>`;
+                }
+            }).join('');
+        }
+
+        window.toggleDropdown = (panelId) => {
+            document.querySelectorAll('.dropdown-panel.active').forEach(p => { if (p.id !== panelId) p.classList.remove('active'); });
+            document.getElementById(panelId).classList.toggle('active');
+        };
+
+        window.closeDropdown = (panelId) => { document.getElementById(panelId).classList.remove('active'); };
+
+        window.selectSingleOption = (idRef, val) => {
+            document.getElementById(`m_${idRef.toLowerCase()}`).value = val;
+            document.getElementById(`triggerText${idRef}`).innerText = val;
+            closeDropdown(`panel${idRef}`);
+        };
+
+        window.updateMultiSelection = (idRef) => {
+            const checks = document.querySelectorAll(`#options${idRef} input[type="checkbox"]:checked`);
+            const vals = Array.from(checks).map(c => c.value);
+            document.getElementById(`m_${idRef.toLowerCase()}_adaptacion`).value = vals.join(', ');
+            document.getElementById(`triggerText${idRef}`).innerText = vals.length > 0 ? `${vals.length} seleccionado(s)` : 'Selecciona opciones';
+        };
+
+        window.clearDropdown = (idRef) => {
+            document.querySelectorAll(`#options${idRef} input[type="checkbox"]`).forEach(c => c.checked = false);
+            document.getElementById(`m_${idRef.toLowerCase()}_adaptacion`).value = '';
+            document.getElementById(`triggerText${idRef}`).innerText = 'Selecciona opciones';
+        };
+
+        window.filterDropdown = (idRef, searchRaw, isMulti) => {
+            const searchTxt = normalizarTexto(searchRaw);
+            const container = document.getElementById(`options${idRef}`);
+            if (!container) return;
+            const items = isMulti ? container.querySelectorAll('label') : container.querySelectorAll('.dropdown-option');
+            items.forEach(el => {
+                const txt = normalizarTexto(el.innerText);
+                el.style.display = txt.includes(searchTxt) ? 'flex' : 'none';
+            });
+        };
+
+        function setDropdownValues(idRef, commaString) {
+            if (!commaString) { clearDropdown(idRef); return; }
+            const vals = commaString.split(',').map(s => s.trim());
+            const checks = document.querySelectorAll(`#options${idRef} input[type="checkbox"]`);
+            if (checks.length > 0) {
+                checks.forEach(c => c.checked = vals.includes(c.value));
+                updateMultiSelection(idRef);
+            } else {
+                selectSingleOption(idRef, vals[0]);
+            }
+        }
+
+        // --- Manejo dinámico de Subgrupos en el Modal ---
+        function actualizarComboSubgrupos(selectedVal = '') {
+            const select = document.getElementById('m_subgrupo_select');
+            if (!select) return;
+
+            const subgruposMap = {};
+            ejerciciosSesion.forEach(e => {
+                const s = (e.Subgrupo || e.subgrupo || '').trim();
+                const d = (e.Subgrupo_Detalle || e.subgrupo_detalle || '').trim();
+                if (s && !subgruposMap[s]) {
+                    subgruposMap[s] = d;
+                }
+            });
+
+            select.innerHTML = `
+                <option value="">Ninguno (Ejercicio individual)</option>
+                <option value="__nuevo__">+ Crear nuevo subgrupo...</option>
+            `;
+
+            Object.keys(subgruposMap).sort().forEach(sub => {
+                const opt = document.createElement('option');
+                opt.value = sub;
+                opt.textContent = `Subgrupo: ${sub}`;
+                select.appendChild(opt);
+            });
+
+            if (selectedVal && selectedVal !== '__nuevo__') {
+                if (!subgruposMap[selectedVal]) {
+                    const opt = document.createElement('option');
+                    opt.value = selectedVal;
+                    opt.textContent = `Subgrupo: ${selectedVal}`;
+                    select.appendChild(opt);
+                }
+                select.value = selectedVal;
+            } else {
+                select.value = selectedVal;
+            }
+        }
+
+        window.onSubgrupoSelectChange = () => {
+            const sel = document.getElementById('m_subgrupo_select').value;
+            const customInp = document.getElementById('m_subgrupo_custom');
+            const detalleInp = document.getElementById('m_subgrupo_detalle');
+
+            if (sel === '__nuevo__') {
+                customInp.style.display = 'block';
+                customInp.value = '';
+                customInp.focus();
+                detalleInp.disabled = false;
+                detalleInp.style.background = '#ffffff';
+                detalleInp.value = '';
+            } else if (sel === '') {
+                customInp.style.display = 'none';
+                customInp.value = '';
+                detalleInp.disabled = true;
+                detalleInp.style.background = '#f1f5f9';
+                detalleInp.value = '';
+            } else {
+                customInp.style.display = 'none';
+                customInp.value = '';
+                detalleInp.disabled = false;
+                detalleInp.style.background = '#ffffff';
+
+                const ejConSub = ejerciciosSesion.find(e => (e.Subgrupo || e.subgrupo) === sel);
+                detalleInp.value = ejConSub ? (ejConSub.Subgrupo_Detalle || ejConSub.subgrupo_detalle || '') : '';
+            }
+        };
+
+        window.abrirModalConSubgrupo = (bloque, subgrupo, detalle) => {
+            window.abrirModal();
+            if (bloque && document.querySelector(`#m_bloque_sesion option[value="${bloque}"]`)) {
+                document.getElementById('m_bloque_sesion').value = bloque;
+            }
+            actualizarComboSubgrupos(subgrupo);
+            const customInp = document.getElementById('m_subgrupo_custom');
+            const detalleInp = document.getElementById('m_subgrupo_detalle');
+            customInp.style.display = 'none';
+            customInp.value = '';
+            detalleInp.disabled = false;
+            detalleInp.style.background = '#ffffff';
+            detalleInp.value = detalle || '';
+        };
+
+        async function init() {
+            ordenBloques = await getMapaOrdenMaestro('Ejercicios', 'Bloques');
+            await Promise.all([
+                poblarSelect('m_filter_bloque', 'Ejercicios', 'Bloques', 'Todos'),
+                poblarSelect('m_filter_nivel', 'Ejercicios', 'Niveles', 'Todos'),
+                poblarSelect('m_filter_subcategoria', 'Ejercicios', 'Subcategorías', 'Todas'),
+                poblarSelect('m_filter_grupo', 'Ejercicios', 'Grupos de Ejercicios', 'Todos'),
+                poblarSelect('m_bloque_sesion', 'Ejercicios', 'Bloques', null),
+                poblarSelect('m_reps', 'Ejercicios', 'Series y Repeticiones', null),
+                poblarSelect('imp_nivel', 'Ejercicios', 'Niveles', 'Todos los niveles')
+            ]);
+
+            // Agregar opción de texto libre en el combo de Series y Repeticiones
+            const selectReps = document.getElementById('m_reps');
+            const optCustom = document.createElement('option');
+            optCustom.value = '__custom__';
+            optCustom.textContent = '✏️ Texto libre (ej: 50 reps, 20")...';
+            selectReps.appendChild(optCustom);
+
+            selectReps.addEventListener('change', (e) => {
+                const customInput = document.getElementById('m_reps_custom');
+                if (e.target.value === '__custom__') {
+                    customInput.style.display = 'block';
+                    customInput.focus();
+                } else {
+                    customInput.style.display = 'none';
+                    customInput.value = '';
+                }
+            });
+
+            const seriesMaestro = await getValoresMaestro('Ejercicios', 'Series y Repeticiones');
+            if (seriesMaestro.length > 0) seriePorDefecto = seriesMaestro[0];
+
+            const docSnap = await getDoc(doc(db, "agenda_sesiones", sessionId));
+            if (docSnap.exists()) {
+                sessionData = docSnap.data();
+                ejerciciosSesion = sessionData.ejercicios || [];
+
+                if (!sessionData.orden_customizado && ejerciciosSesion.length > 0) {
+                    ejerciciosSesion.sort((a, b) => {
+                        const bA = a.Bloque || a.Fase_Bloque || 'General';
+                        const bB = b.Bloque || b.Fase_Bloque || 'General';
+                        return (ordenBloques[bA] || 99) - (ordenBloques[bB] || 99);
+                    });
+                    await setDoc(doc(db, "agenda_sesiones", sessionId), { orden_customizado: true, ejercicios: ejerciciosSesion }, { merge: true });
+                }
+
+                const d = sessionData.fecha_hora_inicio.toDate();
+                const dStr = d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
+                const hStr = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+
+                const isSG = (sessionData.tipo_sesion === 'Small Group' || sessionData.Tipo === 'SG');
+                const tituloHeader = isSG ? "Small Group" : (sessionData.alias || sessionData.nombre_cliente || 'Desconocido');
+
+                document.getElementById('ui-client-name').innerText = `Programar: ${tituloHeader}`;
+                document.getElementById('ui-session-meta').innerText = `Fecha: ${dStr} a las ${hStr}`;
+                document.getElementById('modal-meta-text').innerText = `Fecha: ${dStr}`;
+                document.getElementById('ui-programado-por').innerText = `Última edición por: ${sessionData.programado_por || 'Sin registrar'}`;
+
+                renderSesionActual();
+                initSortable();
+            } else {
+                alert("La sesión no existe"); window.location.href = "programaciones_pendientes.html";
+            }
+
+            const catSnap = await getDocs(collection(db, "ejercicios"));
+            catSnap.forEach(doc => catalogoEjercicios.push({ id_doc: doc.id, ...doc.data() }));
+            filtrarDropdownEjercicios();
+
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.custom-dropdown')) {
+                    document.querySelectorAll('.dropdown-panel').forEach(p => p.classList.remove('active'));
+                }
+            });
+        }
+
+        function initSortable() {
+            const container = document.getElementById('previewContainer');
+            sortableInstance = new Sortable(container, {
+                animation: 150,
+                handle: '.drag-handle',
+                filter: '.ignore-drag, .empty-preview',
+                onEnd: async function () {
+                    const exItems = Array.from(container.querySelectorAll('.ex-item'));
+                    if (exItems.length === 0) return;
+
+                    const newOrderIndices = exItems.map(el => parseInt(el.getAttribute('data-index')));
+                    ejerciciosSesion = newOrderIndices.map(idx => ejerciciosSesion[idx]);
+
+                    renderSesionActual();
+
+                    try {
+                        await guardarSesionEnFirebase();
+                    } catch (error) { console.error("Error guardando el orden:", error); }
+                }
+            });
+        }
+
+        function renderSesionActual() {
+            const container = document.getElementById('previewContainer');
+            if (ejerciciosSesion.length === 0) {
+                container.innerHTML = `<div class="empty-preview ignore-drag">La sesión está vacía. Haz clic en "+ Añadir ejercicio" para empezar a programar.</div>`;
+                return;
+            }
+
+            let html = '';
+            let currentBlock = null;
+            let currentSubgrupo = null;
+
+            ejerciciosSesion.forEach((ej, index) => {
+                const bName = ej.Bloque || ej.bloque || ej.Fase_Bloque || 'General';
+                const subName = (ej.Subgrupo || ej.subgrupo || '').trim();
+                const subDetalle = (ej.Subgrupo_Detalle || ej.subgrupo_detalle || '').trim();
+
+                // Cambio de Bloque
+                if (bName !== currentBlock) {
+                    html += `<div class="block-title ignore-drag">${bName}</div>`;
+                    currentBlock = bName;
+                    currentSubgrupo = null;
+                }
+
+                // Cambio de Subgrupo dentro del bloque
+                if (subName !== currentSubgrupo) {
+                    if (subName) {
+                        const pautaText = subDetalle ? `<span class="subgroup-pauta">${subDetalle}</span>` : '';
+                        const bEscaped = bName.replace(/'/g, "\\'");
+                        const sEscaped = subName.replace(/'/g, "\\'");
+                        const dEscaped = subDetalle.replace(/'/g, "\\'");
+
+                        html += `
+                            <div class="subgroup-header ignore-drag">
+                                <div class="subgroup-title-box">
+                                    <span class="subgroup-badge">🔄 SUBGRUPO / CIRCUITO</span>
+                                    <span class="subgroup-name">${subName}</span>
+                                    ${pautaText}
+                                </div>
+                                <button type="button" class="btn-add-subgroup-ex" onclick="event.stopPropagation(); abrirModalConSubgrupo('${bEscaped}', '${sEscaped}', '${dEscaped}')" title="Añadir ejercicio a ${subName}">+ Añadir a este subgrupo</button>
+                            </div>
+                        `;
+                    }
+                    currentSubgrupo = subName;
+                }
+
+                const nombre = ej.Nombre_Ejercicio || ej.Ejercicio_Detalle || ej.nombre_ejercicio || ej.ejercicio || ej.Nombre || 'Sin nombre';
+                const acro = ej.Acrónimo || ej.Acronimo || ej.acronimo || ej.alias || ej.Alias || '';
+
+                const iconoPR = ej.guardar_progreso ? '<span title="Registrará PR" style="font-size:1.1rem; margin-left:5px;">📈</span>' : '';
+                const nombreStr = acro ? `${acro} · ${nombre} ${iconoPR}` : `${nombre} ${iconoPR}`;
+
+                let extraInfo = [];
+                if (ej.Detalle) extraInfo.push(ej.Detalle);
+                if (ej.Material_Adaptacion) extraInfo.push(`Mat: ${ej.Material_Adaptacion}`);
+                const extras = extraInfo.join(' | ');
+                const desc = extras ? `<div class="ex-item-detail">${extras}</div>` : '';
+
+                const s_raw = ej.Series || ej.series || '';
+                const r_raw = ej.Repeticiones || ej.repeticiones || '';
+                let reps = ej.Volumen_Series_Reps || ej.Series_Reps || ej.series_reps || s_raw;
+                if (!ej.Volumen_Series_Reps && !ej.Series_Reps && !ej.series_reps && r_raw) reps = s_raw ? `${s_raw} x ${r_raw}` : r_raw;
+                if (!reps) reps = '-';
+
+                const pesoStr = (ej.Peso && String(ej.Peso).trim() !== '') ? ` ⚖️ ${ej.Peso}` : '';
+                const intensStr = (ej.Intensidad && ej.Intensidad !== 'MED' && ej.Intensidad !== '') ? ` · ${ej.Intensidad}` : '';
+
+                const itemClass = subName ? 'ex-item in-subgroup' : 'ex-item';
+
+                html += `
+                    <div class="${itemClass}" data-index="${index}" onclick="abrirModalEditar(${index})">
+                        <div class="drag-handle" title="Arrastra para reordenar">⋮⋮</div>
+                        <div class="ex-item-info">
+                            <span class="ex-item-title">${nombreStr}</span>
+                            ${desc}
+                        </div>
+                        <div style="display:flex; align-items:center; gap:15px;">
+                            <span class="ex-item-presc">${reps}${pesoStr}${intensStr}</span>
+                            <button class="btn-remove-ex" onclick="event.stopPropagation(); borrarEjercicioDeSesion(${index})" title="Quitar de la sesión">&times;</button>
+                        </div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        window.abrirModal = () => {
+            editingIndex = -1;
+            document.getElementById('formAddEx').reset();
+            document.getElementById('m_reps').value = seriePorDefecto;
+            document.getElementById('m_reps_custom').style.display = 'none';
+            document.getElementById('m_reps_custom').value = '';
+            buildDropdownOptions('Material', [], true);
+            clearDropdown('Material');
+            selectedGrupoMuscular = "";
+            document.getElementById('modal-main-title').innerText = "Planificar sesión";
+            document.getElementById('btn-submit-modal').innerText = "Añadir a la sesión";
+            document.getElementById('box-progreso').style.display = 'none';
+            actualizarComboSubgrupos('');
+            window.onSubgrupoSelectChange();
+            filtrarDropdownEjercicios();
+            document.getElementById('modalAdd').style.display = 'flex';
+        };
+
+        window.abrirModalEditar = (index) => {
+            editingIndex = index;
+            const ej = ejerciciosSesion[index];
+
+            document.getElementById('modal-main-title').innerText = "Editar ejercicio";
+            document.getElementById('btn-submit-modal').innerText = "Guardar cambios";
+            document.getElementById('m_search').value = '';
+            document.getElementById('m_filter_bloque').value = '';
+            document.getElementById('m_filter_nivel').value = '';
+            document.getElementById('m_filter_subcategoria').value = '';
+            document.getElementById('m_filter_grupo').value = '';
+            filtrarDropdownEjercicios();
+
+            const selectEl = document.getElementById('m_ejercicio_select');
+            let foundValue = "";
+            const targetName = ej.Nombre_Ejercicio || ej.Ejercicio_Detalle || ej.nombre_ejercicio || ej.ejercicio || '';
+            for (let i = 0; i < selectEl.options.length; i++) {
+                if (selectEl.options[i].text.includes(targetName) || ej.ID_Ejercicio === selectEl.options[i].value) {
+                    foundValue = selectEl.options[i].value; break;
+                }
+            }
+            selectEl.value = foundValue;
+
+            document.getElementById('m_alias').value = ej.Acrónimo || ej.Acronimo || ej.acronimo || ej.alias || ej.Alias || '';
+            document.getElementById('m_detalle').value = ej.Detalle || ej.detalle || '';
+            selectedGrupoMuscular = ej.Grupo_Muscular || '';
+
+            const ejCatObj = catalogoEjercicios.find(x => x.id_doc === ej.ID_Ejercicio || x.Nombre_Ejercicio === targetName);
+            if (ejCatObj) {
+                const catMat = ejCatObj.Material || '';
+                const allowedMaterials = catMat ? catMat.split(',').map(s => s.trim()).filter(Boolean) : [];
+                buildDropdownOptions('Material', allowedMaterials, true);
+            } else {
+                buildDropdownOptions('Material', [], true);
+            }
+
+            setDropdownValues('Material', ej.Material_Adaptacion);
+
+            const b = ej.Bloque || ej.bloque || ej.Fase_Bloque || '';
+            if (b && document.querySelector(`#m_bloque_sesion option[value="${b}"]`)) {
+                document.getElementById('m_bloque_sesion').value = b;
+            }
+
+            // Cargar Subgrupo
+            const sName = (ej.Subgrupo || ej.subgrupo || '').trim();
+            const sDetalle = (ej.Subgrupo_Detalle || ej.subgrupo_detalle || '').trim();
+            actualizarComboSubgrupos(sName);
+            const customInp = document.getElementById('m_subgrupo_custom');
+            const detalleInp = document.getElementById('m_subgrupo_detalle');
+            if (sName) {
+                document.getElementById('m_subgrupo_select').value = sName;
+                customInp.style.display = 'none';
+                customInp.value = '';
+                detalleInp.disabled = false;
+                detalleInp.style.background = '#ffffff';
+                detalleInp.value = sDetalle;
+            } else {
+                document.getElementById('m_subgrupo_select').value = '';
+                customInp.style.display = 'none';
+                customInp.value = '';
+                detalleInp.disabled = true;
+                detalleInp.style.background = '#f1f5f9';
+                detalleInp.value = '';
+            }
+
+            // Cargar Series y Repeticiones (Maestro o Texto libre)
+            const selectReps = document.getElementById('m_reps');
+            const customReps = document.getElementById('m_reps_custom');
+            const reps = ej.Volumen_Series_Reps || ej.Series_Reps || ej.series_reps || ej.Series || ej.series || '';
+
+            if (reps && selectReps.querySelector(`option[value="${reps}"]`)) {
+                selectReps.value = reps;
+                customReps.style.display = 'none';
+                customReps.value = '';
+            } else if (reps) {
+                selectReps.value = '__custom__';
+                customReps.style.display = 'block';
+                customReps.value = reps;
+            } else {
+                selectReps.value = seriePorDefecto;
+                customReps.style.display = 'none';
+                customReps.value = '';
+            }
+
+            document.getElementById('m_peso').value = ej.Peso || ej.peso || '';
+            document.getElementById('m_intensidad').value = ej.Intensidad || ej.intensidad || 'MED';
+
+            if (ejCatObj && ejCatObj.es_de_progreso) {
+                document.getElementById('box-progreso').style.display = 'block';
+                document.getElementById('m_guardar_progreso').checked = ej.guardar_progreso !== undefined ? ej.guardar_progreso : true;
+            } else {
+                document.getElementById('box-progreso').style.display = 'none';
+                document.getElementById('m_guardar_progreso').checked = false;
+            }
+
+            document.getElementById('modalAdd').style.display = 'flex';
+        };
+
+        window.cerrarModal = () => document.getElementById('modalAdd').style.display = 'none';
+
+        function filtrarDropdownEjercicios() {
+            const rawTxt = document.getElementById('m_search').value;
+            const txtBusqueda = normalizarTexto(rawTxt);
+            const fBloque = document.getElementById('m_filter_bloque').value;
+            const fNivel = document.getElementById('m_filter_nivel').value;
+            const fSub = document.getElementById('m_filter_subcategoria').value;
+            const fGrupo = document.getElementById('m_filter_grupo').value;
+            const selectEj = document.getElementById('m_ejercicio_select');
+
+            selectEj.innerHTML = '<option value="">Selecciona un ejercicio...</option>';
+            catalogoEjercicios.filter(e => {
+                const nameNormalizado = normalizarTexto(e.Nombre_Ejercicio);
+                const acroNormalizado = normalizarTexto(e['Acrónimo'] || e.Acronimo);
+
+                if (txtBusqueda && !nameNormalizado.includes(txtBusqueda) && !acroNormalizado.includes(txtBusqueda)) return false;
+                if (fBloque && e.Bloque !== fBloque) return false;
+                if (fNivel && e.Nivel_Dificultad !== fNivel) return false;
+
+                if (fSub) {
+                    const subcatVal = e['Subcategoría'] || e.Subcategoria || '';
+                    if (!subcatVal.includes(fSub)) return false;
+                }
+
+                if (fGrupo) {
+                    const grupoVal = e.Grupo_Muscular || '';
+                    if (!grupoVal.includes(fGrupo)) return false;
+                }
+
+                return true;
+            }).sort((a, b) => (a.Nombre_Ejercicio || '').localeCompare(b.Nombre_Ejercicio || '')).forEach(e => {
+                const acroText = (e['Acrónimo'] || e.Acronimo) ? `[${e['Acrónimo'] || e.Acronimo}] ` : '';
+                selectEj.innerHTML += `<option value="${e.id_doc}">${acroText}${e.Nombre_Ejercicio}</option>`;
+            });
+        }
+
+        document.getElementById('m_search').addEventListener('input', filtrarDropdownEjercicios);
+        document.getElementById('m_filter_bloque').addEventListener('change', filtrarDropdownEjercicios);
+        document.getElementById('m_filter_nivel').addEventListener('change', filtrarDropdownEjercicios);
+        document.getElementById('m_filter_subcategoria').addEventListener('change', filtrarDropdownEjercicios);
+        document.getElementById('m_filter_grupo').addEventListener('change', filtrarDropdownEjercicios);
+
+        document.getElementById('m_ejercicio_select').addEventListener('change', async (e) => {
+            const idSelected = e.target.value;
+            if (!idSelected) {
+                document.getElementById('m_alias').value = '';
+                selectedGrupoMuscular = '';
+                document.getElementById('m_reps').value = seriePorDefecto;
+                document.getElementById('m_reps_custom').style.display = 'none';
+                buildDropdownOptions('Material', [], true);
+                clearDropdown('Material');
+                document.getElementById('box-progreso').style.display = 'none';
+                return;
+            }
+
+            const ej = catalogoEjercicios.find(x => x.id_doc === idSelected);
+            if (ej) {
+                document.getElementById('m_alias').value = ej['Acrónimo'] || ej.Acronimo || '';
+                selectedGrupoMuscular = ej.Grupo_Muscular || '';
+
+                if (ej.Bloque && document.querySelector(`#m_bloque_sesion option[value="${ej.Bloque}"]`)) {
+                    document.getElementById('m_bloque_sesion').value = ej.Bloque;
+                }
+
+                const selectReps = document.getElementById('m_reps');
+                const customReps = document.getElementById('m_reps_custom');
+                const catReps = ej.Series_Reps || ej.Volumen_Series_Reps || ej.Series || ej.series || '';
+                if (catReps && selectReps.querySelector(`option[value="${catReps}"]`)) {
+                    selectReps.value = catReps;
+                    customReps.style.display = 'none';
+                } else {
+                    selectReps.value = seriePorDefecto;
+                    customReps.style.display = 'none';
+                }
+
+                const catMat = ej.Material || '';
+                const allowedMaterials = catMat ? catMat.split(',').map(s => s.trim()).filter(Boolean) : [];
+                buildDropdownOptions('Material', allowedMaterials, true);
+
+                if (catMat) {
+                    setDropdownValues('Material', catMat);
+                } else {
+                    clearDropdown('Material');
+                }
+
+                if (ej.es_de_progreso) {
+                    document.getElementById('box-progreso').style.display = 'block';
+                    document.getElementById('m_guardar_progreso').checked = true;
+
+                    const idCliente = sessionData.id_cliente || sessionData.ID_Cliente;
+                    if (idCliente) {
+                        try {
+                            const qPr = query(collection(db, "progreso_clientes"),
+                                where("id_cliente", "==", idCliente),
+                                where("id_ejercicio", "==", ej.ID_Ejercicio || ej.id_doc)
+                            );
+                            const snapPr = await getDocs(qPr);
+                            let latestData = null;
+                            snapPr.forEach(docPr => {
+                                const dataPr = docPr.data();
+                                if (!latestData || (dataPr.fecha && latestData.fecha && dataPr.fecha.toMillis() > latestData.fecha.toMillis())) {
+                                    latestData = dataPr;
+                                }
+                            });
+                            if (latestData && latestData.peso_levantado) {
+                                document.getElementById('m_peso').value = latestData.peso_levantado;
+                            } else {
+                                document.getElementById('m_peso').value = '';
+                            }
+                        } catch (err) { console.error("Error al cargar último peso", err); }
+                    }
+                } else {
+                    document.getElementById('box-progreso').style.display = 'none';
+                    document.getElementById('m_guardar_progreso').checked = false;
+                    document.getElementById('m_peso').value = '';
+                }
+            }
+        });
+
+        async function guardarSesionEnFirebase() {
+            const autorNombre = localStorage.getItem('gym_user_name') || "Usuario desconocido";
+            const dataToSave = {
+                ejercicios: ejerciciosSesion,
+                programado_por: autorNombre,
+                fecha_programacion: new Date(),
+                orden_customizado: true
+            };
+
+            const isSG = (sessionData.tipo_sesion === 'Small Group' || sessionData.Tipo === 'SG');
+
+            if (isSG && sessionData.fecha_hora_inicio) {
+                const targetTimeMillis = sessionData.fecha_hora_inicio.toMillis();
+                const targetDate = sessionData.fecha_hora_inicio.toDate();
+
+                const startOfDay = new Date(targetDate); startOfDay.setUTCHours(0, 0, 0, 0);
+                const endOfDay = new Date(targetDate); endOfDay.setUTCHours(23, 59, 59, 999);
+
+                const q = query(collection(db, "agenda_sesiones"),
+                    where("tipo_sesion", "==", "Small Group"),
+                    where("fecha_hora_inicio", ">=", startOfDay),
+                    where("fecha_hora_inicio", "<=", endOfDay));
+
+                const snapshot = await getDocs(q);
+
+                const batch = writeBatch(db);
+                let batchCount = 0;
+
+                snapshot.forEach(d => {
+                    const dTime = d.data().fecha_hora_inicio.toMillis();
+                    if (dTime === targetTimeMillis) {
+                        batch.update(d.ref, dataToSave);
+                        batchCount++;
+                    }
+                });
+
+                if (batchCount > 0) {
+                    await batch.commit();
+                }
+            } else {
+                await setDoc(doc(db, "agenda_sesiones", sessionId), dataToSave, { merge: true });
+            }
+
+            document.getElementById('ui-programado-por').innerText = `Última edición por: ${autorNombre}`;
+            renderSesionActual();
+        }
+
+        document.getElementById('formAddEx').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const idCat = document.getElementById('m_ejercicio_select').value;
+            const ejCat = catalogoEjercicios.find(x => x.id_doc === idCat);
+
+            // Resolución de Subgrupo
+            let subName = document.getElementById('m_subgrupo_select').value;
+            if (subName === '__nuevo__') {
+                subName = document.getElementById('m_subgrupo_custom').value.trim();
+            }
+            let subDetalle = '';
+            if (subName) {
+                subDetalle = document.getElementById('m_subgrupo_detalle').value.trim();
+                // Si el usuario actualizó la pauta del subgrupo, la sincronizamos con los demás del mismo subgrupo
+                if (subDetalle) {
+                    ejerciciosSesion.forEach(ejItem => {
+                        if ((ejItem.Subgrupo || ejItem.subgrupo) === subName) {
+                            ejItem.Subgrupo_Detalle = subDetalle;
+                        }
+                    });
+                }
+            }
+
+            // Resolución de Repeticiones
+            let repsVal = document.getElementById('m_reps').value;
+            if (repsVal === '__custom__') {
+                repsVal = document.getElementById('m_reps_custom').value.trim() || '-';
+            }
+
+            const itemData = {
+                ID_Ejercicio: ejCat.ID_Ejercicio || idCat,
+                Nombre_Ejercicio: ejCat.Nombre_Ejercicio,
+                "Acrónimo": document.getElementById('m_alias').value,
+                Detalle: document.getElementById('m_detalle').value,
+                Bloque: document.getElementById('m_bloque_sesion').value,
+                Series: repsVal,
+                Peso: document.getElementById('m_peso').value,
+                Intensidad: document.getElementById('m_intensidad').value,
+                Patron_Movimiento: ejCat.Patron_Movimiento || '',
+                Grupo_Muscular: selectedGrupoMuscular,
+                Material: ejCat.Material || '',
+                Material_Adaptacion: document.getElementById('m_material_adaptacion').value.trim(),
+                guardar_progreso: document.getElementById('box-progreso').style.display === 'block' ? document.getElementById('m_guardar_progreso').checked : false,
+                Subgrupo: subName,
+                Subgrupo_Detalle: subDetalle
+            };
+
+            if (editingIndex >= 0) {
+                ejerciciosSesion[editingIndex] = itemData;
+            } else {
+                // Inserción inteligente: si pertenece a un subgrupo existente en ese bloque, insertarlo contiguo
+                let insertIndex = -1;
+                if (itemData.Subgrupo) {
+                    for (let i = ejerciciosSesion.length - 1; i >= 0; i--) {
+                        const eOld = ejerciciosSesion[i];
+                        if ((eOld.Bloque || '') === itemData.Bloque && (eOld.Subgrupo || '') === itemData.Subgrupo) {
+                            insertIndex = i + 1;
+                            break;
+                        }
+                    }
+                }
+
+                // Si no encontró subgrupo hermano, insertarlo al final de su bloque
+                if (insertIndex === -1) {
+                    for (let i = ejerciciosSesion.length - 1; i >= 0; i--) {
+                        if ((ejerciciosSesion[i].Bloque || '') === itemData.Bloque) {
+                            insertIndex = i + 1;
+                            break;
+                        }
+                    }
+                }
+
+                if (insertIndex !== -1) ejerciciosSesion.splice(insertIndex, 0, itemData);
+                else ejerciciosSesion.push(itemData);
+            }
+
+            try {
+                await guardarSesionEnFirebase();
+                cerrarModal();
+            } catch (error) {
+                console.error("Error al guardar:", error);
+                alert("Error al guardar el ejercicio.");
+            }
+        });
+
+        window.borrarEjercicioDeSesion = async (index) => {
+            if (confirm("¿Quitar este ejercicio de la sesión?")) {
+                ejerciciosSesion.splice(index, 1);
+                try { await guardarSesionEnFirebase(); } catch (e) { console.error("Error al borrar:", e); }
+            }
+        };
+
+        // --- LÓGICA PARA IMPORTAR PLANTILLAS ---
+        window.abrirModalImportar = async () => {
+            document.getElementById('modalImportar').style.display = 'flex';
+            if (plantillasCargadas.length === 0) {
+                const snap = await getDocs(collection(db, "plantillas_sesiones"));
+                plantillasCargadas = [];
+                snap.forEach(doc => plantillasCargadas.push({ id: doc.id, ...doc.data() }));
+                window.filtrarPlantillas();
+            }
+        };
+
+        window.filtrarPlantillas = () => {
+            const nivelFiltro = document.getElementById('imp_nivel').value;
+            const selectPlantilla = document.getElementById('imp_plantilla');
+            selectPlantilla.innerHTML = '<option value="">Elige una plantilla...</option>';
+
+            let filtradas = plantillasCargadas;
+            if (nivelFiltro) filtradas = plantillasCargadas.filter(p => p.nivel === nivelFiltro);
+
+            filtradas.sort((a, b) => a.nombre.localeCompare(b.nombre)).forEach(p => {
+                selectPlantilla.innerHTML += `<option value="${p.id}">${p.nombre} (${p.ejercicios ? p.ejercicios.length : 0} ej.)</option>`;
+            });
+        };
+
+        document.getElementById('formImportar').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const idPlantilla = document.getElementById('imp_plantilla').value;
+            if (!idPlantilla) return;
+
+            const plantillaSeleccionada = plantillasCargadas.find(p => p.id === idPlantilla);
+            if (!plantillaSeleccionada || !plantillaSeleccionada.ejercicios || plantillaSeleccionada.ejercicios.length === 0) {
+                alert("Esta plantilla está vacía."); return;
+            }
+
+            document.getElementById('btn-submit-import').innerText = "Importando...";
+            ejerciciosSesion = [...ejerciciosSesion, ...plantillaSeleccionada.ejercicios];
+
+            try {
+                await guardarSesionEnFirebase();
+                document.getElementById('modalImportar').style.display = 'none';
+                document.getElementById('btn-submit-import').innerText = "Importar Ejercicios";
+            } catch (error) { console.error("Error al importar:", error); alert("Error al importar la plantilla."); }
+        });
+
+        // --- LÓGICA PARA EXPORTAR/ENVIAR RUTINA A OTRA SESIÓN ---
+        window.abrirModalEnviar = async () => {
+            document.getElementById('modalEnviar').style.display = 'flex';
+            const selectCliente = document.getElementById('enviar_cliente');
+            const selectSesion = document.getElementById('enviar_sesion');
+
+            selectSesion.innerHTML = '<option value="">Primero selecciona un cliente...</option>';
+            selectSesion.disabled = true;
+
+            if (clientesCargados.length === 0) {
+                selectCliente.innerHTML = '<option value="">Cargando clientes...</option>';
+                try {
+                    const snap = await getDocs(collection(db, "clientes"));
+                    clientesCargados = [];
+                    snap.forEach(doc => clientesCargados.push({ id: doc.id, ...doc.data() }));
+
+                    clientesCargados.sort((a, b) => {
+                        const nameA = a.Nombre || a.nombre || a.Alias || '';
+                        const nameB = b.Nombre || b.nombre || b.Alias || '';
+                        return nameA.localeCompare(nameB);
+                    });
+
+                    selectCliente.innerHTML = '<option value="">Elige un cliente...</option>';
+                    clientesCargados.forEach(c => {
+                        const name = c.Alias || c.Nombre || c.nombre || 'Sin nombre';
+                        selectCliente.innerHTML += `<option value="${c.id}">${name}</option>`;
+                    });
+                } catch (e) {
+                    console.error("Error cargando clientes:", e);
+                    selectCliente.innerHTML = '<option value="">Error al cargar</option>';
+                }
+            }
+        };
+
+        window.cargarSesionesClienteEnviar = async () => {
+            const idCliente = document.getElementById('enviar_cliente').value;
+            const selectSesion = document.getElementById('enviar_sesion');
+
+            if (!idCliente) {
+                selectSesion.innerHTML = '<option value="">Primero selecciona un cliente...</option>';
+                selectSesion.disabled = true;
+                return;
+            }
+
+            selectSesion.innerHTML = '<option value="">Buscando sesiones...</option>';
+            selectSesion.disabled = true;
+
+            try {
+                const q = query(collection(db, "agenda_sesiones"), where("id_cliente", "==", idCliente));
+                const snap = await getDocs(q);
+
+                sesionesClienteCargadas = [];
+                snap.forEach(doc => {
+                    sesionesClienteCargadas.push({ id: doc.id, ...doc.data() });
+                });
+
+                sesionesClienteCargadas.sort((a, b) => b.fecha_hora_inicio.toMillis() - a.fecha_hora_inicio.toMillis());
+
+                if (sesionesClienteCargadas.length === 0) {
+                    selectSesion.innerHTML = '<option value="">Este cliente no tiene sesiones agendadas</option>';
+                } else {
+                    selectSesion.innerHTML = '<option value="">Elige una sesión destino...</option>';
+                    sesionesClienteCargadas.forEach(s => {
+                        const d = s.fecha_hora_inicio.toDate();
+                        const dStr = d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
+                        const hStr = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+
+                        const numEj = s.ejercicios ? s.ejercicios.length : 0;
+                        const textEj = numEj > 0 ? `(${numEj} ej. - SE SOBRESCRIBIRÁ)` : `(Vacía)`;
+
+                        selectSesion.innerHTML += `<option value="${s.id}">${dStr} a las ${hStr} ${textEj}</option>`;
+                    });
+                    selectSesion.disabled = false;
+                }
+            } catch (e) {
+                console.error("Error cargando sesiones:", e);
+                selectSesion.innerHTML = '<option value="">Error al buscar</option>';
+            }
+        };
+
+        document.getElementById('formEnviar').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const idSesionDestino = document.getElementById('enviar_sesion').value;
+            if (!idSesionDestino) return;
+
+            if (ejerciciosSesion.length === 0) {
+                alert("Esta sesión está vacía. Añade ejercicios primero antes de enviarla.");
+                return;
+            }
+
+            document.getElementById('btn-submit-enviar').innerText = "Enviando...";
+
+            try {
+                const autorNombre = localStorage.getItem('gym_user_name') || "Usuario desconocido";
+
+                await updateDoc(doc(db, "agenda_sesiones", idSesionDestino), {
+                    ejercicios: ejerciciosSesion,
+                    programado_por: autorNombre,
+                    fecha_programacion: new Date(),
+                    orden_customizado: true
+                });
+
+                document.getElementById('modalEnviar').style.display = 'none';
+                document.getElementById('btn-submit-enviar').innerText = "Enviar Ejercicios";
+                alert("¡Rutina enviada correctamente a la sesión seleccionada!");
+            } catch (error) {
+                console.error("Error al enviar:", error);
+                alert("Error al enviar la rutina.");
+                document.getElementById('btn-submit-enviar').innerText = "Enviar Ejercicios";
+            }
+        });
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) init();
+            else window.location.href = "index.html";
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,1441 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agenda - GO & train</title>
+    <link rel="icon" type="image/png" href="assets/logo.png">
+
+    <link rel="stylesheet" href="styles.css">
+    <script src="nav-component.js" defer></script>
+
+    <style>
+        .filters {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+
+        .filter-btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: none;
+            font-weight: bold;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .filter-btn.active {
+            background: var(--accent-dark);
+            color: white;
+        }
+
+        .filter-btn.inactive {
+            background: var(--hover-bg);
+            color: var(--text-main);
+        }
+
+        .filter-btn.inactive:hover {
+            background: #e5e7eb;
+        }
+
+        .month-selector {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .nav-arrow {
+            background: var(--surface);
+            border: 2px solid var(--accent-dark);
+            color: var(--accent-dark);
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            font-weight: bold;
+        }
+
+        .nav-arrow:hover {
+            background: var(--accent-light);
+        }
+
+        .calendar-icon-btn {
+            background: var(--hover-bg);
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 500;
+            font-size: 1rem;
+            color: var(--text-main);
+        }
+
+        .month-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            text-transform: capitalize;
+            margin-left: 10px;
+            color: #0f172a;
+        }
+
+        .week-accordion {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 30px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+        }
+
+        .week-header {
+            background: var(--hover-bg);
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .week-header h3 {
+            margin: 0;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #1e293b;
+        }
+
+        .week-header span {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .week-content {
+            display: block;
+            padding: 15px;
+            overflow-x: auto;
+        }
+
+        .chevron-icon {
+            display: flex;
+            align-items: center;
+            color: #334155;
+        }
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: 60px repeat(5, 1fr);
+            grid-template-rows: auto repeat(10, 40px) 20px repeat(9, 40px);
+            background: var(--surface);
+            position: relative;
+            min-width: 900px;
+        }
+
+        .grid-bg-cell {
+            border-right: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+
+        .grid-bg-cell:hover {
+            background: #f0fdfa;
+        }
+
+        .day-header {
+            padding: 10px;
+            font-size: 0.85rem;
+            border-bottom: 2px solid var(--text-main);
+            background: var(--surface);
+            z-index: 2;
+        }
+
+        .day-header strong {
+            display: block;
+            color: var(--text-main);
+        }
+
+        .day-header span {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+        }
+
+        .time-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: bold;
+            color: var(--text-main);
+            border-right: 2px solid var(--border);
+            border-bottom: 1px solid var(--border);
+            padding-right: 5px;
+        }
+
+        .noon-separator {
+            grid-column: 1 / -1;
+            grid-row: 12;
+            background: var(--bg);
+            border-bottom: 2px solid var(--border);
+            border-top: 1px solid var(--border);
+        }
+
+        .event-card {
+            border-radius: 4px;
+            padding: 6px;
+            margin: 1px 2px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            line-height: 1.2;
+            overflow: hidden;
+            z-index: 5;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            box-sizing: border-box;
+            transition: transform 0.1s, z-index 0s;
+            cursor: pointer;
+            color: var(--text-main);
+        }
+
+        .event-card:hover {
+            transform: scale(1.02);
+            z-index: 10;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .event-normal {
+            background: #e0f2fe;
+            border: 1px solid #7dd3fc;
+        }
+
+        .event-full {
+            background: #fde047;
+            border: 1px solid #ca8a04;
+        }
+
+        .event-warn-top {
+            background: linear-gradient(to bottom, #fde047 50%, #fef08a 50%);
+            border: 1px solid #ca8a04;
+        }
+
+        .event-warn-bottom {
+            background: linear-gradient(to bottom, #fef08a 50%, #fde047 50%);
+            border: 1px solid #ca8a04;
+        }
+
+        .overlap-left {
+            width: calc(50% - 2px);
+            justify-self: start;
+            z-index: 6;
+        }
+
+        .overlap-right {
+            width: calc(50% - 2px);
+            justify-self: end;
+            z-index: 7;
+        }
+
+        .sg-week-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 15px;
+            min-width: 1000px;
+        }
+
+        .sg-day-column {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .sg-day-header {
+            background: var(--hover-bg);
+            padding: 8px 12px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .sg-day-header span {
+            font-weight: normal;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+        }
+
+        .sg-slot {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+
+        .sg-slot:hover {
+            background: #f0fdfa;
+        }
+
+        .sg-slot:last-child {
+            border-bottom: none;
+        }
+
+        .sg-slot-time {
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+            font-size: 0.7rem;
+        }
+
+        .sg-slot-clients {
+            color: var(--text-main);
+            font-weight: 600;
+            min-height: 18px;
+            line-height: 1.4;
+        }
+
+        .days-selector {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .day-pill,
+        .week-pill {
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface);
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            transition: 0.2s;
+            user-select: none;
+        }
+
+        .day-pill.active,
+        .week-pill.active {
+            background: #e0f2fe;
+            color: #0369a1;
+            border-color: #7dd3fc;
+        }
+
+        .warning-msg {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #b91c1c;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            display: none;
+            grid-column: 1 / -1;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .radio-option {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .radio-option input[type="radio"] {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--accent-dark);
+            cursor: pointer;
+        }
+
+        /* Estilo para las opciones de cascada */
+        .conflict-options button {
+            width: 100%;
+            margin-bottom: 10px;
+            padding: 12px;
+        }
+    </style>
+</head>
+
+<body>
+    <gym-navbar active="agenda"></gym-navbar>
+
+    <div class="container">
+        <div class="page-header">
+            <h1 id="page-title">Calendario de sesiones</h1>
+        </div>
+
+        <div class="filters">
+            <button class="filter-btn active" id="tab-individuales">Sesiones individuales</button>
+            <button class="filter-btn inactive" id="tab-sg">Small Groups</button>
+
+            <div style="margin-left: auto; display: flex; gap: 10px;">
+                <a href="programaciones_pendientes.html" class="btn-outline">Programaciones pendientes</a>
+                <button class="btn-primary" id="btn-planificar-dias" onclick="abrirModalPlanificar()">+ Planificar Días
+                    de Cliente</button>
+            </div>
+        </div>
+
+        <div class="month-selector">
+            <button class="nav-arrow" id="btn-prev-month">&lt;</button>
+            <button class="calendar-icon-btn">📅 <span id="display-month-btn">Cargando...</span></button>
+            <button class="nav-arrow" id="btn-next-month">&gt;</button>
+            <span class="month-title" id="display-month-title">Cargando...</span>
+        </div>
+        <div id="calendar-container">
+            <p style="color: var(--text-muted);">Verificando sesión segura...</p>
+        </div>
+    </div>
+
+    <!-- MODAL NUEVA CITA PUNTUAL -->
+    <div class="modal-overlay" id="modalNuevaCita" style="display: none;">
+        <div class="modal-content" style="max-width: 500px;">
+            <button class="modal-close" onclick="cerrarModalCita()">&times;</button>
+            <div id="nc-step-1">
+                <div class="modal-header" style="margin-bottom: 25px;">
+                    <h2 style="margin: 0 0 5px 0; font-size: 1.4rem;">Programar Cita Puntual</h2>
+                    <p style="margin: 0; color: var(--text-muted); font-size: 0.9rem;">Crea una sesión para un día en
+                        concreto.</p>
+                </div>
+                <form id="formNuevaCita">
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label>Tipo de Sesión</label>
+                        <div style="display: flex; gap: 15px; margin-top: 5px;">
+                            <label class="radio-option">
+                                <input type="radio" name="nc_tipo" value="Individual" checked
+                                    onchange="window.toggleTipoCita()"> Individual
+                            </label>
+                            <label class="radio-option">
+                                <input type="radio" name="nc_tipo" value="Small Group"
+                                    onchange="window.toggleTipoCita()">
+                                Small Group
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 15px;" id="nc_box_cliente">
+                        <label>Cliente *</label>
+                        <select id="nc_cliente" class="form-control" required>
+                            <option value="">Cargando clientes...</option>
+                        </select>
+                    </div>
+
+                    <div class="form-grid" style="margin-bottom: 15px;">
+                        <div class="form-group">
+                            <label>Fecha *</label>
+                            <input type="date" id="nc_fecha" required class="form-control"
+                                onchange="window.actualizarHorasCitaSG()">
+                        </div>
+
+                        <div class="form-group" id="nc_wrapperHoraInd">
+                            <label>Hora de Inicio *</label>
+                            <select id="nc_hora_ind" class="form-control" required></select>
+                        </div>
+
+                        <div class="form-group" id="nc_wrapperHoraSG" style="display: none;">
+                            <label>Horario del Small Group *</label>
+                            <select id="nc_hora_sg" class="form-control">
+                                <option value="">Selecciona fecha primero...</option>
+                            </select>
+                            <p id="msg-sg-cita-error"
+                                style="color:#dc2626; font-size:0.8rem; margin-top:4px; display:none;">No hay horarios
+                                Small
+                                Group configurados en el maestro para el día seleccionado.</p>
+                        </div>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn-secondary" onclick="cerrarModalCita()">Cancelar</button>
+                        <button type="submit" class="btn-primary" id="btnCrearCita">Crear Sesión</button>
+                    </div>
+                </form>
+            </div>
+            <div id="nc-step-2" style="display:none;" class="conflict-options"></div>
+        </div>
+    </div>
+
+    <!-- MODAL PLANIFICAR DÍAS MASIVOS -->
+    <div class="modal-overlay" id="modalPlanificar">
+        <div class="modal-content">
+            <button class="modal-close" onclick="cerrarModalPlanificar()">&times;</button>
+            <div id="plan-step-1">
+                <div style="margin-bottom: 25px;">
+                    <h2 style="margin: 0 0 5px 0; font-size: 1.4rem;">Planificar Días del Mes para Cliente</h2>
+                    <p style="margin: 0; color: var(--text-muted); font-size: 0.9rem;">Programa las asistencias de forma
+                        masiva en el calendario.</p>
+                </div>
+
+                <form id="formPlanificar">
+                    <div class="form-group full"
+                        style="flex-direction: row; gap: 20px; margin-bottom: 15px; padding: 15px; background: var(--hover-bg); border-radius: 8px; border: 1px solid var(--border);">
+                        <label class="radio-option">
+                            <input type="radio" name="plan_tipo" value="Individual" checked
+                                onchange="window.togglePlanTipo()">
+                            Sesión Individual
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="plan_tipo" value="Small Group" onchange="window.togglePlanTipo()">
+                            Small Group
+                        </label>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                        <div class="form-group" style="grid-column: 1 / -1;" id="box_cliente">
+                            <label>Cliente *</label>
+                            <select id="plan_cliente" required>
+                                <option value="">Elige un cliente...</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group" style="grid-column: 1 / -1;" id="box_dias">
+                            <label style="display: flex; justify-content: space-between;">
+                                Días de asistencia (puedes elegir varios) *
+                                <span id="plan_dias_count" style="font-weight:normal; color:var(--text-muted);">0
+                                    días</span>
+                            </label>
+                            <div class="days-selector" id="plan_dias_container"></div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Mes a programar</label>
+                            <input type="month" id="plan_mes" required onchange="window.actualizarCalculo()">
+                        </div>
+
+                        <div class="form-group" id="box_semanas">
+                            <label>Semanas a programar</label>
+                            <div class="days-selector">
+                                <div class="week-pill active" data-val="1">S1</div>
+                                <div class="week-pill active" data-val="2">S2</div>
+                                <div class="week-pill active" data-val="3">S3</div>
+                                <div class="week-pill active" data-val="4">S4</div>
+                                <div class="week-pill active" data-val="5">S5</div>
+                            </div>
+                        </div>
+
+                        <div class="form-group" id="box_hora_ini">
+                            <label>Hora de inicio</label>
+                            <select id="plan_hora_inicio" required onchange="window.actualizarHoraFin()"></select>
+                        </div>
+                        <div class="form-group" id="box_hora_fin">
+                            <label>Hora de fin</label>
+                            <select id="plan_hora_fin" required></select>
+                        </div>
+
+                        <div class="form-group full" id="box_hora_sg" style="display: none;">
+                            <label>Día y Horario del Small Group *</label>
+                            <select id="plan_hora_sg" class="form-control" onchange="window.actualizarCalculo()">
+                                <option value="">Selecciona horario y día predefinido...</option>
+                            </select>
+                            <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">Se programarán
+                                automáticamente todas las sesiones de este día de la semana en el mes seleccionado.</p>
+                        </div>
+
+                        <div class="warning-msg" id="warning_aforo">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path
+                                    d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z">
+                                </path>
+                                <line x1="12" y1="9" x2="12" y2="13"></line>
+                                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                            </svg>
+                            Atención: Hay un conflicto de overbooking (6 o más clientes).
+                        </div>
+                    </div>
+
+                    <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 30px;">
+                        <button type="button" class="btn-secondary" onclick="cerrarModalPlanificar()">Cancelar</button>
+                        <button type="submit" class="btn-primary" id="btn_submit_plan">Programar 0 Citas</button>
+                    </div>
+                </form>
+            </div>
+            <div id="plan-step-2" style="display:none;" class="conflict-options"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { auth, db } from './firebase-config.js';
+        import { collection, query, where, getDocs, doc, setDoc, addDoc, writeBatch } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
+        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+        import { getValoresMaestro } from './maestros-service.js';
+
+        window.actualizarCalculo = () => { };
+
+        let pendingCreationData = null;
+        let currentView = 'individuales';
+        const nowInit = new Date();
+        let currentMonthDate = new Date(Date.UTC(nowInit.getFullYear(), nowInit.getMonth(), 1));
+        let globalClientes = [];
+        let aforoGlobalPorFila = {};
+
+        let diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+        let timeSlots = [];
+        let sgTimeSlotsRaw = [];
+        let timeToRowMap = {};
+        let separatorRow = 12;
+
+        const mapaDiaJS = {
+            'domingo': 0, 'lunes': 1, 'martes': 2, 'miércoles': 3, 'miercoles': 3,
+            'jueves': 4, 'viernes': 5, 'sábado': 6, 'sabado': 6
+        };
+        const diasSemanaMapa = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+        const normalizarDia = (dia) => dia.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+        async function cargarMaestrosAgenda() {
+            const [diasDB, horasIndDB, horasSGDB] = await Promise.all([
+                getValoresMaestro('Agenda', 'Días de la semana'),
+                getValoresMaestro('Agenda', 'Horarios Sesiones Individuales'),
+                getValoresMaestro('Agenda', 'Horarios Small Groups')
+            ]);
+
+            if (diasDB.length > 0) diasSemana = diasDB;
+            timeSlots = horasIndDB.length > 0 ? horasIndDB : [
+                '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30',
+                '16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00'
+            ];
+
+            sgTimeSlotsRaw = horasSGDB.length > 0 ? horasSGDB : ['Lunes 18:00', 'Martes 17:00'];
+
+            timeToRowMap = {};
+            const manana = timeSlots.filter(t => parseInt(t.split(':')[0], 10) < 14);
+            const tarde = timeSlots.filter(t => parseInt(t.split(':')[0], 10) >= 14);
+
+            let r = 2;
+            manana.forEach(t => { timeToRowMap[t] = r++; });
+            separatorRow = r++;
+            tarde.forEach(t => { timeToRowMap[t] = r++; });
+
+            const diasCont = document.getElementById('plan_dias_container');
+            if (diasCont) {
+                diasCont.innerHTML = diasSemana.map(d => {
+                    const numDia = mapaDiaJS[d.toLowerCase()] ?? 1;
+                    return `<div class="day-pill" data-val="${numDia}">${d}</div>`;
+                }).join('');
+
+                diasCont.querySelectorAll('.day-pill').forEach(pill => {
+                    pill.addEventListener('click', (e) => {
+                        const val = parseInt(e.target.getAttribute('data-val'));
+                        if (selectedDays.includes(val)) {
+                            selectedDays = selectedDays.filter(d => d !== val);
+                            e.target.classList.remove('active');
+                        } else {
+                            selectedDays.push(val);
+                            e.target.classList.add('active');
+                        }
+                        window.actualizarCalculo();
+                    });
+                });
+            }
+        }
+
+        document.getElementById('btn-prev-month').addEventListener('click', () => { currentMonthDate.setUTCMonth(currentMonthDate.getUTCMonth() - 1); loadAgenda(); });
+        document.getElementById('btn-next-month').addEventListener('click', () => { currentMonthDate.setUTCMonth(currentMonthDate.getUTCMonth() + 1); loadAgenda(); });
+
+        document.getElementById('tab-individuales').addEventListener('click', () => { currentView = 'individuales'; document.getElementById('tab-individuales').className = 'filter-btn active'; document.getElementById('tab-sg').className = 'filter-btn inactive'; loadAgenda(); });
+        document.getElementById('tab-sg').addEventListener('click', () => { currentView = 'sg'; document.getElementById('tab-sg').className = 'filter-btn active'; document.getElementById('tab-individuales').className = 'filter-btn inactive'; loadAgenda(); });
+
+        const mesNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+        function getChevronSVG(isExpanded) {
+            const rot = isExpanded ? '0deg' : '-90deg';
+            return `<span class="chevron-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.2s ease; transform: rotate(${rot});"><polyline points="6 9 12 15 18 9"></polyline></svg></span>`;
+        }
+
+        function countClients(nameStr) {
+            if (!nameStr) return 1;
+            let str = nameStr.replace(/ y /gi, ',').replace(/ e /gi, ',');
+            let count = str.split(',').filter(n => n.trim() !== '').length;
+            return count > 0 ? count : 1;
+        }
+
+        function generateIndividualWeekHTML(weekNumber, mondayDate, isCurrentWeek, customTitle) {
+            const displayStyle = isCurrentWeek ? 'block' : 'none';
+            const numDias = diasSemana.length;
+            const mananaCount = timeSlots.filter(t => parseInt(t.split(':')[0], 10) < 14).length;
+            const tardeCount = timeSlots.filter(t => parseInt(t.split(':')[0], 10) >= 14).length;
+
+            const dynamicGridStyle = `grid-template-columns: 60px repeat(${numDias}, 1fr); grid-template-rows: auto repeat(${mananaCount}, 40px) 20px repeat(${tardeCount}, 40px);`;
+
+            let headersHTML = `<div class="day-header" style="grid-column: 1; grid-row: 1; border-right: 2px solid var(--border);">Hora</div>`;
+            let currentDay = new Date(mondayDate);
+            let endDay = new Date(mondayDate);
+            endDay.setUTCDate(endDay.getUTCDate() + (numDias - 1));
+            const dateRangeText = `${currentDay.getUTCDate()}${mesNames[currentDay.getUTCMonth()]} - ${endDay.getUTCDate()}${mesNames[endDay.getUTCMonth()]}`;
+            const finalTitle = customTitle || `Semana ${weekNumber}`;
+
+            for (let i = 0; i < numDias; i++) {
+                headersHTML += `<div class="day-header" style="grid-column: ${i + 2}; grid-row: 1;"><strong>${diasSemana[i]}</strong><span>${currentDay.getUTCDate()}${mesNames[currentDay.getUTCMonth()]}</span></div>`;
+                currentDay.setUTCDate(currentDay.getUTCDate() + 1);
+            }
+
+            let gridHTML = '';
+            for (let i = 0; i < timeSlots.length; i++) {
+                const time = timeSlots[i]; const row = timeToRowMap[time];
+                gridHTML += `<div class="time-label" style="grid-column: 1; grid-row: ${row};">${time}</div>`;
+
+                let tempDay = new Date(mondayDate);
+                for (let col = 2; col <= numDias + 1; col++) {
+                    const dateStrID = tempDay.toISOString().split('T')[0];
+
+                    gridHTML += `<div class="grid-bg-cell" style="grid-column: ${col}; grid-row:${row};" ondblclick="window.prepararModalAgendar('${dateStrID}', '${time}', 'Individual')" title="Doble clic para agendar cita rápida"></div>`;
+                    tempDay.setUTCDate(tempDay.getUTCDate() + 1);
+                }
+            }
+
+            return `<div class="week-accordion"><div class="week-header" onclick="const c = this.nextElementSibling; const i = this.querySelector('svg'); if (c.style.display === 'none') { c.style.display = 'block'; i.style.transform = 'rotate(0deg)'; } else { c.style.display = 'none'; i.style.transform = 'rotate(-90deg)'; }"><h3>${getChevronSVG(isCurrentWeek)} ${finalTitle}</h3><span>${dateRangeText}</span></div><div class="week-content" style="display: ${displayStyle};"><div class="calendar-grid" id="grid-week-${weekNumber}" style="${dynamicGridStyle}">${headersHTML}${gridHTML}<div class="noon-separator" style="grid-row: ${separatorRow};"></div></div></div></div>`;
+        }
+
+        function generateSGWeekHTML(weekNumber, mondayDate, isCurrentWeek, customTitle) {
+            const displayStyle = isCurrentWeek ? 'block' : 'none';
+            const numDias = diasSemana.length;
+            let endDay = new Date(mondayDate); endDay.setUTCDate(endDay.getUTCDate() + (numDias - 1));
+            const dateRangeText = `${mondayDate.getUTCDate()}${mesNames[mondayDate.getUTCMonth()]} - ${endDay.getUTCDate()}${mesNames[endDay.getUTCMonth()]}`;
+            const finalTitle = customTitle || `Semana ${weekNumber}`;
+
+            let columnsHTML = '';
+            let dayTemp = new Date(mondayDate);
+
+            for (let i = 0; i < numDias; i++) {
+                const dayNum = dayTemp.getUTCDate(); const monthName = mesNames[dayTemp.getUTCMonth()];
+                const dateStrID = dayTemp.toISOString().split('T')[0];
+
+                const dayNameString = diasSemana[i];
+                const todaySlots = sgTimeSlotsRaw
+                    .filter(t => t.toLowerCase().startsWith(dayNameString.toLowerCase()))
+                    .map(t => t.split(' ')[1]);
+
+                let slotsHTML = '';
+                if (todaySlots.length === 0) {
+                    slotsHTML = `<div class="sg-slot" style="color:var(--text-muted); text-align:center; padding:15px;">Sin grupos</div>`;
+                } else {
+                    slotsHTML = todaySlots.map(t => {
+                        const [h, m] = t.split(':');
+                        const nextH = String(parseInt(h, 10) + 1).padStart(2, '0');
+                        const keyHora = t.replace(':', '');
+                        return `
+                            <div class="sg-slot" ondblclick="window.prepararModalAgendar('${dateStrID}', '${t}', 'Small Group')" title="Doble clic para agendar un cliente a este grupo">
+                                <div class="sg-slot-time">${t}–${nextH}:${m}</div>
+                                <div class="sg-slot-clients" id="sg-${dateStrID}-${keyHora}"></div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+
+                columnsHTML += `<div class="sg-day-column"><div class="sg-day-header">${diasSemana[i]} <span>${dayNum}${monthName}</span></div>${slotsHTML}</div>`;
+                dayTemp.setUTCDate(dayTemp.getUTCDate() + 1);
+            }
+
+            return `<div class="week-accordion"><div class="week-header" onclick="const c = this.nextElementSibling; const i = this.querySelector('svg'); if (c.style.display === 'none') { c.style.display = 'block'; i.style.transform = 'rotate(0deg)'; } else { c.style.display = 'none'; i.style.transform = 'rotate(-90deg)'; }"><h3>${getChevronSVG(isCurrentWeek)} ${finalTitle}</h3><span>${dateRangeText}</span></div><div class="week-content" style="display: ${displayStyle};"><div class="sg-week-grid" style="grid-template-columns: repeat(${numDias}, 1fr);">${columnsHTML}</div></div></div>`;
+        }
+
+        async function loadAgenda() {
+            await cargarMaestrosAgenda();
+            const container = document.getElementById('calendar-container');
+            container.innerHTML = '<p style="color: var(--text-muted);">Cargando agenda...</p>';
+
+            const mesStr = currentMonthDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+            document.getElementById('display-month-btn').innerText = mesStr; document.getElementById('display-month-title').innerText = mesStr;
+
+            let firstDayOfMonth = new Date(Date.UTC(currentMonthDate.getUTCFullYear(), currentMonthDate.getUTCMonth(), 1));
+            let lastDayOfMonth = new Date(Date.UTC(currentMonthDate.getUTCFullYear(), currentMonthDate.getUTCMonth() + 1, 0));
+
+            let startCalendar = new Date(firstDayOfMonth);
+            startCalendar.setUTCDate(startCalendar.getUTCDate() - startCalendar.getUTCDay() + (startCalendar.getUTCDay() === 0 ? -6 : 1));
+
+            let fridayOfStartWeek = new Date(startCalendar);
+            fridayOfStartWeek.setUTCDate(fridayOfStartWeek.getUTCDate() + 4);
+            if (fridayOfStartWeek < firstDayOfMonth) startCalendar.setUTCDate(startCalendar.getUTCDate() + 7);
+
+            container.innerHTML = ''; let weekMonDates = []; let tempMon = new Date(startCalendar); let w = 1;
+            const nowReal = new Date();
+            const hoyReal = new Date(Date.UTC(nowReal.getFullYear(), nowReal.getMonth(), nowReal.getDate(), 0, 0, 0, 0));
+
+            while (tempMon <= lastDayOfMonth) {
+                weekMonDates.push(new Date(tempMon));
+                let weekEnd = new Date(tempMon); weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
+                let isCurrentWeek = (hoyReal >= tempMon && hoyReal < weekEnd);
+                let customTitle = `Semana ${w}`;
+
+                if (currentView === 'individuales') container.innerHTML += generateIndividualWeekHTML(w, tempMon, isCurrentWeek, customTitle);
+                else container.innerHTML += generateSGWeekHTML(w, tempMon, isCurrentWeek, customTitle);
+                tempMon.setUTCDate(tempMon.getUTCDate() + 7); w++;
+            }
+
+            weekMonDates.push(new Date(tempMon));
+            let weekEndExtra = new Date(tempMon); weekEndExtra.setUTCDate(weekEndExtra.getUTCDate() + 7);
+            let isCurrentWeekExtra = (hoyReal >= tempMon && hoyReal < weekEndExtra);
+            let customTitleExtra = `Semana 1 - ${mesNames[tempMon.getUTCMonth()]}`;
+
+            if (currentView === 'individuales') container.innerHTML += generateIndividualWeekHTML(w, tempMon, isCurrentWeekExtra, customTitleExtra);
+            else container.innerHTML += generateSGWeekHTML(w, tempMon, isCurrentWeekExtra, customTitleExtra);
+
+            try {
+                const clientesMap = {}; globalClientes = [];
+                const clientesSnap = await getDocs(collection(db, "clientes"));
+                clientesSnap.forEach(doc => {
+                    const c = doc.data();
+                    if (c.ID_Cliente) {
+                        const alias = (c.Alias && c.Alias.trim() !== '') ? c.Alias : c.Nombre_Cliente;
+                        clientesMap[c.ID_Cliente] = alias;
+                        globalClientes.push({ id: c.ID_Cliente, alias: alias });
+                    }
+                });
+
+                const startDate = new Date(weekMonDates[0]); startDate.setUTCHours(0, 0, 0, 0);
+                let lastMonday = weekMonDates[weekMonDates.length - 1];
+                let endDate = new Date(lastMonday); endDate.setUTCDate(endDate.getUTCDate() + 6); endDate.setUTCHours(23, 59, 59, 999);
+
+                const q = query(collection(db, "agenda_sesiones"), where("fecha_hora_inicio", ">=", startDate), where("fecha_hora_inicio", "<=", endDate));
+                const querySnapshot = await getDocs(q);
+
+                if (currentView === 'individuales') {
+                    let dayEvents = {}; aforoGlobalPorFila = {};
+
+                    querySnapshot.forEach((doc) => {
+                        const data = doc.data();
+                        if (data.tipo_sesion === 'Small Group') return;
+
+                        const fecha = data.fecha_hora_inicio.toDate();
+                        const timeStr = fecha.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+                        const dateStrID = fecha.toISOString().split('T')[0];
+
+                        const row1 = timeToRowMap[timeStr];
+                        if (row1) {
+                            const numClientes = countClients(data.alias || data.nombre_cliente);
+                            aforoGlobalPorFila[`${dateStrID}-${row1}`] = (aforoGlobalPorFila[`${dateStrID}-${row1}`] || 0) + numClientes;
+                            const row2 = row1 + 1;
+                            if (row2 !== separatorRow) aforoGlobalPorFila[`${dateStrID}-${row2}`] = (aforoGlobalPorFila[`${dateStrID}-${row2}`] || 0) + numClientes;
+                        }
+                    });
+
+                    querySnapshot.forEach((doc) => {
+                        const data = doc.data();
+                        if (data.tipo_sesion === 'Small Group') return;
+
+                        const isPending = !data.ejercicios || data.ejercicios.length === 0;
+                        const fecha = data.fecha_hora_inicio.toDate();
+                        const timeStr = fecha.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+                        const diffDays = Math.floor(Math.abs(fecha - startDate) / (1000 * 60 * 60 * 24));
+                        const weekNum = Math.floor(diffDays / 7) + 1;
+                        let dayIndex = fecha.getUTCDay();
+
+                        if (dayIndex >= 1 && dayIndex <= diasSemana.length) {
+                            const col = dayIndex + 1; const row = timeToRowMap[timeStr];
+                            if (row) {
+                                const idCliente = data.id_cliente || data.ID_Cliente;
+                                const nombreMostrar = (idCliente && clientesMap[idCliente]) ? clientesMap[idCliente] : (data.Alias || data.alias || data.Nombre_Cliente || 'Sin nombre');
+
+                                const dayKey = `w${weekNum}-c${col}`;
+                                if (!dayEvents[dayKey]) dayEvents[dayKey] = [];
+
+                                let existingSlot = dayEvents[dayKey].find(e => e.row === row);
+                                if (existingSlot) {
+                                    existingSlot.clientes.push({ nombre: nombreMostrar, idSesion: doc.id, isPending });
+                                } else {
+                                    dayEvents[dayKey].push({ weekNum, col, row, clientes: [{ nombre: nombreMostrar, idSesion: doc.id, isPending }], dateStrID: fecha.toISOString().split('T')[0] });
+                                }
+                            }
+                        }
+                    });
+
+                    for (const dayKey in dayEvents) {
+                        let events = dayEvents[dayKey];
+                        events.sort((a, b) => a.row - b.row);
+
+                        for (let i = 0; i < events.length; i++) {
+                            let evt = events[i]; evt.position = 'left';
+                            if (i > 0 && events[i - 1].row + 2 > evt.row) {
+                                evt.position = events[i - 1].position === 'left' ? 'right' : 'left';
+                                evt.isOverlapping = true; events[i - 1].isOverlapping = true;
+                            }
+                        }
+
+                        for (let i = 0; i < events.length; i++) {
+                            let evt = events[i];
+                            const gridElement = document.getElementById(`grid-week-${evt.weekNum}`);
+                            if (gridElement) {
+                                const countH1 = aforoGlobalPorFila[`${evt.dateStrID}-${evt.row}`] || 0;
+                                const countH2 = aforoGlobalPorFila[`${evt.dateStrID}-${evt.row + 1}`] || 0;
+
+                                let extraClass = 'event-normal';
+                                if (countH1 >= 6 && countH2 >= 6) extraClass = 'event-full';
+                                else if (countH1 >= 6 && countH2 < 6) extraClass = 'event-warn-top';
+                                else if (countH1 < 6 && countH2 >= 6) extraClass = 'event-warn-bottom';
+
+                                if (evt.isOverlapping) extraClass += evt.position === 'left' ? ' overlap-left' : ' overlap-right';
+
+                                const linksHTML = evt.clientes.map(c => {
+                                    const colorStyle = c.isPending ? 'color: #dc2626;' : 'color: inherit;';
+                                    return `<a href="programar_sesion.html?id_sesion=${c.idSesion}" style="${colorStyle} text-decoration: none; transition: opacity 0.2s;" onclick="event.stopPropagation()" onmouseover="this.style.textDecoration='underline'; this.style.opacity='0.7'" onmouseout="this.style.textDecoration='none'; this.style.opacity='1'" title="${c.isPending ? 'Pendiente de programar' : ''}">${c.nombre}</a>`;
+                                }).join(', ');
+
+                                const timeKey = Object.keys(timeToRowMap).find(key => timeToRowMap[key] === evt.row);
+                                gridElement.innerHTML += `<div class="event-card ${extraClass}" style="grid-column: ${evt.col}; grid-row: ${evt.row} / span 2;" ondblclick="window.prepararModalAgendar('${evt.dateStrID}', '${timeKey}', 'Individual')" title="Doble clic para agendar otro cliente a esta hora">${linksHTML}</div>`;
+                            }
+                        }
+                    }
+                } else {
+                    let sgMap = {};
+                    querySnapshot.forEach((doc) => {
+                        const data = doc.data();
+                        if (data.tipo_sesion !== 'Small Group') return;
+
+                        const fecha = data.fecha_hora_inicio.toDate();
+                        const dateStrID = fecha.toISOString().split('T')[0];
+                        const timeStr = fecha.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+                        const keyHora = timeStr.replace(':', '');
+
+                        const slotKey = `${dateStrID}-${keyHora}`;
+
+                        if (!sgMap[slotKey]) {
+                            sgMap[slotKey] = {
+                                clientes: [],
+                                firstId: doc.id,
+                                isPending: (!data.ejercicios || data.ejercicios.length === 0)
+                            };
+                        } else if (data.ejercicios && data.ejercicios.length > 0) {
+                            sgMap[slotKey].isPending = false;
+                            sgMap[slotKey].firstId = doc.id;
+                        }
+
+                        const idCliente = data.id_cliente || data.ID_Cliente;
+                        const nombreMostrar = clientesMap[idCliente] || data.alias || data.nombre_cliente || 'Sin nombre';
+
+                        const enlace = `<span style="color: var(--text-main); font-weight: 500; cursor: default;">${nombreMostrar}</span>`;
+
+                        sgMap[slotKey].clientes.push(enlace);
+                    });
+
+                    for (const slotKey in sgMap) {
+                        const cell = document.getElementById(`sg-${slotKey}`);
+                        if (cell) {
+                            const info = sgMap[slotKey];
+                            const btnColor = info.isPending ? '#dc2626' : 'var(--accent-dark)';
+                            const btnText = info.isPending ? '📋 Programar SG' : '✅ Rutina SG';
+
+                            const btnHtml = `<div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--border);">
+                                <a href="programar_sesion.html?id_sesion=${info.firstId}" 
+                                   style="display: block; text-align: center; font-size: 0.75rem; font-weight: bold; color: white; background: ${btnColor}; padding: 4px 0; border-radius: 4px; text-decoration: none; transition: opacity 0.2s;"
+                                   onmouseover="this.style.opacity='0.8'" 
+                                   onmouseout="this.style.opacity='1'"
+                                   onclick="event.stopPropagation()">
+                                   ${btnText}
+                                </a>
+                            </div>`;
+
+                            cell.innerHTML = info.clientes.join('<br>') + btnHtml;
+                        }
+                    }
+                }
+            } catch (error) { console.error("Error cargando agenda:", error); }
+        }
+
+        // ---------- INICIO DE LA LÓGICA DE EVENTOS (CASCADA) ----------
+
+        let selectedDays = [];
+        let selectedWeeks = [1, 2, 3, 4, 5];
+
+        function inicializarSelectoresGlobales() {
+            const selectClienteCita = document.getElementById('nc_cliente');
+            const selectClientePlan = document.getElementById('plan_cliente');
+
+            selectClienteCita.innerHTML = '<option value="">Elige un cliente...</option>';
+            selectClientePlan.innerHTML = '<option value="">Elige un cliente...</option>';
+
+            globalClientes.sort((a, b) => a.alias.localeCompare(b.alias)).forEach(c => {
+                selectClienteCita.innerHTML += `<option value="${c.id}">${c.alias}</option>`;
+                selectClientePlan.innerHTML += `<option value="${c.id}">${c.alias}</option>`;
+            });
+
+            const selectHoraIni = document.getElementById('plan_hora_inicio');
+            const selectHoraFin = document.getElementById('plan_hora_fin');
+            const selectHoraSG = document.getElementById('plan_hora_sg');
+            const selectCitaInd = document.getElementById('nc_hora_ind');
+
+            selectHoraIni.innerHTML = ''; selectHoraFin.innerHTML = ''; selectCitaInd.innerHTML = '';
+            selectHoraSG.innerHTML = '<option value="">Selecciona horario y día predefinido...</option>';
+
+            const horasFinSet = new Set(timeSlots);
+            timeSlots.forEach(t => {
+                selectHoraIni.innerHTML += `<option value="${t}">${t}</option>`;
+                selectCitaInd.innerHTML += `<option value="${t}">${t}</option>`;
+                const [h, m] = t.split(':');
+                horasFinSet.add(`${String(parseInt(h, 10) + 1).padStart(2, '0')}:${m}`);
+            });
+
+            Array.from(horasFinSet).sort().forEach(t => {
+                selectHoraFin.innerHTML += `<option value="${t}">${t}</option>`;
+            });
+
+            sgTimeSlotsRaw.forEach(entry => {
+                selectHoraSG.innerHTML += `<option value="${entry}">${entry}</option>`;
+            });
+        }
+
+        window.toggleTipoCita = () => {
+            const isSG = document.querySelector('input[name="nc_tipo"]:checked').value === 'Small Group';
+            document.getElementById('nc_wrapperHoraInd').style.display = isSG ? 'none' : 'block';
+            document.getElementById('nc_wrapperHoraSG').style.display = isSG ? 'block' : 'none';
+            document.getElementById('nc_hora_ind').required = !isSG;
+            document.getElementById('nc_hora_sg').required = isSG;
+            if (isSG) window.actualizarHorasCitaSG();
+        };
+
+        window.actualizarHorasCitaSG = () => {
+            const fechaStr = document.getElementById('nc_fecha').value;
+            const selectSG = document.getElementById('nc_hora_sg');
+            const msgError = document.getElementById('msg-sg-cita-error');
+            const btnSubmit = document.getElementById('btnCrearCita');
+
+            if (!fechaStr) return;
+            const [y, m, d] = fechaStr.split('-');
+            const dateObj = new Date(Date.UTC(parseInt(y), parseInt(m) - 1, parseInt(d)));
+            const diaNormalizado = normalizarDia(diasSemanaMapa[dateObj.getUTCDay()]);
+
+            const horasPermitidas = sgTimeSlotsRaw
+                .filter(t => normalizarDia(t.split(' ')[0]) === diaNormalizado)
+                .map(t => t.split(' ')[1]);
+
+            selectSG.innerHTML = '';
+            if (horasPermitidas.length === 0) {
+                selectSG.innerHTML = '<option value="">Sin horarios disponibles</option>';
+                selectSG.disabled = true; msgError.style.display = 'block'; btnSubmit.disabled = true;
+            } else {
+                horasPermitidas.forEach(h => selectSG.innerHTML += `<option value="${h}">${h}</option>`);
+                selectSG.disabled = false; msgError.style.display = 'none'; btnSubmit.disabled = false;
+            }
+        };
+
+        window.abrirModalNuevaCita = () => {
+            inicializarSelectoresGlobales();
+            document.getElementById('formNuevaCita').reset();
+            const now = new Date();
+            document.getElementById('nc_fecha').value = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())).toISOString().split('T')[0];
+            document.querySelector('input[name="nc_tipo"][value="Individual"]').checked = true;
+            window.toggleTipoCita();
+            document.getElementById('modalNuevaCita').style.display = 'flex';
+        };
+
+        window.cerrarModalCita = () => {
+            document.getElementById('modalNuevaCita').style.display = 'none';
+            const step1 = document.getElementById('nc-step-1');
+            const step2 = document.getElementById('nc-step-2');
+            if (step1) step1.style.display = 'block';
+            if (step2) step2.style.display = 'none';
+            pendingCreationData = null;
+        };
+
+        window.abrirModalPlanificar = () => {
+            inicializarSelectoresGlobales();
+            if (timeSlots.includes('17:00')) document.getElementById('plan_hora_inicio').value = '17:00';
+
+            const today = new Date();
+            document.getElementById('plan_mes').value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+
+            selectedDays = []; selectedWeeks = [1, 2, 3, 4, 5];
+            document.querySelectorAll('.day-pill').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.week-pill').forEach(p => p.classList.add('active'));
+
+            document.querySelector('input[name="plan_tipo"][value="Individual"]').checked = true;
+            window.togglePlanTipo();
+            document.getElementById('modalPlanificar').style.display = 'flex';
+        };
+
+        window.prepararModalAgendar = (dateStrID, timeKey, tipoPlan = 'Individual') => {
+            inicializarSelectoresGlobales();
+            const [y, m, d] = dateStrID.split('-');
+            const dateObj = new Date(Date.UTC(parseInt(y), parseInt(m) - 1, parseInt(d)));
+            document.getElementById('plan_mes').value = `${y}-${m}`;
+
+            const dayOfWeek = dateObj.getUTCDay();
+            selectedDays = [dayOfWeek];
+            document.querySelectorAll('.day-pill').forEach(p => {
+                p.classList.toggle('active', parseInt(p.getAttribute('data-val')) === dayOfWeek);
+            });
+
+            const nthWeek = Math.ceil(dateObj.getUTCDate() / 7);
+            selectedWeeks = [nthWeek];
+            document.querySelectorAll('.week-pill').forEach(p => {
+                p.classList.toggle('active', parseInt(p.getAttribute('data-val')) === nthWeek);
+            });
+
+            document.querySelector(`input[name="plan_tipo"][value="${tipoPlan}"]`).checked = true;
+            window.togglePlanTipo();
+
+            if (tipoPlan === 'Individual') {
+                const selectHoraIni = document.getElementById('plan_hora_inicio');
+                selectHoraIni.value = timeKey;
+                selectHoraIni.dispatchEvent(new Event('change'));
+            } else {
+                const nombreDiaClick = diasSemanaMapa[dayOfWeek];
+                const targetValue = `${nombreDiaClick} ${timeKey}`;
+                const selectHoraSG = document.getElementById('plan_hora_sg');
+                if (Array.from(selectHoraSG.options).some(o => normalizarDia(o.value) === normalizarDia(targetValue))) {
+                    selectHoraSG.value = Array.from(selectHoraSG.options).find(o => normalizarDia(o.value) === normalizarDia(targetValue)).value;
+                }
+            }
+
+            window.actualizarCalculo();
+            document.getElementById('modalPlanificar').style.display = 'flex';
+        };
+
+        window.cerrarModalPlanificar = () => {
+            document.getElementById('modalPlanificar').style.display = 'none';
+            const step1 = document.getElementById('plan-step-1');
+            const step2 = document.getElementById('plan-step-2');
+            if (step1) step1.style.display = 'block';
+            if (step2) step2.style.display = 'none';
+            pendingCreationData = null;
+        };
+
+        document.querySelectorAll('.week-pill').forEach(pill => {
+            pill.addEventListener('click', (e) => {
+                const val = parseInt(e.target.getAttribute('data-val'));
+                if (selectedWeeks.includes(val)) {
+                    selectedWeeks = selectedWeeks.filter(w => w !== val);
+                    e.target.classList.remove('active');
+                } else {
+                    selectedWeeks.push(val);
+                    e.target.classList.add('active');
+                }
+                window.actualizarCalculo();
+            });
+        });
+
+        window.togglePlanTipo = () => {
+            const isSG = document.querySelector('input[name="plan_tipo"]:checked').value === 'Small Group';
+
+            document.getElementById('box_semanas').style.display = isSG ? 'none' : 'flex';
+            document.getElementById('box_dias').style.display = isSG ? 'none' : 'block';
+            document.getElementById('box_hora_ini').style.display = isSG ? 'none' : 'flex';
+            document.getElementById('box_hora_fin').style.display = isSG ? 'none' : 'flex';
+            document.getElementById('box_hora_sg').style.display = isSG ? 'block' : 'none';
+
+            document.getElementById('plan_cliente').required = true;
+            document.getElementById('plan_hora_inicio').required = !isSG;
+            document.getElementById('plan_hora_fin').required = !isSG;
+            document.getElementById('plan_hora_sg').required = isSG;
+
+            window.actualizarCalculo();
+        };
+
+        window.actualizarHoraFin = () => {
+            const val = document.getElementById('plan_hora_inicio').value;
+            if (val) {
+                const [h, m] = val.split(':');
+                const nextTime = `${String(parseInt(h, 10) + 1).padStart(2, '0')}:${m}`;
+                const finSelect = document.getElementById('plan_hora_fin');
+                if (Array.from(finSelect.options).some(o => o.value === nextTime)) finSelect.value = nextTime;
+            }
+            window.actualizarCalculo();
+        };
+
+        function calcularFechasGeneradas() {
+            const mesStr = document.getElementById('plan_mes').value;
+            if (!mesStr) return [];
+            const [yearStr, monthStr] = mesStr.split('-');
+            const year = parseInt(yearStr); const month = parseInt(monthStr) - 1;
+            const isSG = document.querySelector('input[name="plan_tipo"]:checked').value === 'Small Group';
+
+            let fechas = [];
+
+            if (isSG) {
+                const seleccionSG = document.getElementById('plan_hora_sg').value;
+                if (!seleccionSG) return [];
+                const diaTxt = seleccionSG.split(' ')[0];
+                const diaNum = mapaDiaJS[normalizarDia(diaTxt)];
+
+                let date = new Date(Date.UTC(year, month, 1));
+                while (date.getUTCMonth() === month) {
+                    if (date.getUTCDay() === diaNum) {
+                        fechas.push(new Date(date));
+                    }
+                    date.setUTCDate(date.getUTCDate() + 1);
+                }
+            } else {
+                if (selectedDays.length === 0) return [];
+                let date = new Date(Date.UTC(year, month, 1));
+                while (date.getUTCMonth() === month) {
+                    if (selectedDays.includes(date.getUTCDay())) {
+                        let nth = Math.ceil(date.getUTCDate() / 7);
+                        if (selectedWeeks.includes(nth)) fechas.push(new Date(date));
+                    }
+                    date.setUTCDate(date.getUTCDate() + 1);
+                }
+            }
+            return fechas;
+        }
+
+        window.actualizarCalculo = () => {
+            const fechas = calcularFechasGeneradas();
+            const count = fechas.length;
+            document.getElementById('plan_dias_count').innerText = count === 1 ? '1 día' : `${count} días`;
+            document.getElementById('btn_submit_plan').innerText = `Programar ${count} Citas`;
+
+            let overbooking = false;
+            const isSG = document.querySelector('input[name="plan_tipo"]:checked').value === 'Small Group';
+            if (!isSG) {
+                const horaIni = document.getElementById('plan_hora_inicio').value;
+                fechas.forEach(f => {
+                    const dateStrID = f.toISOString().split('T')[0];
+                    const row1 = timeToRowMap[horaIni];
+                    if (row1) {
+                        if ((aforoGlobalPorFila[`${dateStrID}-${row1}`] || 0) >= 6) overbooking = true;
+                        const row2 = row1 + 1;
+                        if (row2 !== separatorRow && (aforoGlobalPorFila[`${dateStrID}-${row2}`] || 0) >= 6) overbooking = true;
+                    }
+                });
+            }
+            document.getElementById('warning_aforo').style.display = overbooking ? 'flex' : 'none';
+        };
+
+        async function ejecutarGuardadoNormal(fechas, isSG, emailAutor, idCliente, nombreCli, horaIni) {
+            const batch = writeBatch(db);
+            for (let f of fechas) {
+                const fechaGuardar = new Date(f);
+                const [h, m] = horaIni.split(':');
+                fechaGuardar.setUTCHours(parseInt(h), parseInt(m), 0, 0);
+
+                const idDoc = `SES-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+                const dataToSave = {
+                    id_sesion_global: idDoc, id_cliente: idCliente, alias: nombreCli, nombre_cliente: nombreCli,
+                    estado: "Pendiente", tipo_sesion: isSG ? "Small Group" : "Individual",
+                    fecha_hora_inicio: fechaGuardar, ejercicios: [], creado_por: emailAutor, fecha_creacion: new Date(),
+                    utc_migrado: true
+                };
+                batch.set(doc(db, "agenda_sesiones", idDoc), dataToSave);
+            }
+            await batch.commit();
+        }
+
+        window.mostrarOpcionesCascada = (prefix) => {
+            const step1 = document.getElementById(`${prefix}-step-1`);
+            const step2 = document.getElementById(`${prefix}-step-2`);
+
+            let menuHTML = `<div style="background:#f0fdfa; border:1px solid #14b8a6; padding:15px; border-radius:8px; margin-bottom:20px;">
+                <h4 style="color:#0f766e; margin:0 0 5px 0;">Opciones de Planificación (Inyección)</h4>
+                <p style="margin:0; font-size:0.9rem; color:#115e59;">Has creado una sesión en un hueco y el cliente tiene futuras planificaciones. ¿Qué deseas hacer?</p>
+            </div>`;
+
+            menuHTML += `<button type="button" class="btn-primary" style="width:100%; margin-bottom:10px; text-align:left; padding:12px; background:#0f172a;" onclick="ejecutarCreacionIndependiente()">
+                <strong>Crear como sesión independiente</strong><br><span style="font-size:0.8rem; font-weight:normal;">Se creará la sesión vacía y las rutinas futuras quedarán intactas.</span>
+            </button>`;
+
+            menuHTML += `<button type="button" class="btn-primary" style="width:100%; margin-bottom:10px; text-align:left; padding:12px; background:#16a34a;" onclick="ejecutarCreacionCascada()">
+                <strong>Recoger en cascada las planificaciones posteriores</strong><br><span style="font-size:0.8rem; font-weight:normal;">Esta sesión recogerá la rutina de la siguiente sesión futura, adelantando toda su progresión. La última quedará libre.</span>
+            </button>`;
+
+            menuHTML += `<button type="button" class="btn-secondary" style="width:100%; text-align:center; padding:12px;" onclick="cancelarOpcionesCascada('${prefix}')">Cancelar y Volver</button>`;
+
+            step2.innerHTML = menuHTML;
+            step1.style.display = 'none';
+            step2.style.display = 'block';
+        };
+
+        window.cancelarOpcionesCascada = (prefix) => {
+            document.getElementById(`${prefix}-step-2`).style.display = 'none';
+            document.getElementById(`${prefix}-step-1`).style.display = 'block';
+            pendingCreationData = null;
+        };
+
+        window.ejecutarCreacionIndependiente = async () => {
+            if (!pendingCreationData) return;
+            const { modalPrefix, fechas, isSG, emailAutor, idCliente, nombreCli, horaIni } = pendingCreationData;
+
+            try {
+                await ejecutarGuardadoNormal(fechas, isSG, emailAutor, idCliente, nombreCli, horaIni);
+                if (modalPrefix === 'plan') cerrarModalPlanificar();
+                else cerrarModalCita();
+                loadAgenda();
+            } catch (e) { console.error(e); alert("Error al guardar la sesión."); }
+            pendingCreationData = null;
+        };
+
+        window.ejecutarCreacionCascada = async () => {
+            if (!pendingCreationData) return;
+            const { modalPrefix, fechas, emailAutor, idCliente, nombreCli, horaIni, futureSessions } = pendingCreationData;
+
+            try {
+                const batch = writeBatch(db);
+                const f = new Date(fechas[0]);
+                const [h, m] = horaIni.split(':');
+                f.setUTCHours(parseInt(h), parseInt(m), 0, 0);
+
+                const newDocId = `SES-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+                batch.set(doc(db, "agenda_sesiones", newDocId), {
+                    id_sesion_global: newDocId, id_cliente: idCliente, alias: nombreCli, nombre_cliente: nombreCli,
+                    estado: "Pendiente", tipo_sesion: "Individual",
+                    fecha_hora_inicio: f,
+                    ejercicios: futureSessions.length > 0 ? (futureSessions[0].data.ejercicios || []) : [],
+                    creado_por: emailAutor, fecha_creacion: new Date(),
+                    utc_migrado: true
+                });
+
+                // Iteramos: La 1 coge de la 2, la 2 de la 3, etc.
+                for (let i = 0; i < futureSessions.length; i++) {
+                    const currentSess = futureSessions[i];
+                    const nextSess = futureSessions[i + 1];
+
+                    batch.set(doc(db, "agenda_sesiones", currentSess.id), {
+                        ejercicios: nextSess ? (nextSess.data.ejercicios || []) : [],
+                        ultimo_modificado_por: emailAutor,
+                        fecha_modificacion: new Date()
+                    }, { merge: true });
+                }
+
+                await batch.commit();
+
+                if (modalPrefix === 'plan') cerrarModalPlanificar();
+                else cerrarModalCita();
+                loadAgenda();
+            } catch (e) {
+                console.error(e);
+                alert("Error al recoger las rutinas en cascada.");
+            }
+            pendingCreationData = null;
+        };
+
+        // Lógica de Submit del Modal de "Nueva Cita Puntual"
+        document.getElementById('formNuevaCita').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('btnCrearCita');
+            btn.disabled = true; btn.innerText = "Verificando...";
+
+            const tipo = document.querySelector('input[name="nc_tipo"]:checked').value;
+            const isSG = tipo === 'Small Group';
+            const fechaStr = document.getElementById('nc_fecha').value;
+            const horaStrVal = isSG ? document.getElementById('nc_hora_sg').value : document.getElementById('nc_hora_ind').value;
+
+            const [y, m, d] = fechaStr.split('-'); const [h, min] = horaStrVal.split(':');
+            const fechaObj = new Date(Date.UTC(parseInt(y), parseInt(m) - 1, parseInt(d), parseInt(h), parseInt(min), 0));
+
+            const cId = document.getElementById('nc_cliente').value;
+            const cName = document.getElementById('nc_cliente').selectedOptions[0].text;
+            const emailAutor = auth.currentUser ? auth.currentUser.email : "Desconocido";
+
+            // Si es Individual, comprobamos si tiene sesiones futuras para ofrecer la cascada
+            if (!isSG) {
+                const qFuture = query(collection(db, "agenda_sesiones"),
+                    where("id_cliente", "==", cId),
+                    where("fecha_hora_inicio", ">", fechaObj)
+                );
+                try {
+                    const futureSnap = await getDocs(qFuture);
+                    let futureSessions = [];
+                    futureSnap.forEach(doc => {
+                        const data = doc.data();
+                        if (data.tipo_sesion !== 'Small Group') {
+                            futureSessions.push({ id: doc.id, fechaObj: data.fecha_hora_inicio.toDate(), data: data });
+                        }
+                    });
+
+                    futureSessions.sort((a, b) => a.fechaObj - b.fechaObj);
+
+                    if (futureSessions.length > 0) {
+                        pendingCreationData = {
+                            modalPrefix: 'nc', fechas: [fechaObj], isSG: false, emailAutor,
+                            idCliente: cId, nombreCli: cName, horaIni: horaStrVal, futureSessions
+                        };
+                        mostrarOpcionesCascada('nc');
+                        btn.disabled = false; btn.innerText = "Crear Sesión";
+                        return;
+                    }
+                } catch (e) { console.error("Error comprobando sesiones futuras", e); }
+            }
+
+            try {
+                await ejecutarGuardadoNormal([fechaObj], isSG, emailAutor, cId, cName, horaStrVal);
+                cerrarModalCita(); loadAgenda();
+            } catch (error) { alert("Error al crear la sesión."); btn.disabled = false; btn.innerText = "Crear Sesión"; }
+        });
+
+        // Lógica de Submit del Modal de "Planificar Días Masivos"
+        document.getElementById('formPlanificar').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fechas = calcularFechasGeneradas();
+            if (fechas.length === 0) { alert("Debes seleccionar opciones que devuelvan al menos un día válido en el mes."); return; }
+
+            const isSG = document.querySelector('input[name="plan_tipo"]:checked').value === 'Small Group';
+            const activeUser = auth.currentUser;
+            const emailAutor = activeUser ? activeUser.email : "Usuario desconocido";
+
+            const idCliente = document.getElementById('plan_cliente').value;
+            const nombreCli = globalClientes.find(c => c.id === idCliente).alias;
+
+            const sgFullVal = document.getElementById('plan_hora_sg').value;
+            const horaIni = isSG ? sgFullVal.split(' ')[1] : document.getElementById('plan_hora_inicio').value;
+
+            // Ofrecemos la Cascada SOLO si se está insertando 1 ÚNICO día y es sesión Individual
+            if (fechas.length === 1 && !isSG) {
+                document.getElementById('btn_submit_plan').innerText = "Verificando...";
+                const f = new Date(fechas[0]);
+                const [h, m] = horaIni.split(':');
+                f.setUTCHours(parseInt(h), parseInt(m), 0, 0);
+
+                const qFuture = query(collection(db, "agenda_sesiones"),
+                    where("id_cliente", "==", idCliente),
+                    where("fecha_hora_inicio", ">", f)
+                );
+
+                try {
+                    const futureSnap = await getDocs(qFuture);
+                    let futureSessions = [];
+                    futureSnap.forEach(doc => {
+                        const data = doc.data();
+                        if (data.tipo_sesion !== 'Small Group') {
+                            futureSessions.push({ id: doc.id, fechaObj: data.fecha_hora_inicio.toDate(), data: data });
+                        }
+                    });
+
+                    futureSessions.sort((a, b) => a.fechaObj - b.fechaObj);
+
+                    if (futureSessions.length > 0) {
+                        pendingCreationData = {
+                            modalPrefix: 'plan', fechas: [f], isSG: false, emailAutor,
+                            idCliente, nombreCli, horaIni, futureSessions
+                        };
+                        mostrarOpcionesCascada('plan');
+                        document.getElementById('btn_submit_plan').innerText = `Programar 1 Cita`;
+                        return;
+                    }
+                } catch (e) { console.error("Error comprobando sesiones futuras", e); }
+            }
+
+            document.getElementById('btn_submit_plan').innerText = "Guardando...";
+            try {
+                await ejecutarGuardadoNormal(fechas, isSG, emailAutor, idCliente, nombreCli, horaIni);
+                cerrarModalPlanificar(); loadAgenda();
+            } catch (error) {
+                alert("Hubo un error al generar las citas.");
+                document.getElementById('btn_submit_plan').innerText = "Reintentar";
+            }
+        });
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) { window.actualizarCalculo = window.actualizarCalculo; loadAgenda(); }
+            else window.location.href = "index.html";
+        });
+    </script>
+</body>
+
+</html>

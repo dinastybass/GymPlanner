@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pantalla Sala - GO & train</title>
+    <link rel="icon" type="image/png" href="assets/logo.png">
+    <style>
+        :root {
+            --bg: #f1f5f9;
+            --surface: #ffffff;
+            --text-main: #0f172a;
+            --text-muted: #475569;
+            --accent: #0891b2;
+            --border: #cbd5e1;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            margin: 0;
+            padding: 15px;
+            box-sizing: border-box;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            /* Sin scroll general */
+        }
+
+        .sala-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            background: var(--surface);
+            border-radius: 10px;
+            border: 2px solid var(--border);
+            margin-bottom: 15px;
+            flex-shrink: 0;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            gap: 15px;
+        }
+
+        .sala-brand {
+            display: flex;
+            align-items: center;
+            gap: clamp(6px, 1vw, 12px);
+            font-size: clamp(1rem, 2vw, 1.5rem);
+            font-weight: 900;
+            color: var(--text-main);
+            white-space: nowrap;
+            flex: 1;
+        }
+
+        .sala-brand img {
+            height: clamp(24px, 3.5vh, 35px);
+        }
+
+        .sala-time-info {
+            flex-grow: 2;
+            text-align: center;
+            font-size: clamp(0.9rem, 2.2vw, 1.4rem);
+            color: var(--accent);
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: clamp(0.5px, 0.2vw, 2px);
+            white-space: nowrap;
+        }
+
+        .sala-time-info span {
+            margin: 0 clamp(5px, 1vw, 20px);
+            color: var(--border);
+        }
+
+        .btn-salir {
+            flex: 1;
+            text-align: right;
+            background: transparent;
+            color: #991b1b;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            text-decoration: none;
+            font-size: clamp(0.8rem, 1.5vw, 1rem);
+            transition: color 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn-salir:hover {
+            color: #dc2626;
+        }
+
+        /* Grid base dinámico (las filas y columnas se ajustan en JS de 4x1 a 6x2) */
+        .sala-grid {
+            display: grid;
+            gap: 15px;
+            flex-grow: 1;
+            height: calc(100vh - 100px);
+            box-sizing: border-box;
+        }
+
+        .client-card {
+            background: var(--surface);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            box-sizing: border-box;
+            overflow: hidden;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        .client-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 3px solid var(--border);
+            padding-bottom: 8px;
+            margin-bottom: 8px;
+            flex-shrink: 0;
+        }
+
+        .client-name {
+            font-size: 2.2vh;
+            font-weight: 900;
+            color: var(--text-main);
+            text-transform: uppercase;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 65%;
+        }
+
+        .client-time {
+            background: #e0f2fe;
+            color: #0369a1;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 1.8vh;
+            font-weight: 800;
+            border: 1px solid #7dd3fc;
+        }
+
+        .exercises-container {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            overflow-y: hidden;
+            /* Cero barras de scroll */
+        }
+
+        .preview-block {
+            margin-bottom: 6px;
+        }
+
+        .preview-title {
+            font-size: 1.4vh;
+            font-weight: 800;
+            color: var(--accent);
+            text-transform: uppercase;
+            border-bottom: 2px solid var(--border);
+            margin-bottom: 4px;
+            padding-bottom: 2px;
+            letter-spacing: 0.5px;
+        }
+
+        /* Estilo del Subgrupo / Circuito / Tabata */
+        .preview-subgrupo {
+            background: #f0fdfa;
+            border: 1px solid #ccfbf1;
+            border-left: 3px solid var(--accent);
+            border-radius: 6px;
+            padding: 5px 7px;
+            margin-bottom: 6px;
+        }
+
+        .subgrupo-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+            padding-bottom: 2px;
+            border-bottom: 1px dashed #99f6e4;
+            gap: 6px;
+        }
+
+        .subgrupo-title {
+            font-size: 1.3vh;
+            font-weight: 800;
+            color: #0e7490;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .subgrupo-reps {
+            font-size: 1.2vh;
+            font-weight: 700;
+            color: #0f766e;
+            white-space: nowrap;
+            text-align: right;
+        }
+
+        .preview-ex {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 5px;
+            margin-bottom: 4px;
+            line-height: 1.2;
+        }
+
+        .preview-ex:last-child {
+            margin-bottom: 0;
+        }
+
+        .preview-ex-info {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            flex-grow: 1;
+        }
+
+        .preview-ex-name {
+            font-size: 1.6vh;
+            font-weight: 700;
+            color: var(--text-main);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .preview-ex-detail {
+            font-size: 1.3vh;
+            color: var(--text-muted);
+            font-style: italic;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .preview-ex-presc {
+            font-size: 1.5vh;
+            font-weight: 800;
+            color: #0369a1;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .empty-slot {
+            background: #f8fafc;
+            border: 3px dashed var(--border);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #94a3b8;
+            font-size: 2vh;
+            font-weight: bold;
+            text-align: center;
+            padding: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <header class="sala-header">
+        <div class="sala-brand"><img src="assets/logo.png" alt="Logo"> PANTALLA SALA</div>
+        <div class="sala-time-info" id="salaFranjaHora">ANALIZANDO AGENDA...</div>
+        <a href="planificacion.html" class="btn-salir">✕ Cerrar Sala</a>
+    </header>
+
+    <div class="sala-grid" id="salaGrid"></div>
+
+    <script type="module">
+        import { db } from './firebase-config.js';
+        import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
+
+        const ordenBloques = { "Calentamiento Dinámico": 1, "Calentamiento Específico": 2, "Calentamiento": 3, "Movilidad": 4, "Activación": 5, "Core": 6, "Parte Principal": 7, "Fuerza": 8 };
+
+        function getTargetTiming() {
+            let now = new Date();
+            let day = now.getDay();
+            let timeFloat = now.getHours() + (now.getMinutes() / 60);
+
+            let targetDate = new Date(now);
+            let targetBlock = 'Mañana';
+
+            if (timeFloat >= 21) {
+                targetBlock = 'Mañana';
+                if (day === 5) { targetDate.setDate(now.getDate() + 3); }
+                else if (day === 6) { targetDate.setDate(now.getDate() + 2); }
+                else { targetDate.setDate(now.getDate() + 1); }
+            } else if (day === 6) {
+                targetDate.setDate(now.getDate() + 2); targetBlock = 'Mañana';
+            } else if (day === 0) {
+                targetDate.setDate(now.getDate() + 1); targetBlock = 'Mañana';
+            } else {
+                if (timeFloat >= 15.5) {
+                    targetBlock = 'Tarde';
+                } else {
+                    targetBlock = 'Mañana';
+                }
+            }
+            return { targetDate, targetBlock, now };
+        }
+
+        function renderizarFilaEjercicio(ej) {
+            let acro = ej.Acrónimo || ej.Acronimo || ej.acronimo || ej.alias || ej.Alias;
+            if (!acro) {
+                const nombreLargo = ej.Nombre_Ejercicio || ej.Ejercicio_Detalle || ej.nombre_ejercicio || ej.ejercicio || 'Ej';
+                acro = nombreLargo.length > 15 ? nombreLargo.substring(0, 15) + '...' : nombreLargo;
+            }
+
+            const detalleVal = ej.Detalle || ej.detalle || '';
+            let extraInfo = [];
+            if (detalleVal) extraInfo.push(detalleVal);
+            if (ej.Material_Adaptacion) extraInfo.push(`${ej.Material_Adaptacion}`);
+            const extras = extraInfo.join(' · ');
+            const detalleHtml = extras ? `<div class="preview-ex-detail">${extras}</div>` : '';
+
+            const s_raw = ej.Series || ej.series || '';
+            const r_raw = ej.Repeticiones || ej.repeticiones || '';
+            let reps = ej.Volumen_Series_Reps || ej.Series_Reps || ej.series_reps || s_raw;
+            if (!ej.Volumen_Series_Reps && !ej.Series_Reps && !ej.series_reps && r_raw) reps = s_raw ? `${s_raw} x ${r_raw}` : r_raw;
+            if (!reps) reps = '-';
+
+            const pesoStr = (ej.Peso && String(ej.Peso).trim() !== '') ? ` ⚖️ ${ej.Peso}` : '';
+            const intensStr = (ej.Intensidad && ej.Intensidad !== 'MED' && ej.Intensidad !== '') ? ` · ${ej.Intensidad}` : '';
+
+            return `
+        <div class="preview-ex">
+          <div class="preview-ex-info">
+            <span class="preview-ex-name">${acro}</span>
+            ${detalleHtml}
+          </div>
+          <span class="preview-ex-presc">${reps}${pesoStr}${intensStr}</span>
+        </div>
+      `;
+        }
+
+        async function cargarPantallaSala() {
+            const grid = document.getElementById('salaGrid');
+            const franjaLabel = document.getElementById('salaFranjaHora');
+            if (!grid || !franjaLabel) return;
+
+            const { targetDate, targetBlock, now } = getTargetTiming();
+
+            const diasSemana = ['DOMINGO', 'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO'];
+            const diaNombre = diasSemana[targetDate.getDay()];
+            const diaNum = targetDate.getDate();
+            const mesNumReal = targetDate.getMonth();
+            const nombresMeses = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+            const mesNombre = nombresMeses[mesNumReal];
+
+            franjaLabel.innerHTML = `${diaNombre} <span>—</span> ${diaNum} DE ${mesNombre} <span>—</span> ${targetBlock.toUpperCase()}`;
+
+            const startOfDay = new Date(Date.UTC(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 0, 0, 0, 0));
+            const endOfDay = new Date(Date.UTC(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 23, 59, 59, 999));
+
+            try {
+                const clientesMap = {};
+                const clientesSnap = await getDocs(collection(db, "clientes"));
+                clientesSnap.forEach(doc => { const c = doc.data(); if (c.ID_Cliente) clientesMap[c.ID_Cliente] = (c.Alias && c.Alias.trim() !== '') ? c.Alias : c.Nombre_Cliente; });
+
+                const q = query(collection(db, "agenda_sesiones"), where("fecha_hora_inicio", ">=", startOfDay), where("fecha_hora_inicio", "<=", endOfDay));
+                const snapshot = await getDocs(q);
+
+                let sesionesValidas = [];
+                const isTargetToday = (targetDate.toDateString() === now.toDateString());
+                const nowNominalUTC = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds());
+
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (data.tipo_sesion === 'Small Group') return;
+                    if (data.estado === 'Completada') return;
+
+                    const fInicio = data.fecha_hora_inicio.toDate();
+                    const startHour = fInicio.getUTCHours();
+
+                    if (targetBlock === 'Mañana' && startHour >= 14) return;
+                    if (targetBlock === 'Tarde' && startHour < 14) return;
+
+                    if (isTargetToday) {
+                        const diffMins = (nowNominalUTC - fInicio.getTime()) / 60000;
+                        if (diffMins > 150) return;
+                    }
+
+                    const idCliente = data.id_cliente || data.ID_Cliente;
+                    const nombreMostrar = (idCliente && clientesMap[idCliente]) ? clientesMap[idCliente] : (data.Alias || data.alias || data.Nombre_Cliente || data.nombre_cliente);
+
+                    sesionesValidas.push({
+                        nombre: nombreMostrar,
+                        inicioObj: fInicio,
+                        inicioStr: fInicio.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
+                        ejercicios: data.ejercicios || [],
+                        orden_customizado: data.orden_customizado || false
+                    });
+                });
+
+                sesionesValidas.sort((a, b) => a.inicioObj - b.inicioObj);
+                const sesionesFiltradas = sesionesValidas.slice(0, 12);
+                grid.innerHTML = '';
+
+                // --- CÁLCULO DE GRID DINÁMICO (Min 4x1, Max 6x2) ---
+                const numSesiones = sesionesFiltradas.length;
+                let cols = 4;
+                let rows = 1;
+
+                if (numSesiones <= 4) {
+                    cols = 4;
+                    rows = 1;
+                } else if (numSesiones === 5) {
+                    cols = 5;
+                    rows = 1;
+                } else if (numSesiones === 6) {
+                    cols = 6;
+                    rows = 1;
+                } else if (numSesiones <= 8) {
+                    cols = 4;
+                    rows = 2;
+                } else if (numSesiones <= 10) {
+                    cols = 5;
+                    rows = 2;
+                } else {
+                    cols = 6;
+                    rows = 2;
+                }
+
+                grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+                grid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+
+                // --- RENDERIZADO DE TARJETAS DE SESIÓN ---
+                sesionesFiltradas.forEach(s => {
+                    let ejerciciosHTML = '';
+                    if (s.ejercicios.length > 0) {
+                        let listaEjercicios = [...s.ejercicios];
+                        if (!s.orden_customizado) {
+                            listaEjercicios.sort((a, b) => {
+                                const bA = a.Bloque || a.bloque || a.Fase_Bloque || 'General';
+                                const bB = b.Bloque || b.bloque || b.Fase_Bloque || 'General';
+                                return (ordenBloques[bA] || 99) - (ordenBloques[bB] || 99);
+                            });
+                        }
+
+                        // Agrupamos respetando el orden secuencial de bloques
+                        let bloquesSecuenciales = [];
+                        let ultimoBloqueNombre = null;
+                        let bloqueActual = null;
+
+                        listaEjercicios.forEach(ej => {
+                            const bName = ej.Bloque || ej.bloque || ej.Fase_Bloque || 'General';
+                            if (bName !== ultimoBloqueNombre) {
+                                bloqueActual = { nombre: bName, items: [] };
+                                bloquesSecuenciales.push(bloqueActual);
+                                ultimoBloqueNombre = bName;
+                            }
+                            bloqueActual.items.push(ej);
+                        });
+
+                        // Dentro de cada bloque, agrupamos ejercicios por subgrupo consecutivo
+                        bloquesSecuenciales.forEach(bloqueObj => {
+                            let subgruposSecuenciales = [];
+                            let ultimoSub = null;
+                            let grupoActual = null;
+
+                            bloqueObj.items.forEach(ej => {
+                                const subName = ej.Subgrupo || ej.subgrupo || '';
+                                if (subName) {
+                                    if (subName === ultimoSub && grupoActual && grupoActual.tipo === 'subgrupo') {
+                                        grupoActual.ejercicios.push(ej);
+                                    } else {
+                                        grupoActual = {
+                                            tipo: 'subgrupo',
+                                            nombre: subName,
+                                            detalle: ej.Subgrupo_Detalle || ej.subgrupo_detalle || '',
+                                            ejercicios: [ej]
+                                        };
+                                        subgruposSecuenciales.push(grupoActual);
+                                        ultimoSub = subName;
+                                    }
+                                } else {
+                                    subgruposSecuenciales.push({ tipo: 'individual', ejercicio: ej });
+                                    ultimoSub = null;
+                                    grupoActual = null;
+                                }
+                            });
+
+                            let contenidoBloqueHTML = '';
+                            subgruposSecuenciales.forEach(grupo => {
+                                if (grupo.tipo === 'subgrupo') {
+                                    const itemsHTML = grupo.ejercicios.map(ej => renderizarFilaEjercicio(ej)).join('');
+                                    const repsHTML = grupo.detalle ? `<span class="subgrupo-reps">${grupo.detalle}</span>` : '';
+                                    contenidoBloqueHTML += `
+                    <div class="preview-subgrupo">
+                      <div class="subgrupo-header">
+                        <span class="subgrupo-title">${grupo.nombre}</span>
+                        ${repsHTML}
+                      </div>
+                      ${itemsHTML}
+                    </div>
+                  `;
+                                } else {
+                                    contenidoBloqueHTML += renderizarFilaEjercicio(grupo.ejercicio);
+                                }
+                            });
+
+                            ejerciciosHTML += `<div class="preview-block"><div class="preview-title">${bloqueObj.nombre}</div>${contenidoBloqueHTML}</div>`;
+                        });
+
+                    } else {
+                        ejerciciosHTML = `<div style="color:var(--text-muted); font-size:1.5vh; text-align:center; padding:15px;">Sin ejercicios programados</div>`;
+                    }
+
+                    const card = document.createElement('div');
+                    card.className = 'client-card';
+                    card.innerHTML = `
+            <div class="client-card-header">
+              <span class="client-name">${s.nombre}</span>
+              <span class="client-time">${s.inicioStr}</span>
+            </div>
+            <div class="exercises-container">
+              ${ejerciciosHTML}
+            </div>
+          `;
+                    grid.appendChild(card);
+                });
+
+                // Rellenar huecos vacíos para mantener la cuadrícula estable
+                const totalSlots = cols * rows;
+                const huecosRestantes = totalSlots - sesionesFiltradas.length;
+                for (let i = 0; i < huecosRestantes; i++) {
+                    const emptyCard = document.createElement('div');
+                    emptyCard.className = 'empty-slot';
+                    emptyCard.innerHTML = `<span>LIBRE</span>`;
+                    grid.appendChild(emptyCard);
+                }
+
+            } catch (error) {
+                console.error("Error al cargar la pantalla de sala:", error);
+            }
+        }
+
+        cargarPantallaSala();
+        setInterval(cargarPantallaSala, 120000);
+    </script>
+</body>
+
+</html>

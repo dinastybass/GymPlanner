@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maestros - GO & train</title>
+    <link rel="icon" type="image/png" href="assets/logo.png">
+
+    <link rel="stylesheet" href="styles.css">
+    <script src="nav-component.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+
+    <style>
+        .maestros-layout {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 25px;
+            align-items: start;
+        }
+
+        @media (max-width: 850px) {
+            .maestros-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .sidebar-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.04);
+        }
+
+        .sec-group {
+            margin-bottom: 18px;
+        }
+
+        .sec-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .sec-title {
+            font-size: 0.75rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            letter-spacing: 0.6px;
+            padding: 6px 10px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 6px;
+        }
+
+        .clave-btn {
+            width: 100%;
+            text-align: left;
+            background: transparent;
+            border: none;
+            padding: 9px 12px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            color: var(--text-main);
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.15s;
+        }
+
+        .clave-btn:hover {
+            background: var(--hover-bg);
+        }
+
+        .clave-btn.active {
+            background: #e0f2fe;
+            color: #0369a1;
+            font-weight: 700;
+        }
+
+        .count-pill {
+            font-size: 0.75rem;
+            background: var(--hover-bg);
+            color: var(--text-muted);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 600;
+        }
+
+        .clave-btn.active .count-pill {
+            background: #bae6fd;
+            color: #0369a1;
+        }
+
+        .add-bar {
+            display: flex;
+            gap: 10px;
+            background: var(--hover-bg);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .add-bar input[type="text"] {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.95rem;
+        }
+
+        table.maestros-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .maestros-table th,
+        .maestros-table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+        }
+
+        .maestros-table th {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            background: var(--hover-bg);
+        }
+
+        .maestro-row {
+            background: var(--surface);
+            transition: background 0.15s;
+        }
+
+        .maestro-row:hover {
+            background: #f8fafc;
+        }
+
+        .drag-cell {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .drag-handle {
+            color: #94a3b8;
+            font-size: 1.2rem;
+            cursor: grab;
+            padding: 2px 6px;
+            border-radius: 4px;
+            user-select: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.2s, background 0.2s;
+        }
+
+        .drag-handle:hover {
+            color: var(--accent-dark);
+            background: #e0f2fe;
+        }
+
+        .drag-handle:active {
+            cursor: grabbing;
+        }
+
+        .orden-badge {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-weight: 700;
+            min-width: 22px;
+        }
+
+        .sortable-ghost {
+            opacity: 0.4;
+            background: #e0f2fe !important;
+        }
+
+        .action-btns {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        .btn-icon {
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 6px 10px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            color: var(--text-main);
+            transition: background 0.2s;
+        }
+
+        .btn-icon:hover {
+            background: var(--hover-bg);
+        }
+
+        .btn-icon.danger {
+            color: #991b1b;
+        }
+
+        .btn-icon.danger:hover {
+            background: #fee2e2;
+            border-color: #fca5a5;
+        }
+    </style>
+</head>
+
+<body>
+    <gym-navbar active="maestros"></gym-navbar>
+
+    <div class="container">
+        <div class="page-header">
+            <div>
+                <h1>Gestor de Maestros</h1>
+                <p style="margin: 4px 0 0 0; color: var(--text-muted); font-size: 0.9rem;">Configuración centralizada de
+                    Secciones, Claves y Valores de toda la aplicación.</p>
+            </div>
+        </div>
+
+        <div class="maestros-layout">
+            <!-- MENÚ LATERAL IZQUIERDO -->
+            <aside class="sidebar-card" id="sidebarMaestros"></aside>
+
+            <!-- PANEL PRINCIPAL DERECHO -->
+            <main class="card">
+                <div
+                    style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid var(--border); padding-bottom:15px;">
+                    <div>
+                        <span class="breadcrumb" id="uiSeccion"
+                            style="margin:0; font-weight:700; text-transform:uppercase;">EJERCICIOS</span>
+                        <h2 id="uiClave" style="margin:4px 0 0 0; font-size:1.4rem;">Niveles</h2>
+                    </div>
+                    <span id="uiTotal" style="color:var(--text-muted); font-size:0.9rem; font-weight:600;">0
+                        valores</span>
+                </div>
+
+                <form class="add-bar" id="formMaestro">
+                    <input type="hidden" id="editId" value="">
+                    <input type="text" id="inputValor" placeholder="Escribe el nuevo valor (se añadirá al final)..."
+                        required>
+                    <button type="submit" class="btn-primary" id="btnGuardar">Añadir valor</button>
+                    <button type="button" class="btn-secondary" id="btnCancelar" style="display:none;">Cancelar</button>
+                </form>
+
+                <div style="overflow-x:auto;">
+                    <table class="maestros-table">
+                        <thead>
+                            <tr>
+                                <th style="width:90px;">Orden</th>
+                                <th>Valor</th>
+                                <th style="text-align:right; width:160px;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaValores">
+                            <tr>
+                                <td colspan="3" style="text-align:center; padding:30px; color:var(--text-muted);">
+                                    Cargando maestros...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- MODAL AVISO DEPENDENCIAS -->
+    <div class="modal-overlay" id="modalDependencias" style="display:none; align-items:center; justify-content:center;">
+        <div class="modal-content" style="max-width: 450px;">
+            <h2 style="margin-top:0; color:#b91c1c;">⚠️ Elemento en uso</h2>
+            <p id="depMensaje" style="color:var(--text-muted); font-size:0.9rem; line-height:1.4;"></p>
+
+            <div class="form-group" style="margin: 20px 0;">
+                <label>¿Qué deseas hacer con los elementos afectados?</label>
+                <select id="selectAlternativa" class="form-control"
+                    style="width:100%; padding:10px; border-radius:6px; border:1px solid var(--border);">
+                    <option value="dejar_vacio">Dejar el campo vacío</option>
+                    <option value="reasignar">Reasignar a otro valor existente</option>
+                </select>
+            </div>
+
+            <div class="form-group" id="boxReasignar" style="display:none; margin-bottom: 20px;">
+                <label>Selecciona el nuevo valor:</label>
+                <select id="selectNuevoValor" class="form-control"
+                    style="width:100%; padding:10px; border-radius:6px; border:1px solid var(--border);"></select>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                <button type="button" class="btn-secondary"
+                    onclick="document.getElementById('modalDependencias').style.display='none'">Cancelar</button>
+                <button type="button" class="btn-primary" id="btnConfirmarBorrado" style="background:#dc2626;">Confirmar
+                    Borrado</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { auth } from './firebase-config.js';
+        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+        import {
+            ESTRUCTURA_MAESTROS, cargarTodosLosMaestros, limpiarCacheMaestros,
+            guardarValorMaestro, reordenarValoresMaestro, eliminarValorMaestro,
+            comprobarDependenciasMaestro, reasignarOQuitarDependencia
+        } from './maestros-service.js';
+
+        let mapaMaestros = {};
+        let seccionActual = "Ejercicios";
+        let claveActual = "Niveles";
+        let sortableInstance = null;
+
+        function renderSidebar() {
+            const sb = document.getElementById('sidebarMaestros');
+            if (!sb) return;
+            sb.innerHTML = '';
+
+            for (const [sec, claves] of Object.entries(ESTRUCTURA_MAESTROS)) {
+                const group = document.createElement('div');
+                group.className = 'sec-group';
+                group.innerHTML = `<div class="sec-title">${sec}</div>`;
+
+                claves.forEach(clv => {
+                    const count = (mapaMaestros[sec] && mapaMaestros[sec][clv]) ? mapaMaestros[sec][clv].length : 0;
+                    const btn = document.createElement('button');
+                    btn.className = `clave-btn ${(sec === seccionActual && clv === claveActual) ? 'active' : ''}`;
+                    btn.innerHTML = `<span>${clv}</span><span class="count-pill">${count}</span>`;
+                    btn.onclick = () => seleccionarClave(sec, clv);
+                    group.appendChild(btn);
+                });
+
+                sb.appendChild(group);
+            }
+        }
+
+        function seleccionarClave(sec, clv) {
+            seccionActual = sec;
+            claveActual = clv;
+            resetFormulario();
+            renderSidebar();
+            renderTabla();
+        }
+
+        function initSortableTabla() {
+            const tbody = document.getElementById('tablaValores');
+            if (!tbody) return;
+
+            if (sortableInstance) {
+                sortableInstance.destroy();
+                sortableInstance = null;
+            }
+
+            const lista = (mapaMaestros[seccionActual] && mapaMaestros[seccionActual][claveActual]) || [];
+            if (lista.length <= 1) return;
+
+            sortableInstance = new Sortable(tbody, {
+                animation: 150,
+                handle: '.drag-handle',
+                ghostClass: 'sortable-ghost',
+                onEnd: async function () {
+                    const filas = Array.from(tbody.querySelectorAll('tr.maestro-row'));
+                    if (filas.length === 0) return;
+
+                    const listaActual = (mapaMaestros[seccionActual] && mapaMaestros[seccionActual][claveActual]) || [];
+                    const nuevaLista = filas.map((tr, idx) => {
+                        const id = tr.getAttribute('data-id');
+                        const itemOriginal = listaActual.find(x => x.id === id);
+                        return {
+                            id: id,
+                            valor: itemOriginal ? itemOriginal.valor : tr.getAttribute('data-valor'),
+                            orden: idx + 1
+                        };
+                    });
+
+                    // Actualizamos en memoria y refrescamos numeración visual al instante
+                    mapaMaestros[seccionActual][claveActual] = nuevaLista;
+                    renderTabla();
+
+                    try {
+                        await reordenarValoresMaestro(seccionActual, claveActual, nuevaLista);
+                    } catch (err) {
+                        console.error("Error guardando el nuevo orden:", err);
+                        alert("No se pudo guardar el nuevo orden: " + err.message);
+                        await recargarVista();
+                    }
+                }
+            });
+        }
+
+        function renderTabla() {
+            const secEl = document.getElementById('uiSeccion');
+            const clvEl = document.getElementById('uiClave');
+            const totalEl = document.getElementById('uiTotal');
+            const tbody = document.getElementById('tablaValores');
+
+            if (!secEl || !tbody) return;
+
+            secEl.innerText = `SECCIÓN · ${seccionActual}`;
+            clvEl.innerText = claveActual;
+
+            const lista = (mapaMaestros[seccionActual] && mapaMaestros[seccionActual][claveActual]) || [];
+            totalEl.innerText = `${lista.length} valor(es)`;
+
+            if (lista.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding:30px; color:var(--text-muted);">No hay valores registrados en esta clave.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = lista.map((item, idx) => `
+                <tr class="maestro-row" data-id="${item.id}" data-valor="${item.valor.replace(/"/g, '&quot;')}">
+                    <td>
+                        <div class="drag-cell">
+                            <span class="drag-handle" title="Arrastra para cambiar el orden">⋮⋮</span>
+                            <span class="orden-badge">${idx + 1}</span>
+                        </div>
+                    </td>
+                    <td style="font-weight:600;">${item.valor}</td>
+                    <td>
+                        <div class="action-btns">
+                            <button class="btn-icon" onclick="window.editarItem('${item.id}', '${item.valor.replace(/'/g, "\\'")}')">Editar</button>
+                            <button class="btn-icon danger" onclick="window.borrarItem('${claveActual}', '${item.id}', '${item.valor.replace(/'/g, "\\'")}')">Eliminar</button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+
+            initSortableTabla();
+        }
+
+        window.editarItem = (id, valor) => {
+            document.getElementById('editId').value = id;
+            document.getElementById('inputValor').value = valor;
+            document.getElementById('btnGuardar').innerText = "Actualizar";
+            document.getElementById('btnCancelar').style.display = "inline-flex";
+            document.getElementById('inputValor').focus();
+        };
+
+        function resetFormulario() {
+            const editId = document.getElementById('editId');
+            const valInput = document.getElementById('inputValor');
+            const btnGuardar = document.getElementById('btnGuardar');
+            const btnCancelar = document.getElementById('btnCancelar');
+
+            if (editId) editId.value = '';
+            if (valInput) valInput.value = '';
+            if (btnGuardar) btnGuardar.innerText = "Añadir valor";
+            if (btnCancelar) btnCancelar.style.display = "none";
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const btnCancel = document.getElementById('btnCancelar');
+            if (btnCancel) btnCancel.addEventListener('click', resetFormulario);
+
+            const formMaestro = document.getElementById('formMaestro');
+            if (formMaestro) {
+                formMaestro.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const valor = document.getElementById('inputValor').value.trim();
+                    const editId = document.getElementById('editId').value.trim();
+                    if (!valor) return;
+
+                    document.getElementById('btnGuardar').innerText = "Guardando...";
+
+                    try {
+                        const listaActual = (mapaMaestros[seccionActual] && mapaMaestros[seccionActual][claveActual]) || [];
+                        let ordenCalculado = listaActual.length + 1;
+
+                        if (editId) {
+                            const idxExistente = listaActual.findIndex(x => x.id === editId);
+                            if (idxExistente !== -1) {
+                                ordenCalculado = idxExistente + 1;
+                            }
+                        }
+
+                        await guardarValorMaestro(seccionActual, claveActual, valor, ordenCalculado, editId || null);
+                        resetFormulario();
+                        await recargarVista();
+                    } catch (err) {
+                        alert("Error al guardar: " + err.message);
+                        document.getElementById('btnGuardar').innerText = editId ? "Actualizar" : "Añadir valor";
+                    }
+                });
+            }
+        });
+
+        async function reindexarTrasBorrado(clave, itemIdEliminado) {
+            const listaRestante = ((mapaMaestros[seccionActual] && mapaMaestros[seccionActual][clave]) || [])
+                .filter(item => item.id !== itemIdEliminado);
+            await reordenarValoresMaestro(seccionActual, clave, listaRestante);
+        }
+
+        window.borrarItem = async (clave, itemId, valor) => {
+            const dependencias = await comprobarDependenciasMaestro(clave, valor);
+
+            if (dependencias.length > 0) {
+                const modal = document.getElementById('modalDependencias');
+                const mensaje = document.getElementById('depMensaje');
+                const selectAlt = document.getElementById('selectAlternativa');
+                const boxReasignar = document.getElementById('boxReasignar');
+                const selectNuevo = document.getElementById('selectNuevoValor');
+
+                mensaje.innerHTML = `El valor <strong>"${valor}"</strong> está siendo utilizado actualmente por <strong>${dependencias.length}</strong> registro(s) en el sistema. Si lo eliminas, debes decidir qué hacer con ellos.`;
+
+                const listaActual = (mapaMaestros[seccionActual] && mapaMaestros[seccionActual][clave]) || [];
+                selectNuevo.innerHTML = listaActual.filter(item => item.valor !== valor).map(item => `<option value="${item.valor}">${item.valor}</option>`).join('');
+
+                selectAlt.onchange = (e) => {
+                    boxReasignar.style.display = e.target.value === 'reasignar' ? 'block' : 'none';
+                };
+                selectAlt.value = 'dejar_vacio';
+                boxReasignar.style.display = 'none';
+
+                modal.style.display = 'flex';
+
+                document.getElementById('btnConfirmarBorrado').onclick = async () => {
+                    const opcion = selectAlt.value;
+                    const nuevoVal = opcion === 'reasignar' ? selectNuevo.value : "";
+
+                    document.getElementById('btnConfirmarBorrado').innerText = "Procesando...";
+
+                    try {
+                        await reasignarOQuitarDependencia(clave, valor, nuevoVal);
+                        await eliminarValorMaestro(clave, itemId);
+                        await reindexarTrasBorrado(clave, itemId);
+
+                        modal.style.display = 'none';
+                        document.getElementById('btnConfirmarBorrado').innerText = "Confirmar Borrado";
+                        await recargarVista();
+                        alert(`Elemento eliminado correctamente. Los registros afectados han sido actualizados.`);
+                    } catch (err) {
+                        alert("Error al procesar: " + err.message);
+                        document.getElementById('btnConfirmarBorrado').innerText = "Confirmar Borrado";
+                    }
+                };
+
+            } else {
+                if (!confirm(`¿Seguro que deseas eliminar "${valor}" de ${clave}?`)) return;
+                try {
+                    await eliminarValorMaestro(clave, itemId);
+                    await reindexarTrasBorrado(clave, itemId);
+                    await recargarVista();
+                } catch (err) {
+                    alert("No se pudo eliminar: " + err.message);
+                }
+            }
+        };
+
+        async function recargarVista() {
+            try {
+                limpiarCacheMaestros();
+                mapaMaestros = await cargarTodosLosMaestros(true);
+                renderSidebar();
+                renderTabla();
+            } catch (e) {
+                console.error("Error al cargar maestros:", e);
+                const tbody = document.getElementById('tablaValores');
+                if (tbody) tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding:30px; color:red;">Error de carga: ${e.message}</td></tr>`;
+            }
+        }
+
+        // Solo requiere que el usuario esté autenticado en Firebase
+        onAuthStateChanged(auth, async (user) => {
+            if (!user) {
+                window.location.href = "index.html";
+                return;
+            }
+            await recargarVista();
+        });
+    </script>
+</body>
+
+</html>

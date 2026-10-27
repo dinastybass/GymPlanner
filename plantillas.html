@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plantillas - GO & train</title>
+    <link rel="icon" type="image/png" href="assets/logo.png">
+
+    <link rel="stylesheet" href="styles.css">
+    <script src="nav-component.js" defer></script>
+
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        th,
+        td {
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            background: #f8fafc;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .row-link {
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .row-link:hover {
+            background: #f0fdfa;
+        }
+
+        .pill-nivel {
+            background: #e0f2fe;
+            color: #0369a1;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            border: 1px solid #7dd3fc;
+        }
+    </style>
+</head>
+
+<body>
+    <gym-navbar active="plantillas"></gym-navbar>
+
+    <div class="container">
+        <div class="page-header">
+            <h1>Sesiones Predefinidas</h1>
+            <button class="btn-primary" onclick="document.getElementById('modalNueva').style.display='flex'">+ Nueva
+                Plantilla</button>
+        </div>
+        <div class="card" style="padding:0;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nombre de Sesión</th>
+                        <th>Nivel</th>
+                        <th>Nº Ejercicios</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr>
+                        <td colspan="4" style="padding:40px; text-align:center;">Cargando plantillas...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- MODAL NUEVA PLANTILLA -->
+    <div class="modal-overlay" id="modalNueva">
+        <div class="modal-content">
+            <button class="modal-close"
+                onclick="document.getElementById('modalNueva').style.display='none'">&times;</button>
+            <h2 style="margin-top:0;">Crear Plantilla</h2>
+            <form id="formNueva">
+                <div class="form-group">
+                    <label>Nombre de la sesión</label>
+                    <input type="text" id="p_nombre" required placeholder="Ej. Tren Inferior - Día 1">
+                </div>
+                <div class="form-group">
+                    <label>Nivel Objetivo</label>
+                    <select id="p_nivel" required></select>
+                </div>
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+                    <button type="button" class="btn-secondary"
+                        onclick="document.getElementById('modalNueva').style.display='none'">Cancelar</button>
+                    <button type="submit" class="btn-primary">Crear y Editar Ejercicios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script type="module">
+        import { auth, db } from './firebase-config.js';
+        import { collection, getDocs, doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
+        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+        import { poblarSelect } from './maestros-service.js';
+
+        async function loadPlantillas() {
+            await poblarSelect('p_nivel', 'Ejercicios', 'Niveles', null);
+
+            try {
+                const snap = await getDocs(collection(db, "plantillas_sesiones"));
+                const tbody = document.getElementById('tableBody');
+                let html = '';
+                let count = 0;
+
+                snap.forEach(d => {
+                    count++;
+                    const data = d.data();
+                    html += `
+                        <tr class="row-link" onclick="window.location.href='editar_plantilla.html?id=${d.id}'">
+                            <td><strong>${data.nombre}</strong></td>
+                            <td><span class="pill-nivel">${data.nivel}</span></td>
+                            <td>${data.ejercicios ? data.ejercicios.length : 0} ejercicios</td>
+                            <td>
+                                <button onclick="event.stopPropagation(); borrarPlantilla('${d.id}')" style="background:none; border:none; color:red; cursor:pointer; font-weight:bold;">🗑️ Borrar</button>
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                if (count === 0) tbody.innerHTML = '<tr><td colspan="4" style="padding:40px; text-align:center;">No hay plantillas creadas.</td></tr>';
+                else tbody.innerHTML = html;
+            } catch (e) {
+                document.getElementById('tableBody').innerHTML = '<tr><td colspan="4">Error al cargar.</td></tr>';
+            }
+        }
+
+        window.borrarPlantilla = async (id) => {
+            if (confirm("¿Borrar esta plantilla? No se puede deshacer.")) {
+                await deleteDoc(doc(db, "plantillas_sesiones", id));
+                loadPlantillas();
+            }
+        };
+
+        document.getElementById('formNueva').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = `PLANTILLA-${Date.now()}`;
+            await setDoc(doc(db, "plantillas_sesiones", id), {
+                nombre: document.getElementById('p_nombre').value,
+                nivel: document.getElementById('p_nivel').value,
+                ejercicios: []
+            });
+            window.location.href = `editar_plantilla.html?id=${id}`;
+        });
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) loadPlantillas();
+            else window.location.href = "index.html";
+        });
+    </script>
+</body>
+
+</html>
