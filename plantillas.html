@@ -253,7 +253,6 @@
                             <div class="tipo-sesion-header" onclick="const t = this.nextElementSibling; const s = this.querySelector('svg'); if(t.style.display==='none'){t.style.display='block';s.style.transform='rotate(0deg)';}else{t.style.display='none';s.style.transform='rotate(-90deg)';}">
                                 <span>${tipo}</span>
                                 <span style="display:flex; align-items:center; gap:12px;">
-                                    <button type="button" class="btn-add-in-section" onclick="event.stopPropagation(); window.abrirModalNueva('${tipoEscaped}')">+ Añadir plantilla</button>
                                     <span style="font-weight:normal; font-size:0.85rem;">${lista.length} ${lista.length === 1 ? 'plantilla' : 'plantillas'}</span>
                                     ${chevronSVG}
                                 </span>
