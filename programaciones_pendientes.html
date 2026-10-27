@@ -7,7 +7,7 @@
     <title>Pendientes de programar - GO & train</title>
     <link rel="icon" type="image/png" href="assets/logo.png">
 
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=2">
     <script src="nav-component.js" defer></script>
 
     <style>
@@ -60,27 +60,12 @@
             background-color: #e5e7eb;
         }
 
-        .table-responsive {
-            width: 100%;
-            overflow-x: auto;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
         th,
         td {
             padding: 12px 20px;
-            text-align: left;
-            border-bottom: 1px solid var(--border);
-            font-size: 0.85rem;
         }
 
         th {
-            color: var(--text-muted);
-            font-weight: 600;
             text-transform: uppercase;
             font-size: 0.75rem;
         }
@@ -100,12 +85,6 @@
 
         .btn-programar:hover {
             background: #0b5c6b;
-        }
-
-        .chevron-icon {
-            display: flex;
-            align-items: center;
-            transition: transform 0.2s;
         }
 
         .empty-msg {
@@ -143,9 +122,8 @@
         import { auth, db } from './firebase-config.js';
         import { collection, query, where, getDocs, updateDoc, writeBatch } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
-        import { getValoresMaestro } from './maestros-service.js';
-
-        const chevronSVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+        import { getValoresMaestro } from './js/maestros-service.js';
+        import { iconChevron as chevronSVG } from './js/utils.js';
 
         let todasLasPendientes = { individuales: [], small_groups: [] };
         let vistaActual = 'individuales';

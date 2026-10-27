@@ -7,28 +7,19 @@
     <title>Plantillas - GO & train</title>
     <link rel="icon" type="image/png" href="assets/logo.png">
 
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=2">
     <script src="nav-component.js" defer></script>
 
     <style>
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            text-align: left;
-        }
-
         th,
         td {
             padding: 15px 20px;
-            border-bottom: 1px solid var(--border);
         }
 
         th {
             background: #f8fafc;
-            color: var(--text-muted);
             font-size: 0.75rem;
             text-transform: uppercase;
-            font-weight: 600;
         }
 
         .row-link {
@@ -38,16 +29,6 @@
 
         .row-link:hover {
             background: #f0fdfa;
-        }
-
-        .pill-nivel {
-            background: #e0f2fe;
-            color: #0369a1;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 0.8rem;
-            font-weight: bold;
-            border: 1px solid #7dd3fc;
         }
     </style>
 </head>
@@ -108,7 +89,8 @@
         import { auth, db } from './firebase-config.js';
         import { collection, getDocs, doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
-        import { poblarSelect } from './maestros-service.js';
+        import { poblarSelect } from './js/maestros-service.js';
+        import { iconTrash } from './js/utils.js';
 
         async function loadPlantillas() {
             await poblarSelect('p_nivel', 'Ejercicios', 'Niveles', null);
@@ -125,10 +107,12 @@
                     html += `
                         <tr class="row-link" onclick="window.location.href='editar_plantilla.html?id=${d.id}'">
                             <td><strong>${data.nombre}</strong></td>
-                            <td><span class="pill-nivel">${data.nivel}</span></td>
+                            <td><span class="pill pill-nivel">${data.nivel}</span></td>
                             <td>${data.ejercicios ? data.ejercicios.length : 0} ejercicios</td>
                             <td>
-                                <button onclick="event.stopPropagation(); borrarPlantilla('${d.id}')" style="background:none; border:none; color:red; cursor:pointer; font-weight:bold;">🗑️ Borrar</button>
+                                <div class="action-btns">
+                                    <button class="btn-icon danger" onclick="event.stopPropagation(); borrarPlantilla('${d.id}')" title="Eliminar plantilla">${iconTrash}</button>
+                                </div>
                             </td>
                         </tr>
                     `;

@@ -1,5 +1,6 @@
 # Credenciales y claves privadas (NUNCA subir a GitHub)
 firebase-key.json
+firebase-key-dev.json
 *-firebase-adminsdk-*.json
 serviceAccountKey*.json
 credentials.json

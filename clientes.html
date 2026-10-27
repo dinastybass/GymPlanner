@@ -8,55 +8,12 @@
     <link rel="icon" type="image/png" href="assets/logo.png">
 
     <!-- Hoja de estilos centralizada -->
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=2">
     <script src="nav-component.js" defer></script>
 
     <style>
         /* Estilos únicos de esta pantalla */
-        .controls-bar {
-            display: flex;
-            gap: 15px;
-            margin-bottom: 20px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-
-        .search-box {
-            position: relative;
-            flex-grow: 1;
-            max-width: 400px;
-        }
-
-        .search-box input {
-            width: 100%;
-            padding: 10px 10px 10px 35px;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            font-size: 0.9rem;
-            box-sizing: border-box;
-            background: var(--hover-bg);
-        }
-
-        .search-box svg {
-            position: absolute;
-            left: 10px;
-            top: 10px;
-            color: var(--text-muted);
-        }
-
-        .filter-select {
-            padding: 10px;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            background: var(--hover-bg);
-            font-size: 0.9rem;
-            color: var(--text-main);
-            border: none;
-        }
-
         .total-count {
-            font-size: 0.9rem;
-            color: var(--text-muted);
             margin-left: auto;
         }
 
@@ -95,36 +52,9 @@
             color: #991b1b;
         }
 
-        .table-responsive {
-            width: 100%;
-            overflow-x: auto;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        th,
-        td {
-            padding: 12px 15px;
-            text-align: left;
-            border-bottom: 1px solid var(--border);
-            font-size: 0.85rem;
-            line-height: 1.4;
-        }
-
         th {
-            color: var(--text-muted);
-            font-weight: 600;
             cursor: pointer;
-            user-select: none;
             white-space: nowrap;
-        }
-
-        td {
-            color: var(--text-main);
-            font-weight: 500;
         }
 
         .client-row {
@@ -134,34 +64,6 @@
 
         .client-row:hover {
             background-color: var(--hover-bg);
-        }
-
-        .action-btns {
-            display: flex;
-            gap: 8px;
-            flex-wrap: nowrap;
-        }
-
-        .btn-icon {
-            background: transparent;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 6px 10px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #991b1b;
-            transition: background 0.2s;
-        }
-
-        .btn-icon:hover {
-            background: #fee2e2;
-        }
-
-        .chevron-icon {
-            display: flex;
-            align-items: center;
         }
     </style>
 </head>
@@ -227,12 +129,7 @@
         import { auth, db } from './firebase-config.js';
         import { collection, getDocs, doc, deleteDoc, setDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
-
-        // Función de normalización de texto para ignorar tildes y mayúsculas/minúsculas
-        function normalizarTexto(texto) {
-            if (!texto) return "";
-            return texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        }
+        import { normalizarTexto, getChevronSVG, iconTrash } from './js/utils.js';
 
         let todosLosClientes = [];
         let currentSort = { column: 'Nombre_Cliente', dir: 'asc' };
@@ -244,8 +141,8 @@
             if (btnNuevo) btnNuevo.style.display = 'none';
         }
 
-        const chevronSVG = `<span class="chevron-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="transition: transform 0.2s;"><polyline points="6 9 12 15 18 9"></polyline></svg></span>`;
-        const delSVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+        const chevronSVG = getChevronSVG(true, 18);
+        const delSVG = iconTrash;
 
         async function loadClientes() {
             const querySnapshot = await getDocs(collection(db, "clientes"));
@@ -312,7 +209,7 @@
                         btnEliminarHTML = `
                             <td>
                                 <div class="action-btns">
-                                    <button class="btn-icon" onclick="event.stopPropagation(); window.borrarCliente('${c.id}')" title="Eliminar">${delSVG}</button>
+                                    <button class="btn-icon danger" onclick="event.stopPropagation(); window.borrarCliente('${c.id}')" title="Eliminar">${delSVG}</button>
                                 </div>
                             </td>
                         `;

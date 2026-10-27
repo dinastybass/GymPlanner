@@ -7,7 +7,7 @@
     <title>Agenda - GO & train</title>
     <link rel="icon" type="image/png" href="assets/logo.png">
 
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=2">
     <script src="nav-component.js" defer></script>
 
     <style>
@@ -577,7 +577,8 @@
         import { auth, db } from './firebase-config.js';
         import { collection, query, where, getDocs, doc, setDoc, addDoc, writeBatch } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
-        import { getValoresMaestro } from './maestros-service.js';
+        import { getValoresMaestro } from './js/maestros-service.js';
+        import { normalizarTexto, getChevronSVG as getChevronSVGUtil } from './js/utils.js';
 
         window.actualizarCalculo = () => { };
 
@@ -599,7 +600,7 @@
             'jueves': 4, 'viernes': 5, 'sábado': 6, 'sabado': 6
         };
         const diasSemanaMapa = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
-        const normalizarDia = (dia) => dia.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        const normalizarDia = (dia) => normalizarTexto(dia);
 
         async function cargarMaestrosAgenda() {
             const [diasDB, horasIndDB, horasSGDB] = await Promise.all([
@@ -657,8 +658,7 @@
         const mesNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
         function getChevronSVG(isExpanded) {
-            const rot = isExpanded ? '0deg' : '-90deg';
-            return `<span class="chevron-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.2s ease; transform: rotate(${rot});"><polyline points="6 9 12 15 18 9"></polyline></svg></span>`;
+            return getChevronSVGUtil(isExpanded, 22);
         }
 
         function countClients(nameStr) {

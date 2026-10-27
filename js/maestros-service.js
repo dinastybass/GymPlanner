@@ -1,5 +1,5 @@
-// maestros-service.js
-import { db } from './firebase-config.js';
+// js/maestros-service.js
+import { db } from '../firebase-config.js';
 import { collection, getDocs, getDoc, doc, setDoc, updateDoc, deleteField } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
 
 const CACHE_KEY = 'gym_maestros_doc_map_v2';

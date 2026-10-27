@@ -7,7 +7,7 @@
     <title>Planificación - GO & train</title>
     <link rel="icon" type="image/png" href="assets/logo.png">
 
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=2">
     <script src="nav-component.js" defer></script>
 
     <style>
@@ -533,7 +533,7 @@
         import { auth, db } from './firebase-config.js';
         import { collection, query, where, getDocs, doc, updateDoc, addDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
-        import { getValoresMaestro, getMapaOrdenMaestro } from './maestros-service.js';
+        import { getValoresMaestro, getMapaOrdenMaestro } from './js/maestros-service.js';
 
         let currentDate = new Date();
         if (currentDate.getDay() === 0) currentDate.setDate(currentDate.getDate() + 1);

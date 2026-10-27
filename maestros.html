@@ -7,7 +7,7 @@
     <title>Maestros - GO & train</title>
     <link rel="icon" type="image/png" href="assets/logo.png">
 
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=2">
     <script src="nav-component.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 
@@ -113,21 +113,12 @@
             font-size: 0.95rem;
         }
 
-        table.maestros-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
         .maestros-table th,
         .maestros-table td {
-            padding: 12px 15px;
-            text-align: left;
-            border-bottom: 1px solid var(--border);
             font-size: 0.9rem;
         }
 
         .maestros-table th {
-            color: var(--text-muted);
             font-size: 0.75rem;
             text-transform: uppercase;
             background: var(--hover-bg);
@@ -148,28 +139,6 @@
             gap: 10px;
         }
 
-        .drag-handle {
-            color: #94a3b8;
-            font-size: 1.2rem;
-            cursor: grab;
-            padding: 2px 6px;
-            border-radius: 4px;
-            user-select: none;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            transition: color 0.2s, background 0.2s;
-        }
-
-        .drag-handle:hover {
-            color: var(--accent-dark);
-            background: #e0f2fe;
-        }
-
-        .drag-handle:active {
-            cursor: grabbing;
-        }
-
         .orden-badge {
             font-size: 0.8rem;
             color: var(--text-muted);
@@ -177,39 +146,8 @@
             min-width: 22px;
         }
 
-        .sortable-ghost {
-            opacity: 0.4;
-            background: #e0f2fe !important;
-        }
-
         .action-btns {
-            display: flex;
-            gap: 8px;
             justify-content: flex-end;
-        }
-
-        .btn-icon {
-            background: transparent;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 6px 10px;
-            cursor: pointer;
-            font-size: 0.8rem;
-            color: var(--text-main);
-            transition: background 0.2s;
-        }
-
-        .btn-icon:hover {
-            background: var(--hover-bg);
-        }
-
-        .btn-icon.danger {
-            color: #991b1b;
-        }
-
-        .btn-icon.danger:hover {
-            background: #fee2e2;
-            border-color: #fca5a5;
         }
     </style>
 </head>
@@ -309,7 +247,8 @@
             ESTRUCTURA_MAESTROS, cargarTodosLosMaestros, limpiarCacheMaestros,
             guardarValorMaestro, reordenarValoresMaestro, eliminarValorMaestro,
             comprobarDependenciasMaestro, reasignarOQuitarDependencia
-        } from './maestros-service.js';
+        } from './js/maestros-service.js';
+        import { iconTrash } from './js/utils.js';
 
         let mapaMaestros = {};
         let seccionActual = "Ejercicios";
@@ -424,7 +363,7 @@
                     <td>
                         <div class="action-btns">
                             <button class="btn-icon" onclick="window.editarItem('${item.id}', '${item.valor.replace(/'/g, "\\'")}')">Editar</button>
-                            <button class="btn-icon danger" onclick="window.borrarItem('${claveActual}', '${item.id}', '${item.valor.replace(/'/g, "\\'")}')">Eliminar</button>
+                            <button class="btn-icon danger" onclick="window.borrarItem('${claveActual}', '${item.id}', '${item.valor.replace(/'/g, "\\'")}')" title="Eliminar">${iconTrash}</button>
                         </div>
                     </td>
                 </tr>

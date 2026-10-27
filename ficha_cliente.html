@@ -7,20 +7,12 @@
     <title>Ficha de Cliente - GO & train</title>
     <link rel="icon" type="image/png" href="assets/logo.png">
 
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=2">
     <script src="nav-component.js" defer></script>
 
     <style>
-        .page-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 25px;
-        }
-
         .page-header h1 {
             font-size: 1.8rem;
-            margin: 0;
         }
 
         .layout-grid {
@@ -65,29 +57,6 @@
             margin: 0;
             font-size: 0.85rem;
             color: var(--text-muted);
-        }
-
-        .status-pill {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: bold;
-        }
-
-        .status-activo {
-            background: #dcfce7;
-            color: #166534;
-        }
-
-        .status-pausa {
-            background: #fef08a;
-            color: #854d0e;
-        }
-
-        .status-baja {
-            background: #fee2e2;
-            color: #991b1b;
         }
 
         .info-block {
@@ -155,16 +124,6 @@
             box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.1);
         }
 
-        .sessions-header {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-weight: bold;
-            margin-bottom: 15px;
-            color: var(--text-main);
-            font-size: 1.1rem;
-        }
-
         .tabs {
             display: flex;
             gap: 10px;
@@ -217,22 +176,13 @@
             border-bottom: 1px solid var(--border);
         }
 
-        table.session-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .session-table th,
-        .session-table td {
+        table.session-table th,
+        table.session-table td {
             padding: 12px 20px;
-            text-align: left;
-            border-bottom: 1px solid var(--border);
             font-size: 0.85rem;
         }
 
         .session-table th {
-            color: var(--text-muted);
-            font-weight: 600;
             text-transform: uppercase;
             font-size: 0.75rem;
         }
@@ -256,57 +206,9 @@
         }
 
         .block-title {
-            font-weight: bold;
             font-size: 0.9rem;
             margin: 15px 0 5px 0;
             color: var(--accent-dark);
-            text-transform: uppercase;
-            border-bottom: 2px solid var(--hover-bg);
-            padding-bottom: 5px;
-        }
-
-        .block-title:first-child {
-            margin-top: 0;
-        }
-
-        /* Subgrupo visual en el detalle */
-        .preview-subgrupo {
-            background: #ffffff;
-            border: 1px solid #ccfbf1;
-            border-left: 3px solid var(--accent-dark);
-            border-radius: 8px;
-            padding: 8px 12px;
-            margin-top: 8px;
-            margin-bottom: 10px;
-        }
-
-        .subgrupo-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 6px;
-            padding-bottom: 4px;
-            border-bottom: 1px dashed #99f6e4;
-            gap: 8px;
-        }
-
-        .subgrupo-title {
-            font-size: 0.8rem;
-            font-weight: 800;
-            color: #0e7490;
-            text-transform: uppercase;
-            letter-spacing: 0.4px;
-        }
-
-        .subgrupo-reps {
-            font-size: 0.8rem;
-            font-weight: 700;
-            color: #0f766e;
-            background: #f0fdfa;
-            padding: 2px 8px;
-            border-radius: 4px;
-            border: 1px solid #99f6e4;
-            white-space: nowrap;
         }
 
         .exercise-grid {
@@ -354,138 +256,13 @@
             white-space: nowrap;
         }
 
-        .pill {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
-
-        .pill-vencida {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        .pill-completada {
-            border: 1px solid #22c55e;
-            color: #16a34a;
-            background: transparent;
-        }
-
-        .pill-pendiente {
-            background: #e0f2fe;
-            color: #0369a1;
-        }
-
-        .pill-sg {
-            background: #f3e8ff;
-            color: #7e22ce;
-            border: 1px solid #d8b4fe;
-        }
-
-        .pill-si {
-            background: #e0e7ff;
-            color: #4338ca;
-            border: 1px solid #c7d2fe;
-        }
-
-        .action-icons {
-            display: flex;
-            gap: 6px;
-            align-items: center;
-        }
-
-        .action-btn {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 6px;
-            cursor: pointer;
-            color: var(--text-main);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: 0.2s;
-        }
-
-        .action-btn:hover {
-            background: var(--hover-bg);
-            border-color: #d1d5db;
-        }
-
-        .action-btn.send:hover {
-            background: #e0f2fe;
-            color: #0284c7;
-            border-color: #7dd3fc;
-        }
-
-        .action-btn.del:hover {
-            background: #fee2e2;
-            color: #991b1b;
-            border-color: #fca5a5;
-        }
-
-        .modal-content.small {
-            max-width: 600px;
-        }
-
-        .form-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
-
-        .form-group.full {
-            grid-column: 1 / -1;
-        }
-
-        .form-control {
-            padding: 10px;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            font-size: 0.95rem;
-            box-sizing: border-box;
-            width: 100%;
-            font-family: inherit;
-        }
-
-        .form-group textarea.form-control {
-            min-height: 80px;
-            resize: vertical;
-        }
-
-        .modal-footer {
-            display: flex;
-            justify-content: flex-end;
-            gap: 10px;
-            margin-top: 25px;
-        }
-
-        .conflict-options button {
-            width: 100%;
-            margin-bottom: 10px;
-            padding: 12px;
-        }
-
-        /* ESTILO TABLA DE PROGRESO */
-        .table-progreso {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
         .table-progreso th,
         .table-progreso td {
             padding: 12px 20px;
-            text-align: left;
-            border-bottom: 1px solid var(--border);
             font-size: 0.85rem;
-            vertical-align: middle;
         }
 
         .table-progreso th {
-            color: var(--text-muted);
-            font-weight: 600;
             text-transform: uppercase;
             font-size: 0.75rem;
         }
@@ -826,7 +603,8 @@
         import { auth, db } from './firebase-config.js';
         import { doc, getDoc, setDoc, deleteDoc, collection, query, where, getDocs, writeBatch, addDoc, updateDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
-        import { getMapaOrdenMaestro } from './maestros-service.js';
+        import { getMapaOrdenMaestro } from './js/maestros-service.js';
+        import { iconChevron as chevronSVG, iconDumbbell as dumbbellSVG, iconTrash as trashSVG, iconCalendar as calendarSVG, iconArrowRight as arrowRightSVG } from './js/utils.js';
 
         const urlParams = new URLSearchParams(window.location.search);
         const clientId = urlParams.get('id');
@@ -839,12 +617,6 @@
         let pendingReprogData = null;
         let clientesCargados = [];
         let sesionesClienteCargadas = [];
-
-        const chevronSVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
-        const dumbbellSVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="12" x2="18" y2="12"></line><rect x="4" y="8" width="2" height="8" rx="1"></rect><rect x="18" y="8" width="2" height="8" rx="1"></rect><rect x="2" y="10" width="2" height="4" rx="1"></rect><rect x="20" y="10" width="2" height="4" rx="1"></rect></svg>`;
-        const trashSVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
-        const calendarSVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>`;
-        const arrowRightSVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>`;
 
         window.cambiarVistaCentral = (vista) => {
             const btnSesiones = document.getElementById('tabMenuSesiones');
