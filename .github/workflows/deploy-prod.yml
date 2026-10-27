@@ -1,0 +1,22 @@
+name: Deploy a Firebase Hosting (PROD)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy_to_prod:
+    name: Desplegar en gymapp-d8ae7
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar código del repositorio
+        uses: actions/checkout@v4
+
+      - name: Deploy a Firebase Hosting (PROD)
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PRO }}
+          channelId: live
+          projectId: gymapp-d8ae7
