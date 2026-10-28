@@ -231,9 +231,19 @@
             <form id="formEnviar">
                 <div class="form-group" style="margin-bottom: 15px;">
                     <label>Seleccionar Cliente Destino</label>
-                    <select id="enviar_cliente" onchange="cargarSesionesClienteEnviar()" required>
-                        <option value="">Cargando clientes...</option>
-                    </select>
+                    <div class="custom-dropdown" id="dropdownEnviarCliente">
+                        <div class="dropdown-trigger" onclick="window.toggleEnviarClienteDropdown()">
+                            <span id="triggerTextEnviarCliente">Elige un cliente...</span>
+                            <span class="chevron-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
+                        </div>
+                        <div class="dropdown-panel" id="panelEnviarCliente">
+                            <div class="dropdown-search-container">
+                                <input type="text" id="searchEnviarCliente" placeholder="Buscar cliente por nombre o alias..." oninput="window.filtrarEnviarClienteDropdown(this.value)">
+                            </div>
+                            <div class="dropdown-options" id="optionsEnviarCliente"></div>
+                        </div>
+                        <input type="hidden" id="enviar_cliente">
+                    </div>
                 </div>
                 <div class="form-group">
                     <label>Seleccionar Sesión Destino *</label>
@@ -1096,36 +1106,80 @@
         });
 
         // --- LÓGICA PARA EXPORTAR/ENVIAR RUTINA A OTRA SESIÓN ---
+        window.toggleEnviarClienteDropdown = () => {
+            document.querySelectorAll('.dropdown-panel.active').forEach(p => {
+                if (p.id !== 'panelEnviarCliente') p.classList.remove('active');
+            });
+            const panel = document.getElementById('panelEnviarCliente');
+            if (!panel) return;
+            panel.classList.toggle('active');
+            if (panel.classList.contains('active')) {
+                const inp = document.getElementById('searchEnviarCliente');
+                if (inp) setTimeout(() => inp.focus(), 40);
+            }
+        };
+
+        window.filtrarEnviarClienteDropdown = (rawSearch) => {
+            const searchNorm = normalizarTexto(rawSearch);
+            const container = document.getElementById('optionsEnviarCliente');
+            if (!container) return;
+            container.querySelectorAll('.dropdown-option').forEach(opt => {
+                const textNorm = opt.getAttribute('data-search') || normalizarTexto(opt.innerText);
+                opt.style.display = textNorm.includes(searchNorm) ? 'flex' : 'none';
+            });
+        };
+
+        window.seleccionarEnviarClienteDropdown = (idVal, labelTxt) => {
+            document.getElementById('enviar_cliente').value = idVal;
+            document.getElementById('triggerTextEnviarCliente').innerText = labelTxt;
+            document.getElementById('panelEnviarCliente').classList.remove('active');
+            window.cargarSesionesClienteEnviar();
+        };
+
         window.abrirModalEnviar = async () => {
             document.getElementById('modalEnviar').style.display = 'flex';
-            const selectCliente = document.getElementById('enviar_cliente');
+            const inputCliente = document.getElementById('enviar_cliente');
+            const triggerCliente = document.getElementById('triggerTextEnviarCliente');
+            const searchCliente = document.getElementById('searchEnviarCliente');
+            const optionsCliente = document.getElementById('optionsEnviarCliente');
             const selectSesion = document.getElementById('enviar_sesion');
+
+            if (inputCliente) inputCliente.value = '';
+            if (triggerCliente) triggerCliente.innerText = 'Elige un cliente...';
+            if (searchCliente) searchCliente.value = '';
+            document.getElementById('panelEnviarCliente')?.classList.remove('active');
 
             selectSesion.innerHTML = '<option value="">Primero selecciona un cliente...</option>';
             selectSesion.disabled = true;
 
             if (clientesCargados.length === 0) {
-                selectCliente.innerHTML = '<option value="">Cargando clientes...</option>';
+                if (triggerCliente) triggerCliente.innerText = 'Cargando clientes...';
                 try {
                     const snap = await getDocs(collection(db, "clientes"));
                     clientesCargados = [];
                     snap.forEach(doc => clientesCargados.push({ id: doc.id, ...doc.data() }));
 
                     clientesCargados.sort((a, b) => {
-                        const nameA = a.Nombre || a.nombre || a.Alias || '';
-                        const nameB = b.Nombre || b.nombre || b.Alias || '';
+                        const nameA = a.Alias || a.Nombre_Cliente || a.Nombre || a.nombre || '';
+                        const nameB = b.Alias || b.Nombre_Cliente || b.Nombre || b.nombre || '';
                         return nameA.localeCompare(nameB);
-                    });
-
-                    selectCliente.innerHTML = '<option value="">Elige un cliente...</option>';
-                    clientesCargados.forEach(c => {
-                        const name = c.Alias || c.Nombre || c.nombre || 'Sin nombre';
-                        selectCliente.innerHTML += `<option value="${c.id}">${name}</option>`;
                     });
                 } catch (e) {
                     console.error("Error cargando clientes:", e);
-                    selectCliente.innerHTML = '<option value="">Error al cargar</option>';
+                    if (triggerCliente) triggerCliente.innerText = 'Error al cargar';
+                    return;
                 }
+            }
+
+            if (triggerCliente) triggerCliente.innerText = 'Elige un cliente...';
+            if (optionsCliente) {
+                optionsCliente.innerHTML = clientesCargados.map(c => {
+                    const name = c.Alias || c.Nombre_Cliente || c.Nombre || c.nombre || 'Sin nombre';
+                    const fullName = c.Nombre_Cliente || c.Nombre || c.nombre || '';
+                    const searchStr = normalizarTexto(`${name} ${fullName}`);
+                    const safeName = name.replace(/'/g, "\\'");
+                    return `<div class="dropdown-option" data-search="${searchStr.replace(/"/g, '&quot;')}" onclick="window.seleccionarEnviarClienteDropdown('${c.id}', '${safeName}')"><span>${name}</span></div>`;
+                }).join('');
             }
         };
 
