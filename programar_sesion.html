@@ -351,11 +351,11 @@
 
         function setDropdownValues(idRef, commaString) {
             if (!commaString) { clearDropdown(idRef); return; }
-            const valsNorm = commaString.split(',').map(s => normalizarTexto(s)).filter(Boolean);
+            const valsNorm = commaString.split(',').map(s => normalizarTexto(s.trim())).filter(Boolean);
             const checks = document.querySelectorAll(`#options${idRef} input[type="checkbox"]`);
             if (checks.length > 0) {
                 checks.forEach(c => {
-                    c.checked = valsNorm.includes(normalizarTexto(c.value));
+                    c.checked = valsNorm.includes(normalizarTexto(c.value.trim()));
                 });
                 updateMultiSelection(idRef);
             } else {
@@ -376,10 +376,11 @@
             const vistos = new Set();
 
             const agregar = (item) => {
-                const norm = normalizarTexto(item);
+                const clean = String(item || '').trim();
+                const norm = normalizarTexto(clean);
                 if (norm && !vistos.has(norm)) {
                     vistos.add(norm);
-                    listaOrdenada.push(item);
+                    listaOrdenada.push(clean);
                 }
             };
 
