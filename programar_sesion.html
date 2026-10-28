@@ -61,8 +61,26 @@
 
             <form id="formAddEx">
                 <div class="form-grid">
-                    <div class="form-group full"><label>Buscar ejercicio (Filtro rápido)</label><input type="text"
-                            id="m_search" placeholder="Escribe para filtrar..."></div>
+                    <div class="form-group full">
+                        <label>Ejercicio del catálogo *</label>
+                        <div class="custom-dropdown" id="dropdownEjercicio">
+                            <div class="dropdown-trigger" onclick="toggleDropdown('panelEjercicio', 'm_search')">
+                                <span id="triggerTextEjercicio">Selecciona un ejercicio...</span>
+                                <span class="chevron-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2.5">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg></span>
+                            </div>
+                            <div class="dropdown-panel" id="panelEjercicio">
+                                <div class="dropdown-search-container">
+                                    <input type="text" id="m_search" placeholder="Buscar por nombre o acrónimo..."
+                                        oninput="filtrarDropdownEjercicios()">
+                                </div>
+                                <div class="dropdown-options" id="optionsEjercicio"></div>
+                            </div>
+                            <input type="hidden" id="m_ejercicio_select">
+                        </div>
+                    </div>
 
                     <!-- Filtros de clasificación -->
                     <div class="form-group"><label>Grupo Muscular</label><select id="m_filter_grupo">
@@ -78,11 +96,6 @@
 
                     <div class="form-group"><label>Subcategoría</label><select id="m_filter_subcategoria">
                             <option value="">Todas</option>
-                        </select></div>
-
-                    <div class="form-group full"><label>Ejercicio del catálogo *</label><select id="m_ejercicio_select"
-                            required>
-                            <option value="">Selecciona un ejercicio...</option>
                         </select></div>
                     <div class="form-group full"><label>Detalle del ejercicio (Opcional)</label><input type="text"
                             id="m_detalle" placeholder="Variación, alcance o indicación..."></div>
@@ -312,12 +325,35 @@
             }).join('');
         }
 
-        window.toggleDropdown = (panelId) => {
+        window.toggleDropdown = (panelId, searchInputId) => {
             document.querySelectorAll('.dropdown-panel.active').forEach(p => { if (p.id !== panelId) p.classList.remove('active'); });
-            document.getElementById(panelId).classList.toggle('active');
+            const panel = document.getElementById(panelId);
+            if (!panel) return;
+            panel.classList.toggle('active');
+            if (panel.classList.contains('active') && searchInputId) {
+                const inp = document.getElementById(searchInputId);
+                if (inp) setTimeout(() => inp.focus(), 40);
+            }
         };
 
-        window.closeDropdown = (panelId) => { document.getElementById(panelId).classList.remove('active'); };
+        window.closeDropdown = (panelId) => { document.getElementById(panelId)?.classList.remove('active'); };
+
+        window.seleccionarEjercicioDropdown = (idDoc) => {
+            const ej = catalogoEjercicios.find(x => x.id_doc === idDoc);
+            const hiddenInput = document.getElementById('m_ejercicio_select');
+            const triggerText = document.getElementById('triggerTextEjercicio');
+            if (hiddenInput) hiddenInput.value = idDoc || '';
+            if (triggerText) {
+                if (ej) {
+                    const acroText = (ej['Acrónimo'] || ej.Acronimo) ? `[${ej['Acrónimo'] || ej.Acronimo}] ` : '';
+                    triggerText.innerText = `${acroText}${ej.Nombre_Ejercicio}`;
+                } else {
+                    triggerText.innerText = 'Selecciona un ejercicio...';
+                }
+            }
+            closeDropdown('panelEjercicio');
+            if (hiddenInput) hiddenInput.dispatchEvent(new Event('change'));
+        };
 
         window.selectSingleOption = (idRef, val) => {
             document.getElementById(`m_${idRef.toLowerCase()}`).value = val;
@@ -680,6 +716,9 @@
         window.abrirModal = () => {
             editingIndex = -1;
             document.getElementById('formAddEx').reset();
+            document.getElementById('m_ejercicio_select').value = '';
+            document.getElementById('triggerTextEjercicio').innerText = 'Selecciona un ejercicio...';
+            closeDropdown('panelEjercicio');
             document.getElementById('m_reps').value = seriePorDefecto;
             document.getElementById('m_reps_custom').style.display = 'none';
             document.getElementById('m_reps_custom').value = '';
@@ -707,15 +746,24 @@
             document.getElementById('m_filter_grupo').value = '';
             filtrarDropdownEjercicios();
 
-            const selectEl = document.getElementById('m_ejercicio_select');
             let foundValue = "";
+            let foundLabel = "Selecciona un ejercicio...";
             const targetName = ej.Nombre_Ejercicio || ej.Ejercicio_Detalle || ej.nombre_ejercicio || ej.ejercicio || '';
-            for (let i = 0; i < selectEl.options.length; i++) {
-                if (selectEl.options[i].text.includes(targetName) || ej.ID_Ejercicio === selectEl.options[i].value) {
-                    foundValue = selectEl.options[i].value; break;
-                }
+            const ejCatMatch = catalogoEjercicios.find(x =>
+                x.id_doc === ej.ID_Ejercicio ||
+                x.ID_Ejercicio === ej.ID_Ejercicio ||
+                (targetName && x.Nombre_Ejercicio && (x.Nombre_Ejercicio === targetName || x.Nombre_Ejercicio.includes(targetName)))
+            );
+            if (ejCatMatch) {
+                foundValue = ejCatMatch.id_doc;
+                const acroText = (ejCatMatch['Acrónimo'] || ejCatMatch.Acronimo) ? `[${ejCatMatch['Acrónimo'] || ejCatMatch.Acronimo}] ` : '';
+                foundLabel = `${acroText}${ejCatMatch.Nombre_Ejercicio}`;
+            } else if (targetName) {
+                foundLabel = targetName;
             }
-            selectEl.value = foundValue;
+            document.getElementById('m_ejercicio_select').value = foundValue;
+            document.getElementById('triggerTextEjercicio').innerText = foundLabel;
+            closeDropdown('panelEjercicio');
 
             document.getElementById('m_alias').value = ej.Acrónimo || ej.Acronimo || ej.acronimo || ej.alias || ej.Alias || '';
             document.getElementById('m_detalle').value = ej.Detalle || ej.detalle || '';
@@ -795,10 +843,10 @@
             const fNivel = document.getElementById('m_filter_nivel').value;
             const fSub = document.getElementById('m_filter_subcategoria').value;
             const fGrupo = document.getElementById('m_filter_grupo').value;
-            const selectEj = document.getElementById('m_ejercicio_select');
+            const optionsContainer = document.getElementById('optionsEjercicio');
+            if (!optionsContainer) return;
 
-            selectEj.innerHTML = '<option value="">Selecciona un ejercicio...</option>';
-            catalogoEjercicios.filter(e => {
+            const filtrados = catalogoEjercicios.filter(e => {
                 const nameNormalizado = normalizarTexto(e.Nombre_Ejercicio);
                 const acroNormalizado = normalizarTexto(e['Acrónimo'] || e.Acronimo);
 
@@ -817,11 +865,18 @@
                 }
 
                 return true;
-            }).sort((a, b) => (a.Nombre_Ejercicio || '').localeCompare(b.Nombre_Ejercicio || '')).forEach(e => {
-                const acroText = (e['Acrónimo'] || e.Acronimo) ? `[${e['Acrónimo'] || e.Acronimo}] ` : '';
-                selectEj.innerHTML += `<option value="${e.id_doc}">${acroText}${e.Nombre_Ejercicio}</option>`;
-            });
+            }).sort((a, b) => (a.Nombre_Ejercicio || '').localeCompare(b.Nombre_Ejercicio || ''));
+
+            if (filtrados.length === 0) {
+                optionsContainer.innerHTML = `<div class="dropdown-option" style="color: var(--text-muted); cursor: default;"><span>Sin ejercicios coincidentes</span></div>`;
+            } else {
+                optionsContainer.innerHTML = filtrados.map(e => {
+                    const acroText = (e['Acrónimo'] || e.Acronimo) ? `[${e['Acrónimo'] || e.Acronimo}] ` : '';
+                    return `<div class="dropdown-option" onclick="window.seleccionarEjercicioDropdown('${e.id_doc}')"><span>${acroText}${e.Nombre_Ejercicio}</span></div>`;
+                }).join('');
+            }
         }
+        window.filtrarDropdownEjercicios = filtrarDropdownEjercicios;
 
         document.getElementById('m_search').addEventListener('input', filtrarDropdownEjercicios);
         document.getElementById('m_filter_bloque').addEventListener('change', filtrarDropdownEjercicios);
@@ -979,6 +1034,10 @@
             const wasEditing = editingIndex >= 0;
             const idCat = document.getElementById('m_ejercicio_select').value;
             const ejCat = catalogoEjercicios.find(x => x.id_doc === idCat);
+            if (!idCat || !ejCat) {
+                alert("Por favor, selecciona un ejercicio del catálogo.");
+                return;
+            }
 
             // Resolución de Subgrupo
             let subName = document.getElementById('m_subgrupo_select').value;
