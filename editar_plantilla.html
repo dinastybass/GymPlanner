@@ -68,6 +68,33 @@
                     <div class="form-group full"><label>Alias</label><input type="text" id="m_alias" readonly
                             style="background:#e5e7eb;"></div>
 
+                    <!-- Material Adaptación MULTISELECCIÓN -->
+                    <div class="form-group full">
+                        <label>Material Adaptación (Opc.)</label>
+                        <div class="custom-dropdown">
+                            <div class="dropdown-trigger" onclick="toggleDropdown('panelMaterial')">
+                                <span id="triggerTextMaterial">Selecciona opciones</span>
+                                <span class="chevron-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2.5">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg></span>
+                            </div>
+                            <div class="dropdown-panel" id="panelMaterial">
+                                <div class="dropdown-search-container"><input type="text" id="searchMaterial"
+                                        placeholder="Buscar opción..."
+                                        onkeyup="filterDropdown('Material', this.value, true)"></div>
+                                <div class="dropdown-options" id="optionsMaterial"></div>
+                                <div class="dropdown-actions">
+                                    <button type="button" class="btn-limpiar"
+                                        onclick="clearDropdown('Material')">Limpiar</button>
+                                    <button type="button" class="btn-listo"
+                                        onclick="closeDropdown('panelMaterial')">Listo</button>
+                                </div>
+                            </div>
+                            <input type="hidden" id="m_material_adaptacion">
+                        </div>
+                    </div>
+
                     <div class="form-group full"><label>Bloque de Sesión *</label><select id="m_bloque_sesion"
                             required></select></div>
 
@@ -139,6 +166,7 @@
         let ejerciciosSesion = [];
         let editingIndex = -1;
         let ordenBloques = {};
+        let materialesMaestro = [];
         let seriePorDefecto = "3 x 10";
         let sortableInstance = null;
 
@@ -155,6 +183,105 @@
                 }
             }
         });
+
+        // --- Manejo del Dropdown Customizado de Material ---
+        function buildDropdownOptions(idRef, list, isMulti) {
+            const container = document.getElementById(`options${idRef}`);
+            if (!container) return;
+            container.innerHTML = list.map(item => {
+                if (isMulti) {
+                    return `<label class="dropdown-option"><input type="checkbox" value="${item}" onchange="updateMultiSelection('${idRef}')"> <span>${item}</span></label>`;
+                } else {
+                    return `<div class="dropdown-option" onclick="selectSingleOption('${idRef}', '${item}')"><span>${item}</span></div>`;
+                }
+            }).join('');
+        }
+
+        window.toggleDropdown = (panelId) => {
+            document.querySelectorAll('.dropdown-panel.active').forEach(p => { if (p.id !== panelId) p.classList.remove('active'); });
+            document.getElementById(panelId).classList.toggle('active');
+        };
+
+        window.closeDropdown = (panelId) => { document.getElementById(panelId).classList.remove('active'); };
+
+        window.selectSingleOption = (idRef, val) => {
+            document.getElementById(`m_${idRef.toLowerCase()}`).value = val;
+            document.getElementById(`triggerText${idRef}`).innerText = val;
+            closeDropdown(`panel${idRef}`);
+        };
+
+        window.updateMultiSelection = (idRef) => {
+            const checks = document.querySelectorAll(`#options${idRef} input[type="checkbox"]:checked`);
+            const vals = Array.from(checks).map(c => c.value);
+            document.getElementById(`m_${idRef.toLowerCase()}_adaptacion`).value = vals.join(', ');
+            document.getElementById(`triggerText${idRef}`).innerText = vals.length > 0 ? `${vals.length} seleccionado(s)` : 'Selecciona opciones';
+        };
+
+        window.clearDropdown = (idRef) => {
+            document.querySelectorAll(`#options${idRef} input[type="checkbox"]`).forEach(c => c.checked = false);
+            document.getElementById(`m_${idRef.toLowerCase()}_adaptacion`).value = '';
+            document.getElementById(`triggerText${idRef}`).innerText = 'Selecciona opciones';
+        };
+
+        window.filterDropdown = (idRef, searchRaw, isMulti) => {
+            const searchTxt = normalizarTexto(searchRaw);
+            const container = document.getElementById(`options${idRef}`);
+            if (!container) return;
+            const items = isMulti ? container.querySelectorAll('label') : container.querySelectorAll('.dropdown-option');
+            items.forEach(el => {
+                const txt = normalizarTexto(el.innerText);
+                el.style.display = txt.includes(searchTxt) ? 'flex' : 'none';
+            });
+        };
+
+        function setDropdownValues(idRef, commaString) {
+            if (!commaString) { clearDropdown(idRef); return; }
+            const valsNorm = commaString.split(',').map(s => normalizarTexto(s)).filter(Boolean);
+            const checks = document.querySelectorAll(`#options${idRef} input[type="checkbox"]`);
+            if (checks.length > 0) {
+                checks.forEach(c => {
+                    c.checked = valsNorm.includes(normalizarTexto(c.value));
+                });
+                updateMultiSelection(idRef);
+            } else {
+                const firstVal = commaString.split(',')[0].trim();
+                if (firstVal) selectSingleOption(idRef, firstVal);
+            }
+        }
+
+        function cargarOpcionesMaterial(materialesCatalogoStr = '', materialesSeleccionadosStr = '') {
+            const catMats = materialesCatalogoStr
+                ? materialesCatalogoStr.split(',').map(s => s.trim()).filter(Boolean)
+                : [];
+            const selMats = materialesSeleccionadosStr
+                ? materialesSeleccionadosStr.split(',').map(s => s.trim()).filter(Boolean)
+                : [];
+
+            const listaOrdenada = [];
+            const vistos = new Set();
+
+            const agregar = (item) => {
+                const norm = normalizarTexto(item);
+                if (norm && !vistos.has(norm)) {
+                    vistos.add(norm);
+                    listaOrdenada.push(item);
+                }
+            };
+
+            catMats.forEach(agregar);
+            materialesMaestro.forEach(agregar);
+            selMats.forEach(agregar);
+
+            const searchInp = document.getElementById('searchMaterial');
+            if (searchInp) searchInp.value = '';
+
+            buildDropdownOptions('Material', listaOrdenada, true);
+            if (materialesSeleccionadosStr) {
+                setDropdownValues('Material', materialesSeleccionadosStr);
+            } else {
+                clearDropdown('Material');
+            }
+        }
 
         // --- Manejo dinámico de Subgrupos en el Modal ---
         function actualizarComboSubgrupos(selectedVal = '') {
@@ -265,8 +392,12 @@
                 }
             });
 
-            const seriesMaestro = await getValoresMaestro('Ejercicios', 'Series y Repeticiones');
+            const [seriesMaestro, matMaestro] = await Promise.all([
+                getValoresMaestro('Ejercicios', 'Series y Repeticiones'),
+                getValoresMaestro('Ejercicios', 'Materiales')
+            ]);
             if (seriesMaestro.length > 0) seriePorDefecto = seriesMaestro[0];
+            materialesMaestro = matMaestro || [];
 
             const docSnap = await getDoc(doc(db, "plantillas_sesiones", idPlantilla));
             if (docSnap.exists()) {
@@ -292,6 +423,12 @@
             const catSnap = await getDocs(collection(db, "ejercicios"));
             catSnap.forEach(doc => catalogoEjercicios.push({ id_doc: doc.id, ...doc.data() }));
             filtrarDropdownEjercicios();
+
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.custom-dropdown')) {
+                    document.querySelectorAll('.dropdown-panel').forEach(p => p.classList.remove('active'));
+                }
+            });
         }
 
         function initSortable() {
@@ -374,10 +511,16 @@
                 const r = ej.Series || ej.Volumen_Series_Reps || '-';
                 const itemClass = subName ? 'ex-item in-subgroup' : 'ex-item';
 
+                let extraInfo = [];
+                if (ej.Detalle) extraInfo.push(ej.Detalle);
+                if (ej.Material_Adaptacion) extraInfo.push(`Mat: ${ej.Material_Adaptacion}`);
+                const extras = extraInfo.join(' | ');
+                const desc = extras ? `<div class="ex-item-detail">${extras}</div>` : '';
+
                 html += `
           <div class="${itemClass}" data-index="${index}" onclick="abrirModalEditar(${index})">
             <div class="drag-handle" title="Arrastra para reordenar">⋮⋮</div>
-            <div class="ex-item-info"><span class="ex-item-title">${acro ? acro + ' · ' : ''}${n}</span></div>
+            <div class="ex-item-info"><span class="ex-item-title">${acro ? acro + ' · ' : ''}${n}</span>${desc}</div>
             <div style="display:flex; gap:15px; align-items:center;">
               <span class="ex-item-presc">${r}</span>
               <button class="btn-icon danger" onclick="event.stopPropagation(); borrarEx(${index})" title="Quitar de la plantilla">${iconTrash}</button>
@@ -401,12 +544,20 @@
 
             if (selectEj) {
                 selectEj.addEventListener('change', (e) => {
-                    const ej = catalogoEjercicios.find(x => x.id_doc === e.target.value);
+                    const idSelected = e.target.value;
+                    if (!idSelected) {
+                        document.getElementById('m_alias').value = '';
+                        cargarOpcionesMaterial('', '');
+                        return;
+                    }
+                    const ej = catalogoEjercicios.find(x => x.id_doc === idSelected);
                     if (ej) {
-                        document.getElementById('m_alias').value = ej['Acrónimo'] || '';
+                        document.getElementById('m_alias').value = ej['Acrónimo'] || ej.Acronimo || '';
                         if (ej.Bloque && document.querySelector(`#m_bloque_sesion option[value="${ej.Bloque}"]`)) {
                             document.getElementById('m_bloque_sesion').value = ej.Bloque;
                         }
+                        const catMat = ej.Material || '';
+                        cargarOpcionesMaterial(catMat, catMat);
                     }
                 });
             }
@@ -448,6 +599,8 @@
                         Series: repsVal,
                         Peso: document.getElementById('m_peso').value,
                         Intensidad: document.getElementById('m_intensidad').value,
+                        Material: ejCat.Material || '',
+                        Material_Adaptacion: document.getElementById('m_material_adaptacion').value.trim(),
                         Subgrupo: subName,
                         Subgrupo_Detalle: subDetalle
                     };
@@ -499,6 +652,7 @@
             document.getElementById('m_reps').value = seriePorDefecto;
             document.getElementById('m_reps_custom').style.display = 'none';
             document.getElementById('m_reps_custom').value = '';
+            cargarOpcionesMaterial('', '');
             actualizarComboSubgrupos('');
             window.onSubgrupoSelectChange();
             filtrarDropdownEjercicios();
@@ -513,6 +667,12 @@
             document.getElementById('m_ejercicio_select').value = ej.ID_Ejercicio;
             document.getElementById('m_alias').value = ej.Acrónimo || '';
             document.getElementById('m_detalle').value = ej.Detalle || '';
+
+            const targetName = ej.Nombre_Ejercicio || '';
+            const ejCatObj = catalogoEjercicios.find(x => x.id_doc === ej.ID_Ejercicio || x.ID_Ejercicio === ej.ID_Ejercicio || x.Nombre_Ejercicio === targetName);
+            const catMat = ejCatObj ? (ejCatObj.Material || '') : (ej.Material || '');
+            const savedMat = ej.Material_Adaptacion !== undefined ? ej.Material_Adaptacion : (ej.Material || '');
+            cargarOpcionesMaterial(catMat, savedMat);
             if (ej.Bloque && document.querySelector(`#m_bloque_sesion option[value="${ej.Bloque}"]`)) {
                 document.getElementById('m_bloque_sesion').value = ej.Bloque;
             }

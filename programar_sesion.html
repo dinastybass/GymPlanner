@@ -280,6 +280,7 @@
         let sesionesClienteCargadas = [];
         let editingIndex = -1;
         let ordenBloques = {};
+        let materialesMaestro = [];
         let seriePorDefecto = "3 x 10";
         let sortableInstance = null;
         let selectedGrupoMuscular = "";
@@ -350,13 +351,50 @@
 
         function setDropdownValues(idRef, commaString) {
             if (!commaString) { clearDropdown(idRef); return; }
-            const vals = commaString.split(',').map(s => s.trim());
+            const valsNorm = commaString.split(',').map(s => normalizarTexto(s)).filter(Boolean);
             const checks = document.querySelectorAll(`#options${idRef} input[type="checkbox"]`);
             if (checks.length > 0) {
-                checks.forEach(c => c.checked = vals.includes(c.value));
+                checks.forEach(c => {
+                    c.checked = valsNorm.includes(normalizarTexto(c.value));
+                });
                 updateMultiSelection(idRef);
             } else {
-                selectSingleOption(idRef, vals[0]);
+                const firstVal = commaString.split(',')[0].trim();
+                if (firstVal) selectSingleOption(idRef, firstVal);
+            }
+        }
+
+        function cargarOpcionesMaterial(materialesCatalogoStr = '', materialesSeleccionadosStr = '') {
+            const catMats = materialesCatalogoStr
+                ? materialesCatalogoStr.split(',').map(s => s.trim()).filter(Boolean)
+                : [];
+            const selMats = materialesSeleccionadosStr
+                ? materialesSeleccionadosStr.split(',').map(s => s.trim()).filter(Boolean)
+                : [];
+
+            const listaOrdenada = [];
+            const vistos = new Set();
+
+            const agregar = (item) => {
+                const norm = normalizarTexto(item);
+                if (norm && !vistos.has(norm)) {
+                    vistos.add(norm);
+                    listaOrdenada.push(item);
+                }
+            };
+
+            catMats.forEach(agregar);
+            materialesMaestro.forEach(agregar);
+            selMats.forEach(agregar);
+
+            const searchInp = document.getElementById('searchMaterial');
+            if (searchInp) searchInp.value = '';
+
+            buildDropdownOptions('Material', listaOrdenada, true);
+            if (materialesSeleccionadosStr) {
+                setDropdownValues('Material', materialesSeleccionadosStr);
+            } else {
+                clearDropdown('Material');
             }
         }
 
@@ -474,8 +512,12 @@
                 }
             });
 
-            const seriesMaestro = await getValoresMaestro('Ejercicios', 'Series y Repeticiones');
+            const [seriesMaestro, matMaestro] = await Promise.all([
+                getValoresMaestro('Ejercicios', 'Series y Repeticiones'),
+                getValoresMaestro('Ejercicios', 'Materiales')
+            ]);
             if (seriesMaestro.length > 0) seriePorDefecto = seriesMaestro[0];
+            materialesMaestro = matMaestro || [];
 
             const docSnap = await getDoc(doc(db, "agenda_sesiones", sessionId));
             if (docSnap.exists()) {
@@ -640,8 +682,7 @@
             document.getElementById('m_reps').value = seriePorDefecto;
             document.getElementById('m_reps_custom').style.display = 'none';
             document.getElementById('m_reps_custom').value = '';
-            buildDropdownOptions('Material', [], true);
-            clearDropdown('Material');
+            cargarOpcionesMaterial('', '');
             selectedGrupoMuscular = "";
             document.getElementById('modal-main-title').innerText = "Planificar sesión";
             document.getElementById('btn-submit-modal').innerText = "Añadir a la sesión";
@@ -679,16 +720,10 @@
             document.getElementById('m_detalle').value = ej.Detalle || ej.detalle || '';
             selectedGrupoMuscular = ej.Grupo_Muscular || '';
 
-            const ejCatObj = catalogoEjercicios.find(x => x.id_doc === ej.ID_Ejercicio || x.Nombre_Ejercicio === targetName);
-            if (ejCatObj) {
-                const catMat = ejCatObj.Material || '';
-                const allowedMaterials = catMat ? catMat.split(',').map(s => s.trim()).filter(Boolean) : [];
-                buildDropdownOptions('Material', allowedMaterials, true);
-            } else {
-                buildDropdownOptions('Material', [], true);
-            }
-
-            setDropdownValues('Material', ej.Material_Adaptacion);
+            const ejCatObj = catalogoEjercicios.find(x => x.id_doc === ej.ID_Ejercicio || x.ID_Ejercicio === ej.ID_Ejercicio || x.Nombre_Ejercicio === targetName);
+            const catMat = ejCatObj ? (ejCatObj.Material || '') : (ej.Material || '');
+            const savedMat = ej.Material_Adaptacion !== undefined ? ej.Material_Adaptacion : (ej.Material || '');
+            cargarOpcionesMaterial(catMat, savedMat);
 
             const b = ej.Bloque || ej.bloque || ej.Fase_Bloque || '';
             if (b && document.querySelector(`#m_bloque_sesion option[value="${b}"]`)) {
@@ -800,8 +835,7 @@
                 selectedGrupoMuscular = '';
                 document.getElementById('m_reps').value = seriePorDefecto;
                 document.getElementById('m_reps_custom').style.display = 'none';
-                buildDropdownOptions('Material', [], true);
-                clearDropdown('Material');
+                cargarOpcionesMaterial('', '');
                 document.getElementById('box-progreso').style.display = 'none';
                 return;
             }
@@ -827,14 +861,7 @@
                 }
 
                 const catMat = ej.Material || '';
-                const allowedMaterials = catMat ? catMat.split(',').map(s => s.trim()).filter(Boolean) : [];
-                buildDropdownOptions('Material', allowedMaterials, true);
-
-                if (catMat) {
-                    setDropdownValues('Material', catMat);
-                } else {
-                    clearDropdown('Material');
-                }
+                cargarOpcionesMaterial(catMat, catMat);
 
                 if (ej.es_de_progreso) {
                     document.getElementById('box-progreso').style.display = 'block';
