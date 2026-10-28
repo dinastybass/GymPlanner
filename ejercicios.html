@@ -423,7 +423,7 @@
         import { collection, getDocs, doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
         import { poblarSelect, getValoresMaestro, getMapaOrdenMaestro } from './js/maestros-service.js';
-        import { normalizarTexto, iconChevron, iconTrash } from './js/utils.js';
+        import { normalizarTexto, iconChevron, iconTrash, buildDropdownOptions, clearDropdown, setDropdownValues } from './js/utils.js';
         import { eliminarDocumentoConDeshacer, mostrarToastDeshacer } from './js/undo-service.js';
 
         let allEjercicios = [];
@@ -465,54 +465,7 @@
             buildDropdownOptions('Posicion', posiciones, true);
         }
 
-        function buildDropdownOptions(idRef, list, isMulti) {
-            const container = document.getElementById(`options${idRef}`);
-            if (!container) return;
-            container.innerHTML = list.map(item => {
-                if (isMulti) {
-                    return `<label class="dropdown-option"><input type="checkbox" value="${item}" onchange="updateMultiSelection('${idRef}')"> <span>${item}</span></label>`;
-                } else {
-                    return `<div class="dropdown-option" onclick="selectSingleOption('${idRef}', '${item}')"><span>${item}</span></div>`;
-                }
-            }).join('');
-        }
-
-        window.toggleDropdown = (panelId) => {
-            document.querySelectorAll('.dropdown-panel.active').forEach(p => { if (p.id !== panelId) p.classList.remove('active'); });
-            document.getElementById(panelId).classList.toggle('active');
-        };
-
-        window.closeDropdown = (panelId) => { document.getElementById(panelId).classList.remove('active'); };
-
-        window.selectSingleOption = (idRef, val) => {
-            document.getElementById(`form${idRef}`).value = val;
-            document.getElementById(`triggerText${idRef}`).innerText = val;
-            closeDropdown(`panel${idRef}`);
-        };
-
-        window.updateMultiSelection = (idRef) => {
-            const checks = document.querySelectorAll(`#options${idRef} input[type="checkbox"]:checked`);
-            const vals = Array.from(checks).map(c => c.value);
-            document.getElementById(`form${idRef}`).value = vals.join(', ');
-            document.getElementById(`triggerText${idRef}`).innerText = vals.length > 0 ? `${vals.length} seleccionado(s)` : 'Selecciona opciones';
-        };
-
-        window.clearDropdown = (idRef) => {
-            document.querySelectorAll(`#options${idRef} input[type="checkbox"]`).forEach(c => c.checked = false);
-            document.getElementById(`form${idRef}`).value = '';
-            document.getElementById(`triggerText${idRef}`).innerText = 'Selecciona opciones';
-        };
-
-        window.filterDropdown = (idRef, searchRaw, isMulti) => {
-            const searchTxt = normalizarTexto(searchRaw);
-            const container = document.getElementById(`options${idRef}`);
-            if (!container) return;
-            const items = isMulti ? container.querySelectorAll('label') : container.querySelectorAll('.dropdown-option');
-            items.forEach(el => {
-                const txt = normalizarTexto(el.innerText);
-                el.style.display = txt.includes(searchTxt) ? 'flex' : 'none';
-            });
-        };
+        // Las funciones de desplegables (.custom-dropdown) se importan de js/utils.js
 
         async function loadData() {
             const snapshot = await getDocs(collection(db, "ejercicios"));
@@ -726,24 +679,7 @@
                 });
             }
 
-            document.addEventListener('click', (e) => {
-                if (!e.target.closest('.custom-dropdown')) {
-                    document.querySelectorAll('.dropdown-panel').forEach(p => p.classList.remove('active'));
-                }
-            });
         });
-
-        function setDropdownValues(idRef, commaString) {
-            if (!commaString) { clearDropdown(idRef); return; }
-            const vals = commaString.split(',').map(s => s.trim());
-            const checks = document.querySelectorAll(`#options${idRef} input[type="checkbox"]`);
-            if (checks.length > 0) {
-                checks.forEach(c => c.checked = vals.includes(c.value));
-                updateMultiSelection(idRef);
-            } else {
-                selectSingleOption(idRef, vals[0]);
-            }
-        }
 
         window.abrirModal = (isNew, idDoc = null) => {
             const form = document.getElementById('formEjercicio');

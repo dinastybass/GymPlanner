@@ -598,7 +598,7 @@
         import { collection, query, where, getDocs, doc, setDoc, addDoc, writeBatch } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
         import { getValoresMaestro } from './js/maestros-service.js';
-        import { normalizarTexto, getChevronSVG as getChevronSVGUtil } from './js/utils.js';
+        import { normalizarTexto, getChevronSVG as getChevronSVGUtil, renderizarOpcionesDropdown, clearDropdown } from './js/utils.js';
         import { crearHistorialUndo } from './js/undo-service.js';
 
         window.actualizarCalculo = () => { };
@@ -985,78 +985,20 @@
         let selectedDays = [];
         let selectedWeeks = [1, 2, 3, 4, 5];
 
-        window.toggleClienteDropdown = (panelId, searchInputId) => {
-            document.querySelectorAll('.dropdown-panel.active').forEach(p => {
-                if (p.id !== panelId) p.classList.remove('active');
-            });
-            const panel = document.getElementById(panelId);
-            if (!panel) return;
-            panel.classList.toggle('active');
-            if (panel.classList.contains('active') && searchInputId) {
-                const inp = document.getElementById(searchInputId);
-                if (inp) setTimeout(() => inp.focus(), 40);
-            }
-        };
-
-        window.filtrarClienteDropdown = (idRef, rawSearch) => {
-            const searchNorm = normalizarTexto(rawSearch);
-            const container = document.getElementById(`options${idRef}`);
-            if (!container) return;
-            container.querySelectorAll('.dropdown-option').forEach(opt => {
-                const textNorm = opt.getAttribute('data-search') || normalizarTexto(opt.innerText);
-                opt.style.display = textNorm.includes(searchNorm) ? 'flex' : 'none';
-            });
-        };
-
-        window.seleccionarClienteDropdown = (idRef, inputId, idVal, labelTxt) => {
-            const hiddenInput = document.getElementById(inputId);
-            const triggerText = document.getElementById(`triggerText${idRef}`);
-            const panel = document.getElementById(`panel${idRef}`);
-            if (hiddenInput) hiddenInput.value = idVal;
-            if (triggerText) triggerText.innerText = labelTxt;
-            if (panel) panel.classList.remove('active');
-        };
-
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('.custom-dropdown')) {
-                document.querySelectorAll('.dropdown-panel.active').forEach(p => p.classList.remove('active'));
-            }
-        });
-
         function inicializarSelectoresGlobales() {
-            const inputClienteCita = document.getElementById('nc_cliente');
-            const inputClientePlan = document.getElementById('plan_cliente');
-            const triggerCita = document.getElementById('triggerTextNCCliente');
-            const triggerPlan = document.getElementById('triggerTextPlanCliente');
-            const searchCita = document.getElementById('searchNCCliente');
-            const searchPlan = document.getElementById('searchPlanCliente');
-            const optionsCita = document.getElementById('optionsNCCliente');
-            const optionsPlan = document.getElementById('optionsPlanCliente');
+            clearDropdown('NCCliente', 'Elige un cliente...');
+            clearDropdown('PlanCliente', 'Elige un cliente...');
 
-            if (inputClienteCita) inputClienteCita.value = '';
-            if (inputClientePlan) inputClientePlan.value = '';
-            if (triggerCita) triggerCita.innerText = 'Elige un cliente...';
-            if (triggerPlan) triggerPlan.innerText = 'Elige un cliente...';
-            if (searchCita) searchCita.value = '';
-            if (searchPlan) searchPlan.value = '';
+            const opcionesClientes = [...globalClientes]
+                .sort((a, b) => a.alias.localeCompare(b.alias))
+                .map(c => ({
+                    value: c.id,
+                    label: c.alias,
+                    search: `${c.alias} ${c.nombre || ''}`
+                }));
 
-            const sortedClientes = [...globalClientes].sort((a, b) => a.alias.localeCompare(b.alias));
-
-            if (optionsCita) {
-                optionsCita.innerHTML = sortedClientes.map(c => {
-                    const searchStr = normalizarTexto(`${c.alias} ${c.nombre || ''}`);
-                    const safeAlias = (c.alias || '').replace(/'/g, "\\'");
-                    return `<div class="dropdown-option" data-search="${searchStr.replace(/"/g, '&quot;')}" onclick="window.seleccionarClienteDropdown('NCCliente', 'nc_cliente', '${c.id}', '${safeAlias}')"><span>${c.alias}</span></div>`;
-                }).join('');
-            }
-
-            if (optionsPlan) {
-                optionsPlan.innerHTML = sortedClientes.map(c => {
-                    const searchStr = normalizarTexto(`${c.alias} ${c.nombre || ''}`);
-                    const safeAlias = (c.alias || '').replace(/'/g, "\\'");
-                    return `<div class="dropdown-option" data-search="${searchStr.replace(/"/g, '&quot;')}" onclick="window.seleccionarClienteDropdown('PlanCliente', 'plan_cliente', '${c.id}', '${safeAlias}')"><span>${c.alias}</span></div>`;
-                }).join('');
-            }
+            renderizarOpcionesDropdown('NCCliente', opcionesClientes, 'Sin clientes coincidentes', 'nc_cliente');
+            renderizarOpcionesDropdown('PlanCliente', opcionesClientes, 'Sin clientes coincidentes', 'plan_cliente');
 
             const selectHoraIni = document.getElementById('plan_hora_inicio');
             const selectHoraFin = document.getElementById('plan_hora_fin');

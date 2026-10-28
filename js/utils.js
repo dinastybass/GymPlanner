@@ -2,7 +2,7 @@
 
 /**
  * Normaliza un texto eliminando tildes/diacríticos y convirtiéndolo a minúsculas
- * para búsquedas y comparaciones insensibles a acentos.
+ * para búsquedas y comparaciones insensibles a acentos y mayúsculas/minúsculas.
  */
 export function normalizarTexto(texto) {
     if (!texto) return "";
@@ -48,3 +48,196 @@ export function ocultarModal(modalId) {
     if (el) el.style.display = 'none';
 }
 
+// ============================================================================
+// SISTEMA ESTANDARIZADO DE DESPLEGABLES CON BUSCADOR (.custom-dropdown)
+// ============================================================================
+
+function getHiddenInputForDropdown(idRef, explicitInputId = null) {
+    if (explicitInputId) {
+        const el = document.getElementById(explicitInputId);
+        if (el) return el;
+    }
+    const panel = document.getElementById(`panel${idRef}`);
+    const fromWrapper = panel?.closest('.custom-dropdown')?.querySelector('input[type="hidden"]');
+    if (fromWrapper) return fromWrapper;
+    return (
+        document.getElementById(`form${idRef}`) ||
+        document.getElementById(`m_${idRef.toLowerCase()}_adaptacion`) ||
+        document.getElementById(`m_${idRef.toLowerCase()}`)
+    );
+}
+
+/**
+ * Abre/cierra un panel desplegable (.dropdown-panel), cerrando los demás abiertos
+ * y enfocando automáticamente su caja de búsqueda si existe.
+ */
+export function toggleDropdown(panelId, searchInputId = null) {
+    document.querySelectorAll('.dropdown-panel.active').forEach(p => {
+        if (p.id !== panelId) p.classList.remove('active');
+    });
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+    panel.classList.toggle('active');
+    if (panel.classList.contains('active')) {
+        const inp = searchInputId
+            ? document.getElementById(searchInputId)
+            : panel.querySelector('.dropdown-search-container input');
+        if (inp) setTimeout(() => inp.focus(), 40);
+    }
+}
+
+/**
+ * Cierra un panel desplegable por su ID.
+ */
+export function closeDropdown(panelId) {
+    document.getElementById(panelId)?.classList.remove('active');
+}
+
+/**
+ * Filtra las opciones de un desplegable (#options{idRef}) de forma insensible
+ * a mayúsculas/minúsculas y tildes usando normalizarTexto.
+ */
+export function filterDropdown(idRef, searchRaw = '') {
+    const searchTxt = normalizarTexto(searchRaw);
+    const container = document.getElementById(`options${idRef}`);
+    if (!container) return;
+    container.querySelectorAll('.dropdown-option').forEach(el => {
+        if (el.getAttribute('data-empty') === 'true') return;
+        const txt = el.getAttribute('data-search') || normalizarTexto(el.innerText);
+        el.style.display = txt.includes(searchTxt) ? 'flex' : 'none';
+    });
+}
+
+/**
+ * Selecciona una opción en un desplegable de selección única, actualiza el input oculto
+ * y el texto del trigger, cierra el panel y dispara el evento 'change'.
+ */
+export function selectSingleOption(idRef, val, labelTxt = null, inputId = null) {
+    const hiddenInput = getHiddenInputForDropdown(idRef, inputId);
+    const triggerText = document.getElementById(`triggerText${idRef}`);
+    if (hiddenInput) hiddenInput.value = val ?? '';
+    if (triggerText) triggerText.innerText = labelTxt ?? val ?? '';
+    closeDropdown(`panel${idRef}`);
+    if (hiddenInput) hiddenInput.dispatchEvent(new Event('change'));
+}
+
+/**
+ * Renderiza opciones de selección única [{ value, label, search }] en #options{idRef}
+ * con búsqueda normalizada y soporte de mensaje cuando no hay coincidencias.
+ */
+export function renderizarOpcionesDropdown(idRef, opciones = [], emptyMessage = 'Sin resultados coincidentes', inputId = null) {
+    const container = document.getElementById(`options${idRef}`);
+    if (!container) return;
+
+    if (!opciones || opciones.length === 0) {
+        container.innerHTML = `<div class="dropdown-option" data-empty="true" style="color: var(--text-muted); cursor: default;"><span>${emptyMessage}</span></div>`;
+        return;
+    }
+
+    container.innerHTML = '';
+    opciones.forEach(opt => {
+        const div = document.createElement('div');
+        div.className = 'dropdown-option';
+        div.setAttribute('data-search', normalizarTexto(opt.search || opt.label || ''));
+        const span = document.createElement('span');
+        span.textContent = opt.label;
+        div.appendChild(span);
+        div.addEventListener('click', () => {
+            selectSingleOption(idRef, opt.value, opt.label, inputId);
+        });
+        container.appendChild(div);
+    });
+}
+
+/**
+ * Construye opciones simples o multiselección (checkboxes) a partir de una lista de strings.
+ */
+export function buildDropdownOptions(idRef, list = [], isMulti = true) {
+    const container = document.getElementById(`options${idRef}`);
+    if (!container) return;
+    if (isMulti) {
+        container.innerHTML = list.map(item => {
+            const searchNorm = normalizarTexto(item).replace(/"/g, '&quot;');
+            return `<label class="dropdown-option" data-search="${searchNorm}"><input type="checkbox" value="${item}" onchange="updateMultiSelection('${idRef}')"> <span>${item}</span></label>`;
+        }).join('');
+    } else {
+        renderizarOpcionesDropdown(idRef, list.map(item => ({ value: item, label: item, search: item })));
+    }
+}
+
+/**
+ * Actualiza el valor oculto y el texto del trigger en un desplegable multiselección.
+ */
+export function updateMultiSelection(idRef) {
+    const checks = document.querySelectorAll(`#options${idRef} input[type="checkbox"]:checked`);
+    const vals = Array.from(checks).map(c => c.value);
+    const hiddenInput = getHiddenInputForDropdown(idRef);
+    const triggerText = document.getElementById(`triggerText${idRef}`);
+    if (hiddenInput) hiddenInput.value = vals.join(', ');
+    if (triggerText) triggerText.innerText = vals.length > 0 ? `${vals.length} seleccionado(s)` : 'Selecciona opciones';
+}
+
+/**
+ * Limpia la selección (y el filtro de búsqueda) de un desplegable.
+ */
+export function clearDropdown(idRef, placeholder = 'Selecciona opciones') {
+    document.querySelectorAll(`#options${idRef} input[type="checkbox"]`).forEach(c => { c.checked = false; });
+    const hiddenInput = getHiddenInputForDropdown(idRef);
+    const triggerText = document.getElementById(`triggerText${idRef}`);
+    if (hiddenInput) hiddenInput.value = '';
+    if (triggerText) triggerText.innerText = placeholder;
+    const panel = document.getElementById(`panel${idRef}`);
+    const searchInp = panel?.querySelector('.dropdown-search-container input');
+    if (searchInp) searchInp.value = '';
+    filterDropdown(idRef, '');
+}
+
+/**
+ * Marca los valores indicados (separados por coma) en un desplegable multiselección o simple,
+ * comparando de forma insensible a mayúsculas/tildes y espacios laterales.
+ */
+export function setDropdownValues(idRef, commaString) {
+    if (!commaString) {
+        clearDropdown(idRef);
+        return;
+    }
+    const valsNorm = String(commaString).split(',').map(s => normalizarTexto(s.trim())).filter(Boolean);
+    const checks = document.querySelectorAll(`#options${idRef} input[type="checkbox"]`);
+    if (checks.length > 0) {
+        checks.forEach(c => {
+            c.checked = valsNorm.includes(normalizarTexto(c.value.trim()));
+        });
+        updateMultiSelection(idRef);
+    } else {
+        const firstVal = String(commaString).split(',')[0].trim();
+        if (firstVal) selectSingleOption(idRef, firstVal, firstVal);
+    }
+}
+
+// Exponer funciones en window para atributos onclick/oninput/onkeyup del HTML y cerrar al hacer clic fuera
+if (typeof window !== 'undefined') {
+    window.toggleDropdown = toggleDropdown;
+    window.closeDropdown = closeDropdown;
+    window.filterDropdown = filterDropdown;
+    window.selectSingleOption = selectSingleOption;
+    window.renderizarOpcionesDropdown = renderizarOpcionesDropdown;
+    window.buildDropdownOptions = buildDropdownOptions;
+    window.updateMultiSelection = updateMultiSelection;
+    window.clearDropdown = clearDropdown;
+    window.setDropdownValues = setDropdownValues;
+
+    // Alias de compatibilidad para selectores de clientes
+    window.toggleClienteDropdown = toggleDropdown;
+    window.filtrarClienteDropdown = filterDropdown;
+    window.seleccionarClienteDropdown = (idRef, inputId, idVal, labelTxt) =>
+        selectSingleOption(idRef, idVal, labelTxt, inputId);
+
+    if (!window.__gymDropdownOutsideClickBound) {
+        window.__gymDropdownOutsideClickBound = true;
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.custom-dropdown')) {
+                document.querySelectorAll('.dropdown-panel.active').forEach(p => p.classList.remove('active'));
+            }
+        });
+    }
+}

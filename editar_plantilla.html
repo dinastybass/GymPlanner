@@ -166,7 +166,7 @@
         import { doc, getDoc, setDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
         import { poblarSelect, getValoresMaestro, getMapaOrdenMaestro } from './js/maestros-service.js';
-        import { normalizarTexto, iconTrash } from './js/utils.js';
+        import { normalizarTexto, iconTrash, toggleDropdown, closeDropdown, filterDropdown, selectSingleOption, renderizarOpcionesDropdown, buildDropdownOptions, updateMultiSelection, clearDropdown, setDropdownValues } from './js/utils.js';
         import { crearHistorialUndo } from './js/undo-service.js';
 
         const urlParams = new URLSearchParams(window.location.search);
@@ -196,93 +196,7 @@
             }
         });
 
-        // --- Manejo del Dropdown Customizado de Material ---
-        function buildDropdownOptions(idRef, list, isMulti) {
-            const container = document.getElementById(`options${idRef}`);
-            if (!container) return;
-            container.innerHTML = list.map(item => {
-                if (isMulti) {
-                    return `<label class="dropdown-option"><input type="checkbox" value="${item}" onchange="updateMultiSelection('${idRef}')"> <span>${item}</span></label>`;
-                } else {
-                    return `<div class="dropdown-option" onclick="selectSingleOption('${idRef}', '${item}')"><span>${item}</span></div>`;
-                }
-            }).join('');
-        }
-
-        window.toggleDropdown = (panelId, searchInputId) => {
-            document.querySelectorAll('.dropdown-panel.active').forEach(p => { if (p.id !== panelId) p.classList.remove('active'); });
-            const panel = document.getElementById(panelId);
-            if (!panel) return;
-            panel.classList.toggle('active');
-            if (panel.classList.contains('active') && searchInputId) {
-                const inp = document.getElementById(searchInputId);
-                if (inp) setTimeout(() => inp.focus(), 40);
-            }
-        };
-
-        window.closeDropdown = (panelId) => { document.getElementById(panelId)?.classList.remove('active'); };
-
-        window.seleccionarEjercicioDropdown = (idDoc) => {
-            const ej = catalogoEjercicios.find(x => x.id_doc === idDoc);
-            const hiddenInput = document.getElementById('m_ejercicio_select');
-            const triggerText = document.getElementById('triggerTextEjercicio');
-            if (hiddenInput) hiddenInput.value = idDoc || '';
-            if (triggerText) {
-                if (ej) {
-                    const acroText = (ej['Acrónimo'] || ej.Acronimo) ? `[${ej['Acrónimo'] || ej.Acronimo}] ` : '';
-                    triggerText.innerText = `${acroText}${ej.Nombre_Ejercicio}`;
-                } else {
-                    triggerText.innerText = 'Selecciona un ejercicio...';
-                }
-            }
-            closeDropdown('panelEjercicio');
-            if (hiddenInput) hiddenInput.dispatchEvent(new Event('change'));
-        };
-
-        window.selectSingleOption = (idRef, val) => {
-            document.getElementById(`m_${idRef.toLowerCase()}`).value = val;
-            document.getElementById(`triggerText${idRef}`).innerText = val;
-            closeDropdown(`panel${idRef}`);
-        };
-
-        window.updateMultiSelection = (idRef) => {
-            const checks = document.querySelectorAll(`#options${idRef} input[type="checkbox"]:checked`);
-            const vals = Array.from(checks).map(c => c.value);
-            document.getElementById(`m_${idRef.toLowerCase()}_adaptacion`).value = vals.join(', ');
-            document.getElementById(`triggerText${idRef}`).innerText = vals.length > 0 ? `${vals.length} seleccionado(s)` : 'Selecciona opciones';
-        };
-
-        window.clearDropdown = (idRef) => {
-            document.querySelectorAll(`#options${idRef} input[type="checkbox"]`).forEach(c => c.checked = false);
-            document.getElementById(`m_${idRef.toLowerCase()}_adaptacion`).value = '';
-            document.getElementById(`triggerText${idRef}`).innerText = 'Selecciona opciones';
-        };
-
-        window.filterDropdown = (idRef, searchRaw, isMulti) => {
-            const searchTxt = normalizarTexto(searchRaw);
-            const container = document.getElementById(`options${idRef}`);
-            if (!container) return;
-            const items = isMulti ? container.querySelectorAll('label') : container.querySelectorAll('.dropdown-option');
-            items.forEach(el => {
-                const txt = normalizarTexto(el.innerText);
-                el.style.display = txt.includes(searchTxt) ? 'flex' : 'none';
-            });
-        };
-
-        function setDropdownValues(idRef, commaString) {
-            if (!commaString) { clearDropdown(idRef); return; }
-            const valsNorm = commaString.split(',').map(s => normalizarTexto(s.trim())).filter(Boolean);
-            const checks = document.querySelectorAll(`#options${idRef} input[type="checkbox"]`);
-            if (checks.length > 0) {
-                checks.forEach(c => {
-                    c.checked = valsNorm.includes(normalizarTexto(c.value.trim()));
-                });
-                updateMultiSelection(idRef);
-            } else {
-                const firstVal = commaString.split(',')[0].trim();
-                if (firstVal) selectSingleOption(idRef, firstVal);
-            }
-        }
+        // --- Manejo del Dropdown Customizado de Material (usa js/utils.js) ---
 
         function cargarOpcionesMaterial(materialesCatalogoStr = '', materialesSeleccionadosStr = '') {
             const catMats = materialesCatalogoStr
@@ -459,12 +373,6 @@
             const catSnap = await getDocs(collection(db, "ejercicios"));
             catSnap.forEach(doc => catalogoEjercicios.push({ id_doc: doc.id, ...doc.data() }));
             filtrarDropdownEjercicios();
-
-            document.addEventListener('click', (e) => {
-                if (!e.target.closest('.custom-dropdown')) {
-                    document.querySelectorAll('.dropdown-panel').forEach(p => p.classList.remove('active'));
-                }
-            });
         }
 
         function initSortable() {
@@ -794,14 +702,11 @@
                 return true;
             }).sort((a, b) => (a.Nombre_Ejercicio || '').localeCompare(b.Nombre_Ejercicio || ''));
 
-            if (filtrados.length === 0) {
-                optionsContainer.innerHTML = `<div class="dropdown-option" style="color: var(--text-muted); cursor: default;"><span>Sin ejercicios coincidentes</span></div>`;
-            } else {
-                optionsContainer.innerHTML = filtrados.map(e => {
-                    const acroText = (e['Acrónimo'] || e.Acronimo) ? `[${e['Acrónimo'] || e.Acronimo}] ` : '';
-                    return `<div class="dropdown-option" onclick="window.seleccionarEjercicioDropdown('${e.id_doc}')"><span>${acroText}${e.Nombre_Ejercicio}</span></div>`;
-                }).join('');
-            }
+            renderizarOpcionesDropdown('Ejercicio', filtrados.map(e => {
+                const acro = e['Acrónimo'] || e.Acronimo || '';
+                const label = `${acro ? `[${acro}] ` : ''}${e.Nombre_Ejercicio}`;
+                return { value: e.id_doc, label, search: `${label} ${acro}` };
+            }), 'Sin ejercicios coincidentes', 'm_ejercicio_select');
         }
         window.filtrarDropdownEjercicios = filtrarDropdownEjercicios;
 
