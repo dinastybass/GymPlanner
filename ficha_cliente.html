@@ -176,10 +176,51 @@
             border-bottom: 1px solid var(--border);
         }
 
+        table.session-table {
+            table-layout: fixed;
+            width: 100%;
+            min-width: 680px;
+        }
+
         table.session-table th,
         table.session-table td {
-            padding: 12px 20px;
+            padding: 12px 16px;
             font-size: 0.85rem;
+        }
+
+        table.session-table th:nth-child(1),
+        table.session-table td:nth-child(1) {
+            width: 18%;
+        }
+
+        table.session-table th:nth-child(2),
+        table.session-table td:nth-child(2) {
+            width: 14%;
+        }
+
+        table.session-table th:nth-child(3),
+        table.session-table td:nth-child(3) {
+            width: 19%;
+        }
+
+        table.session-table th:nth-child(4),
+        table.session-table td:nth-child(4) {
+            width: 10%;
+        }
+
+        table.session-table th:nth-child(5),
+        table.session-table td:nth-child(5) {
+            width: 15%;
+        }
+
+        table.session-table th:nth-child(6),
+        table.session-table td:nth-child(6) {
+            width: 24%;
+            text-align: right;
+        }
+
+        table.session-table .action-icons {
+            justify-content: flex-end;
         }
 
         .session-table th {
@@ -256,10 +297,37 @@
             white-space: nowrap;
         }
 
+        .table-progreso {
+            table-layout: fixed;
+            width: 100%;
+        }
+
         .table-progreso th,
         .table-progreso td {
             padding: 12px 20px;
             font-size: 0.85rem;
+        }
+
+        .table-progreso th:nth-child(1),
+        .table-progreso td:nth-child(1) {
+            width: 44%;
+        }
+
+        .table-progreso th:nth-child(2),
+        .table-progreso td:nth-child(2) {
+            width: 24%;
+        }
+
+        .table-progreso th:nth-child(3),
+        .table-progreso td:nth-child(3) {
+            width: 32%;
+        }
+
+        #modalHistorialPR .table-progreso th:nth-child(1),
+        #modalHistorialPR .table-progreso td:nth-child(1),
+        #modalHistorialPR .table-progreso th:nth-child(2),
+        #modalHistorialPR .table-progreso td:nth-child(2) {
+            width: 50%;
         }
 
         .table-progreso th {
@@ -1976,7 +2044,7 @@
                             <span style="display:flex; align-items:center; gap:8px;"><span style="transition:0.2s; transform:${rotationStyle};">${chevronSVG}</span> ${mes}</span>
                             <span style="font-weight:normal; font-size:0.85rem; color:var(--text-muted);">${sesiones.length} sesiones</span>
                         </div>
-                        <div style="display:${displayStyle};">
+                        <div class="table-responsive" style="display:${displayStyle};">
                             <table class="session-table">
                                 <thead><tr><th>FECHA</th><th>DÍA</th><th>HORARIO</th><th>TIPO</th><th>ESTADO</th><th>ACCIONES</th></tr></thead>
                                 <tbody>${rowsHTML}</tbody>

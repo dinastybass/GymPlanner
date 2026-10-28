@@ -186,6 +186,16 @@
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
             gap: 20px;
+            align-items: stretch;
+        }
+
+        .cards-grid .card {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            box-sizing: border-box;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
         }
 
         .card:hover {
@@ -200,6 +210,14 @@
             margin-bottom: 15px;
             text-transform: uppercase;
             align-items: center;
+            gap: 10px;
+        }
+
+        .card-header > span:first-child {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
         }
 
         .card-time {
@@ -208,6 +226,8 @@
             display: flex;
             align-items: center;
             gap: 4px;
+            flex-shrink: 0;
+            white-space: nowrap;
         }
 
         .card-body {
@@ -219,6 +239,10 @@
             text-align: center;
             margin-bottom: 15px;
             transition: background 0.2s;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }
 
         .card-body.has-data {
@@ -229,6 +253,7 @@
             border-style: solid;
             text-align: left;
             padding: 12px;
+            justify-content: flex-start;
         }
 
         .card:hover .card-body:not(.has-data) {
@@ -326,7 +351,9 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-top: 10px;
+            margin-top: auto;
+            padding-top: 4px;
+            gap: 8px;
         }
 
         .status {

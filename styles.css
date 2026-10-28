@@ -204,7 +204,8 @@ body {
 
 .search-box input {
   width: 100%;
-  padding: 10px 10px 10px 35px;
+  height: 40px;
+  padding: 8px 12px 8px 35px;
   border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 0.9rem;
@@ -215,23 +216,29 @@ body {
 .search-box svg {
   position: absolute;
   left: 10px;
-  top: 10px;
+  top: 50%;
+  transform: translateY(-50%);
   color: var(--text-muted);
+  pointer-events: none;
 }
 
 .filter-select {
-  padding: 10px;
+  height: 40px;
+  padding: 0 12px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--hover-bg);
   font-size: 0.9rem;
   color: var(--text-main);
   min-width: 150px;
+  box-sizing: border-box;
 }
 
 .total-count {
   font-size: 0.9rem;
   color: var(--text-muted);
+  margin-left: auto;
+  white-space: nowrap;
 }
 
 /* --- Tablas Responsivas --- */
@@ -434,7 +441,8 @@ td {
 .form-group input,
 .form-group select,
 .form-control {
-  padding: 10px;
+  padding: 9px 10px;
+  min-height: 42px;
   border: 1px solid var(--border);
   border-radius: 8px;
   font-family: inherit;
@@ -480,7 +488,9 @@ textarea.form-control {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px;
+  padding: 9px 10px;
+  min-height: 42px;
+  box-sizing: border-box;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--hover-bg);
@@ -764,6 +774,7 @@ textarea.form-control {
   flex-direction: column;
   gap: 4px;
   flex-grow: 1;
+  min-width: 0;
   pointer-events: none;
 }
 
@@ -771,6 +782,8 @@ textarea.form-control {
   font-weight: 600;
   font-size: 0.95rem;
   color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ex-item-detail {

@@ -60,14 +60,45 @@
             background-color: #e5e7eb;
         }
 
+        table {
+            table-layout: fixed;
+            width: 100%;
+            min-width: 520px;
+        }
+
         th,
         td {
             padding: 12px 20px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        th:nth-child(1),
+        td:nth-child(1) {
+            width: 24%;
+        }
+
+        th:nth-child(2),
+        td:nth-child(2) {
+            width: 24%;
+        }
+
+        th:nth-child(3),
+        td:nth-child(3) {
+            width: 24%;
+        }
+
+        th:nth-child(4),
+        td:nth-child(4) {
+            width: 28%;
+            text-align: right;
         }
 
         th {
             text-transform: uppercase;
             font-size: 0.75rem;
+            background: var(--hover-bg);
         }
 
         .btn-programar {

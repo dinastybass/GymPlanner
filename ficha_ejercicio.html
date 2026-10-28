@@ -40,7 +40,15 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 20px;
-            align-items: start;
+            align-items: stretch;
+        }
+
+        .layout-grid .card {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            box-sizing: border-box;
+            margin-bottom: 0 !important;
         }
 
         @media (max-width: 768px) {
@@ -158,63 +166,59 @@
         </div>
 
         <div class="layout-grid">
-            <!-- COLUMNA IZQUIERDA -->
-            <div class="col">
-                <div class="card" style="margin-bottom: 20px;">
-                    <h3>📋 Clasificación</h3>
-                    <div class="info-row">
-                        <div class="info-label">Bloque</div>
-                        <div class="info-value" id="ui-bloque">-</div>
-                    </div>
-                    <div class="info-row">
-                        <div class="info-label">Subcategoría</div>
-                        <div class="info-value" id="ui-subcategoria">-</div>
-                    </div>
-                    <div class="info-row">
-                        <div class="info-label">Patrón Mov.</div>
-                        <div class="info-value" id="ui-patron">-</div>
-                    </div>
+            <div class="card">
+                <h3>📋 Clasificación</h3>
+                <div class="info-row">
+                    <div class="info-label">Bloque</div>
+                    <div class="info-value" id="ui-bloque">-</div>
                 </div>
-
-                <div class="card">
-                    <h3>💪 Anatomía y Biomecánica</h3>
-                    <div class="info-row">
-                        <div class="info-label">Zona / Articulación</div>
-                        <div class="info-value" id="ui-zona">-</div>
-                    </div>
-                    <div class="info-row">
-                        <div class="info-label">Grupo Muscular</div>
-                        <div class="info-value" id="ui-musculo">-</div>
-                    </div>
+                <div class="info-row">
+                    <div class="info-label">Subcategoría</div>
+                    <div class="info-value" id="ui-subcategoria">-</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Patrón Mov.</div>
+                    <div class="info-value" id="ui-patron">-</div>
                 </div>
             </div>
 
-            <!-- COLUMNA DERECHA -->
-            <div class="col">
-                <div class="card" style="margin-bottom: 20px;">
-                    <h3>⚙️ Detalles de Ejecución</h3>
-                    <div class="info-row">
-                        <div class="info-label">Nivel Dificultad</div>
-                        <div class="info-value" id="ui-nivel">-</div>
-                    </div>
-                    <div class="info-row">
-                        <div class="info-label">Posición</div>
-                        <div class="info-value" id="ui-posicion">-</div>
-                    </div>
-                    <div class="info-row">
-                        <div class="info-label">Material</div>
-                        <div class="info-value" id="ui-material">-</div>
-                    </div>
-
-                    <div class="warning-box" id="box-precauciones" style="display: none;">
-                        <div class="warning-title">⚠️ Precauciones / Lesión</div>
-                        <div class="warning-text" id="ui-precauciones"></div>
-                    </div>
+            <div class="card">
+                <h3>⚙️ Detalles de Ejecución</h3>
+                <div class="info-row">
+                    <div class="info-label">Nivel Dificultad</div>
+                    <div class="info-value" id="ui-nivel">-</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Posición</div>
+                    <div class="info-value" id="ui-posicion">-</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Material</div>
+                    <div class="info-value" id="ui-material">-</div>
                 </div>
 
-                <div class="card">
-                    <h3>🎥 Multimedia</h3>
-                    <a href="#" target="_blank" class="video-btn" id="ui-video">Ver Video Demostrativo</a>
+                <div class="warning-box" id="box-precauciones" style="display: none;">
+                    <div class="warning-title">⚠️ Precauciones / Lesión</div>
+                    <div class="warning-text" id="ui-precauciones"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>💪 Anatomía y Biomecánica</h3>
+                <div class="info-row">
+                    <div class="info-label">Zona / Articulación</div>
+                    <div class="info-value" id="ui-zona">-</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Grupo Muscular</div>
+                    <div class="info-value" id="ui-musculo">-</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>🎥 Multimedia</h3>
+                <div style="flex-grow: 1; display: flex; align-items: center;">
+                    <a href="#" target="_blank" class="video-btn" id="ui-video" style="margin-top: 0;">Ver Video Demostrativo</a>
                 </div>
             </div>
         </div>

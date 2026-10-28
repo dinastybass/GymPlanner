@@ -70,6 +70,43 @@
             background-color: #f1f5f9;
         }
 
+        .type-section table {
+            table-layout: fixed;
+            width: 100%;
+            min-width: 640px;
+        }
+
+        .type-section th,
+        .type-section td {
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .type-section th:nth-child(1),
+        .type-section td:nth-child(1) {
+            width: 26%;
+        }
+
+        .type-section th:nth-child(2),
+        .type-section td:nth-child(2) {
+            width: 18%;
+        }
+
+        .type-section th:nth-child(3),
+        .type-section td:nth-child(3) {
+            width: 44%;
+        }
+
+        .type-section th:nth-child(4),
+        .type-section td:nth-child(4) {
+            width: 12%;
+            text-align: right;
+        }
+
+        .type-section .action-btns {
+            justify-content: flex-end;
+        }
+
         th {
             cursor: pointer;
             white-space: nowrap;

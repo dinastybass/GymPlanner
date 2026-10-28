@@ -12,9 +12,7 @@
 
     <style>
         .total-count {
-            width: 100%;
-            margin-top: -10px;
-            margin-bottom: 10px;
+            margin-left: auto;
         }
 
         .level-accordion {
@@ -48,13 +46,61 @@
             justify-content: space-between;
             align-items: center;
             cursor: pointer;
+            transition: background-color 0.15s;
+        }
+
+        .block-header:hover {
+            background-color: #f1f5f9;
+        }
+
+        .level-accordion table {
+            table-layout: fixed;
+            width: 100%;
+            min-width: 720px;
         }
 
         th,
         td {
-            padding: 8px 8px;
-            font-size: 0.75rem;
-            line-height: 1.3;
+            padding: 10px 12px;
+            font-size: 0.8rem;
+            line-height: 1.35;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .level-accordion th:nth-child(1),
+        .level-accordion td:nth-child(1) {
+            width: 18%;
+        }
+
+        .level-accordion th:nth-child(2),
+        .level-accordion td:nth-child(2) {
+            width: 24%;
+        }
+
+        .level-accordion th:nth-child(3),
+        .level-accordion td:nth-child(3) {
+            width: 16%;
+        }
+
+        .level-accordion th:nth-child(4),
+        .level-accordion td:nth-child(4) {
+            width: 18%;
+        }
+
+        .level-accordion th:nth-child(5),
+        .level-accordion td:nth-child(5) {
+            width: 16%;
+        }
+
+        .level-accordion th:nth-child(6),
+        .level-accordion td:nth-child(6) {
+            width: 8%;
+            text-align: right;
+        }
+
+        .level-accordion .action-btns {
+            justify-content: flex-end;
         }
 
         .ex-link {
@@ -99,8 +145,8 @@
             <select class="filter-select" id="filterSub">
                 <option value="">Todas las subcategorías</option>
             </select>
+            <span class="total-count" id="totalEjerciciosText">Verificando sesión segura...</span>
         </div>
-        <div class="total-count" id="totalEjerciciosText">Verificando sesión segura...</div>
 
         <div id="ejerciciosContainer"></div>
     </div>
