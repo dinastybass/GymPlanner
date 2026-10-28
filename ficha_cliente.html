@@ -837,7 +837,7 @@
 
         const undoHistory = crearHistorialUndo({
             contextKey: `ficha_cliente_${clientId}`,
-            maxSteps: 15,
+            maxSteps: 10,
             containerId: 'undoToolbarContainer',
             onAfterApply: async () => {
                 await loadClientInfo();

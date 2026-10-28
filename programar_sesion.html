@@ -276,7 +276,7 @@
 
         const undoHistory = crearHistorialUndo({
             contextKey: `programar_sesion_${sessionId}`,
-            maxSteps: 15,
+            maxSteps: 10,
             containerId: 'undoToolbarContainer',
             onAfterApply: async () => {
                 const docSnap = await getDoc(doc(db, "agenda_sesiones", sessionId));

@@ -134,7 +134,7 @@
 
         const undoHistory = crearHistorialUndo({
             contextKey: 'plantillas_catalogo',
-            maxSteps: 15,
+            maxSteps: 10,
             containerId: 'undoToolbarContainer',
             onAfterApply: async () => {
                 await loadPlantillas();

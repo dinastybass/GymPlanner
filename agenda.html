@@ -585,7 +585,7 @@
 
         const undoHistory = crearHistorialUndo({
             contextKey: 'agenda_calendario',
-            maxSteps: 15,
+            maxSteps: 10,
             containerId: 'undoToolbarContainer',
             onAfterApply: async () => {
                 await loadAgenda();

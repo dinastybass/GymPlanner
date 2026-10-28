@@ -1,10 +1,10 @@
 // js/undo-service.js
-// Servicio centralizado de Deshacer / Rehacer (Opción 1: Toast + Snapshot, Opción 2: Pila de Historial 15 pasos en caché)
+// Servicio centralizado de Deshacer / Rehacer (Opción 1: Toast + Snapshot, Opción 2: Pila de Historial 10 pasos en caché)
 
 import { db } from '../firebase-config.js';
 import { doc, getDoc, writeBatch } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
 
-const DEFAULT_MAX_STEPS = 15;
+const DEFAULT_MAX_STEPS = 10;
 
 /**
  * Convierte recursivamente objetos Date y Timestamps de Firestore a un formato JSON serializable
@@ -317,7 +317,7 @@ export function crearHistorialUndo({
             btnUndo.title = last
                 ? `Deshacer: ${last.label} (Ctrl+Z)`
                 : 'Nada que deshacer (Ctrl+Z)';
-            btnUndo.innerHTML = `${svgUndo}${count > 0 ? `<span class="undo-count-badge">${count}</span>` : ''}`;
+            btnUndo.innerHTML = svgUndo;
         }
 
         if (btnRedo) {
@@ -327,7 +327,7 @@ export function crearHistorialUndo({
             btnRedo.title = last
                 ? `Rehacer: ${last.label} (Ctrl+Y)`
                 : 'Nada que rehacer (Ctrl+Y)';
-            btnRedo.innerHTML = `${svgRedo}${count > 0 ? `<span class="undo-count-badge">${count}</span>` : ''}`;
+            btnRedo.innerHTML = svgRedo;
         }
     }
 

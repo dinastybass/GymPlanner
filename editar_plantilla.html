@@ -144,7 +144,7 @@
 
         const undoHistory = crearHistorialUndo({
             contextKey: `editar_plantilla_${idPlantilla}`,
-            maxSteps: 15,
+            maxSteps: 10,
             containerId: 'undoToolbarContainer',
             onAfterApply: async () => {
                 const docSnap = await getDoc(doc(db, "plantillas_sesiones", idPlantilla));
