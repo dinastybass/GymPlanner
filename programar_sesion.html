@@ -231,54 +231,12 @@
         </div>
     </div>
 
-    <!-- MODAL ENVIAR A CLIENTE -->
-    <div class="modal-overlay" id="modalEnviar">
-        <div class="modal-content" style="max-width: 500px;">
-            <button class="modal-close"
-                onclick="document.getElementById('modalEnviar').style.display='none'">&times;</button>
-            <div class="modal-header">
-                <h2>Enviar Rutina a Cliente</h2>
-                <p>Envía y sobrescribe los ejercicios de esta sesión a una sesión futura de cualquier cliente.</p>
-            </div>
-
-            <form id="formEnviar">
-                <div class="form-group" style="margin-bottom: 15px;">
-                    <label>Seleccionar Cliente Destino</label>
-                    <div class="custom-dropdown" id="dropdownEnviarCliente">
-                        <div class="dropdown-trigger" onclick="toggleDropdown('panelEnviarCliente', 'searchEnviarCliente')">
-                            <span id="triggerTextEnviarCliente">Elige un cliente...</span>
-                            <span class="chevron-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
-                        </div>
-                        <div class="dropdown-panel" id="panelEnviarCliente">
-                            <div class="dropdown-search-container">
-                                <input type="text" id="searchEnviarCliente" placeholder="Buscar cliente por nombre o alias..." oninput="filterDropdown('EnviarCliente', this.value)">
-                            </div>
-                            <div class="dropdown-options" id="optionsEnviarCliente"></div>
-                        </div>
-                        <input type="hidden" id="enviar_cliente" onchange="cargarSesionesClienteEnviar()">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Seleccionar Sesión Destino *</label>
-                    <select id="enviar_sesion" required disabled>
-                        <option value="">Primero selecciona un cliente...</option>
-                    </select>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn-secondary"
-                        onclick="document.getElementById('modalEnviar').style.display='none'">Cancelar</button>
-                    <button type="submit" class="btn-primary" id="btn-submit-enviar">Enviar Ejercicios</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
     <script type="module">
         import { auth, db } from './firebase-config.js';
         import { doc, getDoc, setDoc, collection, getDocs, updateDoc, writeBatch, query, where } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
         import { poblarSelect, getValoresMaestro, getMapaOrdenMaestro } from './js/maestros-service.js';
-        import { normalizarTexto, iconTrash, toggleDropdown, closeDropdown, filterDropdown, selectSingleOption, renderizarOpcionesDropdown, buildDropdownOptions, updateMultiSelection, clearDropdown, setDropdownValues } from './js/utils.js';
+        import { normalizarTexto, iconTrash, toggleDropdown, closeDropdown, filterDropdown, selectSingleOption, renderizarOpcionesDropdown, buildDropdownOptions, updateMultiSelection, clearDropdown, setDropdownValues, abrirModalEnviarSesion } from './js/utils.js';
         import { crearHistorialUndo } from './js/undo-service.js';
 
         const urlParams = new URLSearchParams(window.location.search);
@@ -289,8 +247,6 @@
         let catalogoEjercicios = [];
         let ejerciciosSesion = [];
         let plantillasCargadas = [];
-        let clientesCargados = [];
-        let sesionesClienteCargadas = [];
         let editingIndex = -1;
         let ordenBloques = {};
         let materialesMaestro = [];
@@ -1097,132 +1053,23 @@
             } catch (error) { console.error("Error al importar:", error); alert("Error al importar la plantilla."); }
         });
 
-        // --- LÓGICA PARA EXPORTAR/ENVIAR RUTINA A OTRA SESIÓN ---
-        window.abrirModalEnviar = async () => {
-            document.getElementById('modalEnviar').style.display = 'flex';
-            const triggerCliente = document.getElementById('triggerTextEnviarCliente');
-            const selectSesion = document.getElementById('enviar_sesion');
-
-            clearDropdown('EnviarCliente', 'Elige un cliente...');
-            closeDropdown('panelEnviarCliente');
-
-            selectSesion.innerHTML = '<option value="">Primero selecciona un cliente...</option>';
-            selectSesion.disabled = true;
-
-            if (clientesCargados.length === 0) {
-                if (triggerCliente) triggerCliente.innerText = 'Cargando clientes...';
-                try {
-                    const snap = await getDocs(collection(db, "clientes"));
-                    clientesCargados = [];
-                    snap.forEach(doc => clientesCargados.push({ id: doc.id, ...doc.data() }));
-
-                    clientesCargados.sort((a, b) => {
-                        const nameA = a.Alias || a.Nombre_Cliente || a.Nombre || a.nombre || '';
-                        const nameB = b.Alias || b.Nombre_Cliente || b.Nombre || b.nombre || '';
-                        return nameA.localeCompare(nameB);
-                    });
-                } catch (e) {
-                    console.error("Error cargando clientes:", e);
-                    if (triggerCliente) triggerCliente.innerText = 'Error al cargar';
-                    return;
-                }
-            }
-
-            if (triggerCliente) triggerCliente.innerText = 'Elige un cliente...';
-            renderizarOpcionesDropdown('EnviarCliente', clientesCargados.map(c => {
-                const name = c.Alias || c.Nombre_Cliente || c.Nombre || c.nombre || 'Sin nombre';
-                const fullName = c.Nombre_Cliente || c.Nombre || c.nombre || '';
-                return { value: c.id, label: name, search: `${name} ${fullName}` };
-            }), 'Sin clientes coincidentes', 'enviar_cliente');
-        };
-
-        window.cargarSesionesClienteEnviar = async () => {
-            const idCliente = document.getElementById('enviar_cliente').value;
-            const selectSesion = document.getElementById('enviar_sesion');
-
-            if (!idCliente) {
-                selectSesion.innerHTML = '<option value="">Primero selecciona un cliente...</option>';
-                selectSesion.disabled = true;
-                return;
-            }
-
-            selectSesion.innerHTML = '<option value="">Buscando sesiones...</option>';
-            selectSesion.disabled = true;
-
-            try {
-                const q = query(collection(db, "agenda_sesiones"), where("id_cliente", "==", idCliente));
-                const snap = await getDocs(q);
-
-                sesionesClienteCargadas = [];
-                snap.forEach(doc => {
-                    sesionesClienteCargadas.push({ id: doc.id, ...doc.data() });
-                });
-
-                sesionesClienteCargadas.sort((a, b) => b.fecha_hora_inicio.toMillis() - a.fecha_hora_inicio.toMillis());
-
-                if (sesionesClienteCargadas.length === 0) {
-                    selectSesion.innerHTML = '<option value="">Este cliente no tiene sesiones agendadas</option>';
-                } else {
-                    selectSesion.innerHTML = '<option value="">Elige una sesión destino...</option>';
-                    sesionesClienteCargadas.forEach(s => {
-                        const d = s.fecha_hora_inicio.toDate();
-                        const dStr = d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
-                        const hStr = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
-
-                        const numEj = s.ejercicios ? s.ejercicios.length : 0;
-                        const textEj = numEj > 0 ? `(${numEj} ej. - SE SOBRESCRIBIRÁ)` : `(Vacía)`;
-
-                        selectSesion.innerHTML += `<option value="${s.id}">${dStr} a las ${hStr} ${textEj}</option>`;
-                    });
-                    selectSesion.disabled = false;
-                }
-            } catch (e) {
-                console.error("Error cargando sesiones:", e);
-                selectSesion.innerHTML = '<option value="">Error al buscar</option>';
-            }
-        };
-
-        document.getElementById('formEnviar').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const idSesionDestino = document.getElementById('enviar_sesion').value;
-            if (!idSesionDestino) return;
-
+        // --- LÓGICA PARA EXPORTAR/ENVIAR RUTINA (CENTRALIZADA EN js/utils.js) ---
+        window.abrirModalEnviar = () => {
             if (ejerciciosSesion.length === 0) {
                 alert("Esta sesión está vacía. Añade ejercicios primero antes de enviarla.");
                 return;
             }
-
-            document.getElementById('btn-submit-enviar').innerText = "Enviando...";
-
-            try {
-                const autorNombre = localStorage.getItem('gym_user_name') || "Usuario desconocido";
-                const sesionDestinoPrevia = sesionesClienteCargadas.find(s => s.id === idSesionDestino);
-                const prevDestinoEjercicios = sesionDestinoPrevia ? JSON.parse(JSON.stringify(sesionDestinoPrevia.ejercicios || [])) : [];
-                const nextDestinoEjercicios = JSON.parse(JSON.stringify(ejerciciosSesion));
-
-                await updateDoc(doc(db, "agenda_sesiones", idSesionDestino), {
-                    ejercicios: ejerciciosSesion,
-                    programado_por: autorNombre,
-                    fecha_programacion: new Date(),
-                    orden_customizado: true
-                });
-
-                document.getElementById('modalEnviar').style.display = 'none';
-                document.getElementById('btn-submit-enviar').innerText = "Enviar Ejercicios";
-
-                undoHistory.pushAction({
-                    label: "Enviar rutina a otra sesión",
-                    undoOps: [{ type: 'set', collection: 'agenda_sesiones', id: idSesionDestino, data: { ejercicios: prevDestinoEjercicios }, merge: true }],
-                    redoOps: [{ type: 'set', collection: 'agenda_sesiones', id: idSesionDestino, data: { ejercicios: nextDestinoEjercicios, orden_customizado: true }, merge: true }],
-                    showToast: true,
-                    toastMessage: "➡️ Rutina enviada a la sesión seleccionada"
-                });
-            } catch (error) {
-                console.error("Error al enviar:", error);
-                alert("Error al enviar la rutina.");
-                document.getElementById('btn-submit-enviar').innerText = "Enviar Ejercicios";
-            }
-        });
+            abrirModalEnviarSesion({
+                ejercicios: ejerciciosSesion,
+                tipoSesionDefecto: sessionData.tipo_sesion || null,
+                undoHistory,
+                onSuccess: ({ modo }) => {
+                    if (modo === 'plantilla') {
+                        plantillasCargadas = [];
+                    }
+                }
+            });
+        };
 
         onAuthStateChanged(auth, (user) => {
             if (user) init();
