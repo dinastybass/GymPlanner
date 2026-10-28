@@ -36,10 +36,52 @@
             box-shadow: 0 4px 12px rgba(8, 145, 178, 0.2);
         }
 
+        .trainer-accordion {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-bottom: 24px;
+            overflow: hidden;
+            background: var(--surface);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+        }
+
+        .trainer-header {
+            padding: 14px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            font-weight: 800;
+            font-size: 1.02rem;
+            background-color: #e0f2fe;
+            color: #0369a1;
+            border-bottom: 1px solid var(--border);
+            transition: background-color 0.15s;
+            user-select: none;
+        }
+
+        .trainer-header:hover {
+            background-color: #bae6fd;
+        }
+
+        .trainer-header.sin-asignar {
+            background-color: #f1f5f9;
+            color: #475569;
+        }
+
+        .trainer-header.sin-asignar:hover {
+            background-color: #e2e8f0;
+        }
+
+        .trainer-body {
+            padding: 16px 16px 4px 16px;
+            background: #f8fafc;
+        }
+
         .client-accordion {
             border: 1px solid var(--border);
             border-radius: 8px;
-            margin-bottom: 20px;
+            margin-bottom: 14px;
             overflow: hidden;
             background: var(--surface);
         }
@@ -154,9 +196,10 @@
         import { collection, query, where, getDocs, updateDoc, writeBatch } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
         import { getValoresMaestro } from './js/maestros-service.js';
-        import { iconChevron as chevronSVG } from './js/utils.js';
+        import { iconChevron as chevronSVG, normalizarTexto, getListaProgramadores } from './js/utils.js';
 
         let todasLasPendientes = { individuales: [], small_groups: [] };
+        let listaProgramadoresOrden = ['Maite', 'Andrés'];
         let vistaActual = 'individuales';
 
         window.cambiarVistaPendientes = (tipo) => {
@@ -179,7 +222,36 @@
                 fechaLimite.setUTCHours(23, 59, 59, 999);
 
                 const q = query(collection(db, "agenda_sesiones"), where("fecha_hora_inicio", ">=", hoy), where("fecha_hora_inicio", "<=", fechaLimite));
-                const snapshot = await getDocs(q);
+                const [snapshot, clientesSnap, progsDB] = await Promise.all([
+                    getDocs(q),
+                    getDocs(collection(db, "clientes")),
+                    getListaProgramadores()
+                ]);
+
+                if (progsDB && progsDB.length > 0) {
+                    listaProgramadoresOrden = progsDB;
+                }
+
+                // Mapa de cliente -> Entrenador / Programador asignado
+                const progPorId = {};
+                const progPorNombre = {};
+                const resolverNombreProgramador = (raw) => {
+                    const val = String(raw || '').trim();
+                    if (!val) return '';
+                    const match = listaProgramadoresOrden.find(p => normalizarTexto(p) === normalizarTexto(val));
+                    return match || val;
+                };
+
+                clientesSnap.forEach(cDoc => {
+                    const cData = cDoc.data();
+                    const prog = resolverNombreProgramador(cData.Programador || cData.Entrenador || '');
+                    if (prog) {
+                        progPorId[cDoc.id] = prog;
+                        if (cData.ID_Cliente) progPorId[String(cData.ID_Cliente).trim()] = prog;
+                        if (cData.Alias) progPorNombre[normalizarTexto(cData.Alias)] = prog;
+                        if (cData.Nombre_Cliente) progPorNombre[normalizarTexto(cData.Nombre_Cliente)] = prog;
+                    }
+                });
 
                 todasLasPendientes = { individuales: [], small_groups: [] };
 
@@ -202,13 +274,22 @@
                     } else {
                         if (!tieneEjercicios) {
                             const d = data.fecha_hora_inicio.toDate();
+                            const idCli = String(data.id_cliente || data.ID_Cliente || '').trim();
+                            const nombreCli = data.alias || data.nombre_cliente || 'Desconocido';
+                            const entrenadorAsignado =
+                                (idCli && progPorId[idCli]) ||
+                                progPorNombre[normalizarTexto(nombreCli)] ||
+                                resolverNombreProgramador(data.programador_asignado || data.Programador) ||
+                                'Sin asignar';
+
                             indSessions.push({
                                 id: doc.id,
                                 fechaObj: d,
                                 fechaStr: d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }),
                                 diaStr: diasSemanaNombres[d.getUTCDay()],
                                 horaStr: d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
-                                cliente: data.alias || data.nombre_cliente || 'Desconocido'
+                                cliente: nombreCli,
+                                entrenador: entrenadorAsignado
                             });
                         }
                     }
@@ -307,46 +388,103 @@
                     </div>
                 `;
             } else {
-                // ACORDEÓN POR CLIENTE PARA INDIVIDUALES
-                const agrupacion = {};
+                // SECCIONADO PRIMERAMENTE POR ENTRENADOR ASIGNADO Y LUEGO POR CLIENTE
+                const porEntrenador = {};
+                listaProgramadoresOrden.forEach(p => {
+                    porEntrenador[p] = {};
+                });
+
                 lista.forEach(s => {
-                    const clave = s.cliente;
-                    if (!agrupacion[clave]) agrupacion[clave] = [];
-                    agrupacion[clave].push(s);
+                    const ent = s.entrenador || 'Sin asignar';
+                    const cli = s.cliente;
+                    if (!porEntrenador[ent]) porEntrenador[ent] = {};
+                    if (!porEntrenador[ent][cli]) porEntrenador[ent][cli] = [];
+                    porEntrenador[ent][cli].push(s);
+                });
+
+                const entrenadoresOrdenados = Object.keys(porEntrenador).sort((a, b) => {
+                    if (a === 'Sin asignar') return 1;
+                    if (b === 'Sin asignar') return -1;
+                    const idxA = listaProgramadoresOrden.indexOf(a);
+                    const idxB = listaProgramadoresOrden.indexOf(b);
+                    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+                    if (idxA !== -1) return -1;
+                    if (idxB !== -1) return 1;
+                    return a.localeCompare(b, 'es');
                 });
 
                 let html = '';
-                const clavesOrdenadas = Object.keys(agrupacion).sort();
 
-                clavesOrdenadas.forEach(clave => {
-                    const sesiones = agrupacion[clave];
-                    sesiones.sort((a, b) => a.fechaObj - b.fechaObj);
+                entrenadoresOrdenados.forEach(entrenador => {
+                    const mapaClientes = porEntrenador[entrenador] || {};
+                    const clientesOrdenados = Object.keys(mapaClientes).sort((a, b) => a.localeCompare(b, 'es'));
 
-                    const filas = sesiones.map(s => `
-                        <tr>
-                            <td>${s.fechaStr}</td><td>${s.diaStr}</td><td>${s.horaStr}</td>
-                            <td style="text-align: right;"><a href="programar_sesion.html?id_sesion=${s.id}" class="btn-programar">Programar sesión</a></td>
-                        </tr>
-                    `).join('');
+                    // Si es "Sin asignar" y no tiene sesiones pendientes, no mostrar la sección vacía
+                    if (entrenador === 'Sin asignar' && clientesOrdenados.length === 0) return;
+
+                    let totalSesionesEntrenador = 0;
+                    clientesOrdenados.forEach(c => { totalSesionesEntrenador += mapaClientes[c].length; });
+
+                    let clientesHTML = '';
+                    if (clientesOrdenados.length === 0) {
+                        clientesHTML = `
+                            <div style="padding: 18px; text-align: center; color: var(--text-muted); font-size: 0.9rem; background: var(--surface); border-radius: 8px; border: 1px dashed var(--border); margin-bottom: 12px;">
+                                No hay sesiones individuales pendientes asignadas a <strong>${entrenador}</strong>.
+                            </div>
+                        `;
+                    } else {
+                        clientesOrdenados.forEach(clave => {
+                            const sesiones = mapaClientes[clave];
+                            sesiones.sort((a, b) => a.fechaObj - b.fechaObj);
+
+                            const filas = sesiones.map(s => `
+                                <tr>
+                                    <td>${s.fechaStr}</td><td>${s.diaStr}</td><td>${s.horaStr}</td>
+                                    <td style="text-align: right;"><a href="programar_sesion.html?id_sesion=${s.id}" class="btn-programar">Programar sesión</a></td>
+                                </tr>
+                            `).join('');
+
+                            clientesHTML += `
+                                <div class="client-accordion">
+                                    <div class="client-header" onclick="const t = this.nextElementSibling; const s = this.querySelector('svg'); if(t.style.display==='none'){t.style.display='block';s.style.transform='rotate(180deg)';}else{t.style.display='none';s.style.transform='rotate(0deg)';}">
+                                        <span>${clave}</span>
+                                        <span style="font-weight:normal; font-size:0.85rem; color:var(--text-muted); display:flex; align-items:center; gap:8px;">
+                                            <span style="color:#dc2626; font-weight:bold;">${sesiones.length} pendientes</span>
+                                            <span class="chevron-icon" style="transform:rotate(180deg);">${chevronSVG}</span>
+                                        </span>
+                                    </div>
+                                    <div class="table-responsive" style="display:block;">
+                                        <table>
+                                            <thead><tr><th>FECHA</th><th>DÍA</th><th>HORA</th><th style="text-align:right;">ACCIÓN</th></tr></thead>
+                                            <tbody>${filas}</tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                    }
+
+                    const headerClass = entrenador === 'Sin asignar' ? 'trainer-header sin-asignar' : 'trainer-header';
+                    const badgeColor = totalSesionesEntrenador > 0 ? '#dc2626' : 'var(--text-muted)';
 
                     html += `
-                        <div class="client-accordion">
-                            <div class="client-header" onclick="const t = this.nextElementSibling; const s = this.querySelector('svg'); if(t.style.display==='none'){t.style.display='block';s.style.transform='rotate(180deg)';}else{t.style.display='none';s.style.transform='rotate(0deg)';}">
-                                <span>${clave}</span>
-                                <span style="font-weight:normal; font-size:0.85rem; color:var(--text-muted); display:flex; align-items:center; gap:8px;">
-                                    <span style="color:#dc2626; font-weight:bold;">${sesiones.length} pendientes</span>
+                        <div class="trainer-accordion">
+                            <div class="${headerClass}" onclick="const t = this.nextElementSibling; const s = this.querySelector('svg'); if(t.style.display==='none'){t.style.display='block';s.style.transform='rotate(180deg)';}else{t.style.display='none';s.style.transform='rotate(0deg)';}">
+                                <span>👤 ENTRENADOR: ${entrenador}</span>
+                                <span style="font-weight:normal; font-size:0.85rem; display:flex; align-items:center; gap:10px;">
+                                    <span>${clientesOrdenados.length} ${clientesOrdenados.length === 1 ? 'cliente' : 'clientes'}</span>
+                                    <span>·</span>
+                                    <span style="color:${badgeColor}; font-weight:bold;">${totalSesionesEntrenador} pendientes</span>
                                     <span class="chevron-icon" style="transform:rotate(180deg);">${chevronSVG}</span>
                                 </span>
                             </div>
-                            <div class="table-responsive" style="display:block;">
-                                <table>
-                                    <thead><tr><th>FECHA</th><th>DÍA</th><th>HORA</th><th style="text-align:right;">ACCIÓN</th></tr></thead>
-                                    <tbody>${filas}</tbody>
-                                </table>
+                            <div class="trainer-body" style="display:block;">
+                                ${clientesHTML}
                             </div>
                         </div>
                     `;
                 });
+
                 container.innerHTML = html;
             }
         }

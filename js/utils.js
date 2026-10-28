@@ -52,6 +52,103 @@ export function ocultarModal(modalId) {
 }
 
 // ============================================================================
+// CARGA DE PROGRAMADORES / ENTRENADORES DESDE usuarios_app
+// ============================================================================
+
+const PROGRAMADORES_CACHE_KEY = 'gym_programadores_cache_v1';
+
+/**
+ * Obtiene la lista de nombres de Programadores / Entrenadores desde la colección usuarios_app.
+ * Filtra aquellos con es_programador === false (ej. cuentas técnicas) y prioriza el campo alias.
+ */
+export async function getListaProgramadores(forzar = false) {
+    if (!forzar) {
+        const cached = sessionStorage.getItem(PROGRAMADORES_CACHE_KEY);
+        if (cached) {
+            try {
+                const parsed = JSON.parse(cached);
+                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            } catch (e) { }
+        }
+    }
+
+    try {
+        const snap = await getDocs(collection(db, "usuarios_app"));
+        const vistos = new Set();
+        const lista = [];
+
+        snap.forEach(docSnap => {
+            const d = docSnap.data();
+            if (d.es_programador === false) return;
+            const nombre = String(d.alias || d.nombre_corto || d.nombre || '').trim();
+            const norm = normalizarTexto(nombre);
+            if (nombre && !vistos.has(norm)) {
+                vistos.add(norm);
+                lista.push(nombre);
+            }
+        });
+
+        const prioridad = ['maite', 'andres'];
+        lista.sort((a, b) => {
+            const idxA = prioridad.indexOf(normalizarTexto(a));
+            const idxB = prioridad.indexOf(normalizarTexto(b));
+            if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+            if (idxA !== -1) return -1;
+            if (idxB !== -1) return 1;
+            return a.localeCompare(b, 'es');
+        });
+
+        const finalLista = lista.length > 0 ? lista : ['Maite', 'Andrés'];
+        sessionStorage.setItem(PROGRAMADORES_CACHE_KEY, JSON.stringify(finalLista));
+        return finalLista;
+    } catch (e) {
+        console.warn("Error cargando usuarios_app para programadores:", e);
+        return ['Maite', 'Andrés'];
+    }
+}
+
+/**
+ * Puebla un elemento <select> con los Programadores / Entrenadores de usuarios_app.
+ */
+export async function poblarSelectProgramadores(selectIdOrEl, placeholderText = 'Sin asignar', valorPorDefecto = null) {
+    const el = typeof selectIdOrEl === 'string' ? document.getElementById(selectIdOrEl) : selectIdOrEl;
+    if (!el) return [];
+
+    const valores = await getListaProgramadores();
+    el.innerHTML = '';
+
+    if (placeholderText !== null) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = placeholderText;
+        el.appendChild(opt);
+    }
+
+    valores.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v;
+        el.appendChild(opt);
+    });
+
+    if (valorPorDefecto) {
+        const valLimpio = String(valorPorDefecto).trim();
+        const match = valores.find(v => normalizarTexto(v) === normalizarTexto(valLimpio));
+        if (match) {
+            el.value = match;
+        } else if (valLimpio) {
+            const optExtra = document.createElement('option');
+            optExtra.value = valLimpio;
+            optExtra.textContent = valLimpio;
+            el.appendChild(optExtra);
+            el.value = valLimpio;
+        }
+    }
+
+    return valores;
+}
+
+// ============================================================================
 // SISTEMA ESTANDARIZADO DE DESPLEGABLES CON BUSCADOR (.custom-dropdown)
 // ============================================================================
 

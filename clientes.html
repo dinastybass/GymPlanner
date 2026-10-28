@@ -177,6 +177,12 @@
                     </select>
                 </div>
                 <div class="form-group">
+                    <label>Programador / Entrenador asignado</label>
+                    <select id="alta_programador" class="form-control">
+                        <option value="">Sin asignar</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label>ID Cliente (Código automático)</label>
                     <input type="text" id="alta_codigo" readonly style="background:#e5e7eb; cursor:not-allowed;">
                 </div>
@@ -194,7 +200,7 @@
         import { collection, getDocs, doc, deleteDoc, setDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
         import { getValoresMaestro, getMapaOrdenMaestro, poblarSelect } from './js/maestros-service.js';
-        import { normalizarTexto, getChevronSVG, iconTrash } from './js/utils.js';
+        import { normalizarTexto, getChevronSVG, iconTrash, poblarSelectProgramadores } from './js/utils.js';
         import { eliminarDocumentoConDeshacer } from './js/undo-service.js';
 
         let todosLosClientes = [];
@@ -241,7 +247,10 @@
             }
 
             // Poblar select del modal de alta rápida
-            await poblarSelect('alta_tipo', 'Clientes', 'Tipo de Cliente', 'Sin asignar');
+            await Promise.all([
+                poblarSelect('alta_tipo', 'Clientes', 'Tipo de Cliente', 'Sin asignar'),
+                poblarSelectProgramadores('alta_programador', 'Sin asignar', 'Maite')
+            ]);
 
             await loadClientes();
         }
@@ -439,6 +448,8 @@
 
         window.abrirModalAlta = () => {
             document.getElementById('formAltaCliente').reset();
+            const selProg = document.getElementById('alta_programador');
+            if (selProg && selProg.querySelector('option[value="Maite"]')) selProg.value = 'Maite';
             document.getElementById('alta_codigo').value = `CLI-${Date.now().toString().slice(-6)}`;
             document.getElementById('modalAlta').style.display = 'flex';
         }
@@ -452,6 +463,7 @@
             const nombre = document.getElementById('alta_nombre').value;
             const alias = document.getElementById('alta_alias').value || nombre.split(' ')[0];
             const tipoCliente = document.getElementById('alta_tipo') ? document.getElementById('alta_tipo').value : "";
+            const programadorCliente = document.getElementById('alta_programador') ? document.getElementById('alta_programador').value : "Maite";
 
             const activeUser = auth.currentUser;
             const autor = activeUser ? activeUser.email : "Usuario desconocido";
@@ -462,6 +474,7 @@
                 Alias: alias,
                 Estado_Cliente: "Activo",
                 Tipo_Cliente: tipoCliente,
+                Programador: programadorCliente,
                 Usa_Kids: "NO",
                 Objetivo_Global: "Sin registrar",
                 Objetivo_Especifico: "Sin registrar",

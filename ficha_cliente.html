@@ -554,6 +554,11 @@
                         <span class="info-label" style="margin:0;">Tipo de cliente</span>
                         <span class="pill pill-nivel" id="ui-tipo">...</span>
                     </div>
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px;">
+                        <span class="info-label" style="margin:0;">Programador</span>
+                        <span class="pill pill-si" id="ui-programador">...</span>
+                    </div>
                 </div>
 
                 <div class="card" style="margin-bottom: 20px;">
@@ -788,6 +793,12 @@
                             <option value="">Sin asignar</option>
                         </select>
                     </div>
+                    <div class="form-group full">
+                        <label>Programador / Entrenador asignado</label>
+                        <select id="m_programador" class="form-control">
+                            <option value="">Sin asignar</option>
+                        </select>
+                    </div>
 
                     <div class="form-group full">
                         <h4 style="margin: 10px 0 5px 0; border-bottom: 1px solid var(--border); padding-bottom: 5px;">
@@ -856,7 +867,7 @@
         import { doc, getDoc, setDoc, deleteDoc, collection, query, where, getDocs, writeBatch, addDoc, updateDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
         import { getMapaOrdenMaestro, poblarSelect, getValoresMaestro } from './js/maestros-service.js';
-        import { normalizarTexto, toggleDropdown, closeDropdown, filterDropdown, clearDropdown, renderizarOpcionesDropdown, abrirModalEnviarSesion, iconChevron as chevronSVG, iconDumbbell as dumbbellSVG, iconTrash as trashSVG, iconCalendar as calendarSVG, iconArrowRight as arrowRightSVG } from './js/utils.js';
+        import { normalizarTexto, toggleDropdown, closeDropdown, filterDropdown, clearDropdown, renderizarOpcionesDropdown, abrirModalEnviarSesion, poblarSelectProgramadores, iconChevron as chevronSVG, iconDumbbell as dumbbellSVG, iconTrash as trashSVG, iconCalendar as calendarSVG, iconArrowRight as arrowRightSVG } from './js/utils.js';
         import { crearHistorialUndo } from './js/undo-service.js';
 
         const urlParams = new URLSearchParams(window.location.search);
@@ -936,9 +947,17 @@
                 badgeTipo.className = tc === 'SmallGroup' ? 'pill pill-sg' : 'pill pill-nivel';
             }
 
+            const prog = clientData.Programador || clientData.Entrenador || 'Sin asignar';
+            const badgeProg = document.getElementById('ui-programador');
+            if (badgeProg) {
+                badgeProg.innerText = prog;
+                badgeProg.className = prog === 'Sin asignar' ? 'pill' : 'pill pill-si';
+            }
+
             await Promise.all([
                 poblarSelect('m_estado', 'Clientes', 'Estado', null, st),
-                poblarSelect('m_tipo', 'Clientes', 'Tipo de Cliente', 'Sin asignar', clientData.Tipo_Cliente || '')
+                poblarSelect('m_tipo', 'Clientes', 'Tipo de Cliente', 'Sin asignar', clientData.Tipo_Cliente || ''),
+                poblarSelectProgramadores('m_programador', 'Sin asignar', clientData.Programador || clientData.Entrenador || '')
             ]);
 
             const isKids = (clientData.Usa_Kids === 'SI');
@@ -1915,6 +1934,7 @@
             document.getElementById('m_alias').value = clientData.Alias || '';
             document.getElementById('m_estado').value = clientData.Estado_Cliente || 'Activo';
             document.getElementById('m_tipo').value = clientData.Tipo_Cliente || '';
+            document.getElementById('m_programador').value = clientData.Programador || clientData.Entrenador || '';
             document.getElementById('m_usa_kids').value = clientData.Usa_Kids || 'NO';
             document.getElementById('m_num_kids').value = clientData.Nº_Niños_Kids || '';
             document.getElementById('m_nom_kids').value = clientData.Nombres_Niños_Kids || '';
@@ -1938,6 +1958,7 @@
                 Alias: document.getElementById('m_alias').value,
                 Estado_Cliente: document.getElementById('m_estado').value,
                 Tipo_Cliente: document.getElementById('m_tipo').value,
+                Programador: document.getElementById('m_programador').value,
                 Usa_Kids: document.getElementById('m_usa_kids').value,
                 Nº_Niños_Kids: document.getElementById('m_num_kids').value,
                 Nombres_Niños_Kids: document.getElementById('m_nom_kids').value,

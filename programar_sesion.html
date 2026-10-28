@@ -35,6 +35,8 @@
             <div>
                 <h1 id="ui-client-name">Verificando sesión segura...</h1>
                 <div class="header-meta" id="ui-session-meta">...</div>
+                <div class="header-meta" id="ui-entrenador-asignado"
+                    style="margin-top: 6px; font-size: 0.88rem; font-weight: 600; color: var(--text-main); display: none;"></div>
                 <div class="header-meta" id="ui-programado-por"
                     style="margin-top: 5px; color: var(--accent-dark); font-size: 0.85rem; font-weight: bold;"></div>
             </div>
@@ -451,6 +453,33 @@
                 document.getElementById('ui-session-meta').innerText = `Fecha: ${dStr} a las ${hStr}`;
                 document.getElementById('modal-meta-text').innerText = `Fecha: ${dStr}`;
                 document.getElementById('ui-programado-por').innerText = `Última edición por: ${sessionData.programado_por || 'Sin registrar'}`;
+
+                const elEntrenador = document.getElementById('ui-entrenador-asignado');
+                if (!isSG && elEntrenador) {
+                    let entrenadorAsignado = sessionData.programador_asignado || sessionData.Programador || '';
+                    const idCli = sessionData.id_cliente || sessionData.ID_Cliente || '';
+                    if (idCli) {
+                        try {
+                            let cliSnap = await getDoc(doc(db, "clientes", idCli));
+                            let cliData = cliSnap.exists() ? cliSnap.data() : null;
+                            if (!cliData) {
+                                const qCli = query(collection(db, "clientes"), where("ID_Cliente", "==", idCli));
+                                const snapQ = await getDocs(qCli);
+                                if (!snapQ.empty) cliData = snapQ.docs[0].data();
+                            }
+                            if (cliData) {
+                                entrenadorAsignado = cliData.Programador || cliData.Entrenador || '';
+                            }
+                        } catch (e) {
+                            console.warn("No se pudo obtener el entrenador del cliente:", e);
+                        }
+                    }
+                    const labelEntrenador = entrenadorAsignado || 'Sin asignar';
+                    const pillClass = entrenadorAsignado ? 'pill pill-si' : 'pill';
+                    const pillStyle = entrenadorAsignado ? 'margin-left: 6px;' : 'margin-left: 6px; background: var(--hover-bg); color: var(--text-muted);';
+                    elEntrenador.innerHTML = `Entrenador asignado: <span class="${pillClass}" style="${pillStyle}">${labelEntrenador}</span>`;
+                    elEntrenador.style.display = 'block';
+                }
 
                 renderSesionActual();
                 initSortable();
