@@ -1139,6 +1139,7 @@
         window.abrirModalPlanificar = () => {
             inicializarSelectoresGlobales();
             if (timeSlots.includes('17:00')) document.getElementById('plan_hora_inicio').value = '17:00';
+            window.actualizarHoraFin();
 
             const today = new Date();
             document.getElementById('plan_mes').value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
