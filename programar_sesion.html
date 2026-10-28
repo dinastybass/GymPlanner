@@ -38,7 +38,8 @@
                 <div class="header-meta" id="ui-programado-por"
                     style="margin-top: 5px; color: var(--accent-dark); font-size: 0.85rem; font-weight: bold;"></div>
             </div>
-            <div style="display:flex; gap:10px; flex-wrap: wrap; justify-content: flex-end;">
+            <div style="display:flex; gap:10px; flex-wrap: wrap; justify-content: flex-end; align-items: center;">
+                <div id="undoToolbarContainer"></div>
                 <button class="btn-outline" onclick="abrirModalImportar()">📥 Importar Plantilla</button>
                 <button class="btn-primary" onclick="abrirModal()">+ Añadir ejercicio</button>
                 <button class="btn-outline" onclick="abrirModalEnviar()">➡️ Enviar a</button>
@@ -256,6 +257,7 @@
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
         import { poblarSelect, getValoresMaestro, getMapaOrdenMaestro } from './js/maestros-service.js';
         import { normalizarTexto, iconTrash } from './js/utils.js';
+        import { crearHistorialUndo } from './js/undo-service.js';
 
         const urlParams = new URLSearchParams(window.location.search);
         const sessionId = urlParams.get('id_sesion') || urlParams.get('id');
@@ -272,6 +274,20 @@
         let seriePorDefecto = "3 x 10";
         let sortableInstance = null;
         let selectedGrupoMuscular = "";
+
+        const undoHistory = crearHistorialUndo({
+            contextKey: `programar_sesion_${sessionId}`,
+            maxSteps: 15,
+            containerId: 'undoToolbarContainer',
+            onAfterApply: async () => {
+                const docSnap = await getDoc(doc(db, "agenda_sesiones", sessionId));
+                if (docSnap.exists()) {
+                    sessionData = docSnap.data();
+                    ejerciciosSesion = sessionData.ejercicios || [];
+                    renderSesionActual();
+                }
+            }
+        });
 
         // --- Manejo del Dropdown Customizado de Material ---
         function buildDropdownOptions(idRef, list, isMulti) {
@@ -506,12 +522,19 @@
                     if (exItems.length === 0) return;
 
                     const newOrderIndices = exItems.map(el => parseInt(el.getAttribute('data-index')));
+                    const huboCambio = newOrderIndices.some((val, i) => val !== i);
+                    if (!huboCambio) return;
+
+                    const prevEjercicios = JSON.parse(JSON.stringify(ejerciciosSesion));
                     ejerciciosSesion = newOrderIndices.map(idx => ejerciciosSesion[idx]);
 
                     renderSesionActual();
 
                     try {
-                        await guardarSesionEnFirebase();
+                        await guardarSesionEnFirebase({
+                            label: "Reordenar ejercicios",
+                            prevEjercicios
+                        });
                     } catch (error) { console.error("Error guardando el orden:", error); }
                 }
             });
@@ -838,7 +861,7 @@
             }
         });
 
-        async function guardarSesionEnFirebase() {
+        async function guardarSesionEnFirebase(historyMeta = null) {
             const autorNombre = localStorage.getItem('gym_user_name') || "Usuario desconocido";
             const dataToSave = {
                 ejercicios: ejerciciosSesion,
@@ -848,6 +871,7 @@
             };
 
             const isSG = (sessionData.tipo_sesion === 'Small Group' || sessionData.Tipo === 'SG');
+            let targetDocIds = [sessionId];
 
             if (isSG && sessionData.fecha_hora_inicio) {
                 const targetTimeMillis = sessionData.fecha_hora_inicio.toMillis();
@@ -865,11 +889,13 @@
 
                 const batch = writeBatch(db);
                 let batchCount = 0;
+                targetDocIds = [];
 
                 snapshot.forEach(d => {
                     const dTime = d.data().fecha_hora_inicio.toMillis();
                     if (dTime === targetTimeMillis) {
                         batch.update(d.ref, dataToSave);
+                        targetDocIds.push(d.id);
                         batchCount++;
                     }
                 });
@@ -883,10 +909,37 @@
 
             document.getElementById('ui-programado-por').innerText = `Última edición por: ${autorNombre}`;
             renderSesionActual();
+
+            if (historyMeta && Array.isArray(historyMeta.prevEjercicios)) {
+                const nextEjercicios = JSON.parse(JSON.stringify(ejerciciosSesion));
+                const undoOps = targetDocIds.map(id => ({
+                    type: 'set',
+                    collection: 'agenda_sesiones',
+                    id,
+                    data: { ejercicios: historyMeta.prevEjercicios, orden_customizado: true },
+                    merge: true
+                }));
+                const redoOps = targetDocIds.map(id => ({
+                    type: 'set',
+                    collection: 'agenda_sesiones',
+                    id,
+                    data: { ejercicios: nextEjercicios, orden_customizado: true },
+                    merge: true
+                }));
+                undoHistory.pushAction({
+                    label: historyMeta.label || 'Cambio en sesión',
+                    undoOps,
+                    redoOps,
+                    showToast: !!historyMeta.showToast,
+                    toastMessage: historyMeta.toastMessage || null
+                });
+            }
         }
 
         document.getElementById('formAddEx').addEventListener('submit', async (e) => {
             e.preventDefault();
+            const prevEjercicios = JSON.parse(JSON.stringify(ejerciciosSesion));
+            const wasEditing = editingIndex >= 0;
             const idCat = document.getElementById('m_ejercicio_select').value;
             const ejCat = catalogoEjercicios.find(x => x.id_doc === idCat);
 
@@ -962,7 +1015,10 @@
             }
 
             try {
-                await guardarSesionEnFirebase();
+                await guardarSesionEnFirebase({
+                    label: `${wasEditing ? 'Editar' : 'Añadir'} "${itemData["Acrónimo"] || itemData.Nombre_Ejercicio}"`,
+                    prevEjercicios
+                });
                 cerrarModal();
             } catch (error) {
                 console.error("Error al guardar:", error);
@@ -972,8 +1028,18 @@
 
         window.borrarEjercicioDeSesion = async (index) => {
             if (confirm("¿Quitar este ejercicio de la sesión?")) {
+                const prevEjercicios = JSON.parse(JSON.stringify(ejerciciosSesion));
+                const ejBorrado = ejerciciosSesion[index];
+                const nombreEj = ejBorrado ? (ejBorrado["Acrónimo"] || ejBorrado.Acronimo || ejBorrado.Nombre_Ejercicio || 'Ejercicio') : 'Ejercicio';
                 ejerciciosSesion.splice(index, 1);
-                try { await guardarSesionEnFirebase(); } catch (e) { console.error("Error al borrar:", e); }
+                try {
+                    await guardarSesionEnFirebase({
+                        label: `Quitar "${nombreEj}"`,
+                        prevEjercicios,
+                        showToast: true,
+                        toastMessage: `🗑️ "${nombreEj}" quitado de la sesión`
+                    });
+                } catch (e) { console.error("Error al borrar:", e); }
             }
         };
 
@@ -1015,10 +1081,16 @@
             }
 
             document.getElementById('btn-submit-import').innerText = "Importando...";
+            const prevEjercicios = JSON.parse(JSON.stringify(ejerciciosSesion));
             ejerciciosSesion = [...ejerciciosSesion, ...plantillaSeleccionada.ejercicios];
 
             try {
-                await guardarSesionEnFirebase();
+                await guardarSesionEnFirebase({
+                    label: `Importar plantilla "${plantillaSeleccionada.nombre || 'Plantilla'}"`,
+                    prevEjercicios,
+                    showToast: true,
+                    toastMessage: `📥 Plantilla "${plantillaSeleccionada.nombre || ''}" importada`
+                });
                 document.getElementById('modalImportar').style.display = 'none';
                 document.getElementById('btn-submit-import').innerText = "Importar Ejercicios";
             } catch (error) { console.error("Error al importar:", error); alert("Error al importar la plantilla."); }
@@ -1118,6 +1190,9 @@
 
             try {
                 const autorNombre = localStorage.getItem('gym_user_name') || "Usuario desconocido";
+                const sesionDestinoPrevia = sesionesClienteCargadas.find(s => s.id === idSesionDestino);
+                const prevDestinoEjercicios = sesionDestinoPrevia ? JSON.parse(JSON.stringify(sesionDestinoPrevia.ejercicios || [])) : [];
+                const nextDestinoEjercicios = JSON.parse(JSON.stringify(ejerciciosSesion));
 
                 await updateDoc(doc(db, "agenda_sesiones", idSesionDestino), {
                     ejercicios: ejerciciosSesion,
@@ -1128,7 +1203,14 @@
 
                 document.getElementById('modalEnviar').style.display = 'none';
                 document.getElementById('btn-submit-enviar').innerText = "Enviar Ejercicios";
-                alert("¡Rutina enviada correctamente a la sesión seleccionada!");
+
+                undoHistory.pushAction({
+                    label: "Enviar rutina a otra sesión",
+                    undoOps: [{ type: 'set', collection: 'agenda_sesiones', id: idSesionDestino, data: { ejercicios: prevDestinoEjercicios }, merge: true }],
+                    redoOps: [{ type: 'set', collection: 'agenda_sesiones', id: idSesionDestino, data: { ejercicios: nextDestinoEjercicios, orden_customizado: true }, merge: true }],
+                    showToast: true,
+                    toastMessage: "➡️ Rutina enviada a la sesión seleccionada"
+                });
             } catch (error) {
                 console.error("Error al enviar:", error);
                 alert("Error al enviar la rutina.");

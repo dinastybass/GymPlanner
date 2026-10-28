@@ -458,12 +458,15 @@
         <div class="breadcrumb"><a href="clientes.html">Clientes</a> &gt; <span id="bc-name">...</span></div>
         <div class="page-header">
             <h1 id="page-title">Verificando sesión...</h1>
-            <button class="btn-secondary" id="btn-editar-ficha" onclick="abrirModal()">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                </svg> Editar ficha
-            </button>
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <div id="undoToolbarContainer"></div>
+                <button class="btn-secondary" id="btn-editar-ficha" onclick="abrirModal()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                    </svg> Editar ficha
+                </button>
+            </div>
         </div>
 
         <div class="layout-grid">
@@ -821,6 +824,7 @@
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
         import { getMapaOrdenMaestro, poblarSelect, getValoresMaestro } from './js/maestros-service.js';
         import { iconChevron as chevronSVG, iconDumbbell as dumbbellSVG, iconTrash as trashSVG, iconCalendar as calendarSVG, iconArrowRight as arrowRightSVG } from './js/utils.js';
+        import { crearHistorialUndo } from './js/undo-service.js';
 
         const urlParams = new URLSearchParams(window.location.search);
         const clientId = urlParams.get('id');
@@ -833,6 +837,18 @@
         let pendingReprogData = null;
         let clientesCargados = [];
         let sesionesClienteCargadas = [];
+
+        const undoHistory = crearHistorialUndo({
+            contextKey: `ficha_cliente_${clientId}`,
+            maxSteps: 15,
+            containerId: 'undoToolbarContainer',
+            onAfterApply: async () => {
+                await loadClientInfo();
+                await loadSessions();
+                await loadProgresoCliente();
+                renderSessions();
+            }
+        });
 
         window.cambiarVistaCentral = (vista) => {
             const btnSesiones = document.getElementById('tabMenuSesiones');
@@ -1065,15 +1081,24 @@
             }
 
             try {
-                await addDoc(collection(db, "progreso_clientes"), {
+                const prData = {
                     id_cliente: clientId,
                     id_ejercicio: ejId,
                     nombre_ejercicio: nombreEj,
                     peso_levantado: peso,
                     fecha: new Date()
-                });
+                };
+                const docRef = await addDoc(collection(db, "progreso_clientes"), prData);
 
                 await loadProgresoCliente();
+
+                undoHistory.pushAction({
+                    label: `Registrar PR ${peso} kg en "${nombreEj}"`,
+                    undoOps: [{ type: 'delete', collection: 'progreso_clientes', id: docRef.id }],
+                    redoOps: [{ type: 'set', collection: 'progreso_clientes', id: docRef.id, data: prData, merge: false }],
+                    showToast: true,
+                    toastMessage: `📈 Marca de ${peso} kg guardada`
+                });
             } catch (error) {
                 console.error("Error guardando PR inicial:", error);
                 alert("Hubo un error al guardar el peso. Revisa los permisos de Firebase.");
@@ -1132,8 +1157,26 @@
         window.borrarSesion = async (idSesion) => {
             if (confirm("¿Estás seguro de que quieres eliminar esta sesión de la agenda?")) {
                 try {
+                    const sesionObj = allSessions.find(s => s.id === idSesion);
+                    let backupData = sesionObj ? sesionObj.docData : null;
+                    if (!backupData) {
+                        const snap = await getDoc(doc(db, "agenda_sesiones", idSesion));
+                        if (snap.exists()) backupData = snap.data();
+                    }
+                    const fechaLabel = sesionObj ? `${sesionObj.fechaStr} (${sesionObj.horaStr.split(' - ')[0]})` : idSesion;
+
                     await deleteDoc(doc(db, "agenda_sesiones", idSesion));
                     await loadSessions(); renderSessions();
+
+                    if (backupData) {
+                        undoHistory.pushAction({
+                            label: `Eliminar sesión ${fechaLabel}`,
+                            undoOps: [{ type: 'set', collection: 'agenda_sesiones', id: idSesion, data: backupData, merge: false }],
+                            redoOps: [{ type: 'delete', collection: 'agenda_sesiones', id: idSesion }],
+                            showToast: true,
+                            toastMessage: `🗑️ Sesión del ${fechaLabel} eliminada`
+                        });
+                    }
                 } catch (e) { console.error("Error al borrar:", e); alert("No se pudo borrar la sesión."); }
             }
         };
@@ -1240,6 +1283,9 @@
 
             try {
                 const autorNombre = localStorage.getItem('gym_user_name') || "Usuario desconocido";
+                const sesionDestinoPrevia = sesionesClienteCargadas.find(s => s.id === idSesionDestino);
+                const prevDestinoEjercicios = sesionDestinoPrevia ? JSON.parse(JSON.stringify(sesionDestinoPrevia.ejercicios || [])) : [];
+                const nextDestinoEjercicios = JSON.parse(JSON.stringify(sesionOrigen.ejercicios));
 
                 await updateDoc(doc(db, "agenda_sesiones", idSesionDestino), {
                     ejercicios: sesionOrigen.ejercicios,
@@ -1250,9 +1296,16 @@
 
                 cerrarModalEnviar();
                 document.getElementById('btn-submit-enviar').innerText = "Enviar Ejercicios";
-                alert("¡Rutina enviada y copiada correctamente a la sesión seleccionada!");
                 await loadSessions();
                 renderSessions();
+
+                undoHistory.pushAction({
+                    label: "Enviar rutina a otra sesión",
+                    undoOps: [{ type: 'set', collection: 'agenda_sesiones', id: idSesionDestino, data: { ejercicios: prevDestinoEjercicios }, merge: true }],
+                    redoOps: [{ type: 'set', collection: 'agenda_sesiones', id: idSesionDestino, data: { ejercicios: nextDestinoEjercicios, orden_customizado: true }, merge: true }],
+                    showToast: true,
+                    toastMessage: "➡️ Rutina copiada a la sesión destino"
+                });
             } catch (error) {
                 console.error("Error al enviar la rutina:", error);
                 alert("Error al enviar la rutina.");
@@ -1517,24 +1570,44 @@
             if (!pendingReprogData) return;
             const { sourceSession, targetSession, autor, nuevaFechaObj } = pendingReprogData;
             try {
+                const undoOps = [
+                    { type: 'set', collection: 'agenda_sesiones', id: sourceSession.id, data: sourceSession.docData, merge: false }
+                ];
+                const redoOps = [];
+
                 if (targetSession) {
-                    await setDoc(doc(db, "agenda_sesiones", targetSession.id), {
+                    undoOps.push({ type: 'set', collection: 'agenda_sesiones', id: targetSession.id, data: targetSession.docData, merge: false });
+                    const newTargetData = {
                         ejercicios: sourceSession.ejercicios || [],
                         fecha_hora_inicio: nuevaFechaObj,
                         ultimo_modificado_por: autor, fecha_modificacion: new Date(),
                         utc_migrado: true
-                    }, { merge: true });
+                    };
+                    await setDoc(doc(db, "agenda_sesiones", targetSession.id), newTargetData, { merge: true });
                     await deleteDoc(doc(db, "agenda_sesiones", sourceSession.id));
+
+                    redoOps.push({ type: 'set', collection: 'agenda_sesiones', id: targetSession.id, data: newTargetData, merge: true });
+                    redoOps.push({ type: 'delete', collection: 'agenda_sesiones', id: sourceSession.id });
                 } else {
-                    await setDoc(doc(db, "agenda_sesiones", sourceSession.id), {
+                    const newSourceData = {
                         fecha_hora_inicio: nuevaFechaObj, estado: "Pendiente",
                         ultimo_modificado_por: autor, fecha_modificacion: new Date(),
                         utc_migrado: true
-                    }, { merge: true });
+                    };
+                    await setDoc(doc(db, "agenda_sesiones", sourceSession.id), newSourceData, { merge: true });
+                    redoOps.push({ type: 'set', collection: 'agenda_sesiones', id: sourceSession.id, data: newSourceData, merge: true });
                 }
 
                 cerrarModalReprogramar();
                 await loadSessions(); renderSessions();
+
+                undoHistory.pushAction({
+                    label: `Reprogramar sesión (${sourceSession.fechaStr})`,
+                    undoOps,
+                    redoOps,
+                    showToast: true,
+                    toastMessage: `📅 Sesión reprogramada`
+                });
             } catch (err) { console.error(err); alert("Error al sustituir la rutina."); }
         };
 
@@ -1556,6 +1629,10 @@
                 const batch = writeBatch(db);
                 let prevExercises = sourceSession.ejercicios || [];
                 let lastAffectedSession = null;
+                const undoOps = [
+                    { type: 'set', collection: 'agenda_sesiones', id: sourceSession.id, data: sourceSession.docData, merge: false }
+                ];
+                const redoOps = [];
 
                 if (targetSession) {
                     const futureSessions = allSessions
@@ -1564,6 +1641,7 @@
 
                     for (let i = 0; i < futureSessions.length; i++) {
                         const s = futureSessions[i];
+                        undoOps.push({ type: 'set', collection: 'agenda_sesiones', id: s.id, data: s.docData, merge: false });
                         const currentExercises = s.ejercicios || [];
 
                         const updateData = {
@@ -1578,33 +1656,40 @@
                         }
 
                         batch.update(doc(db, "agenda_sesiones", s.id), updateData);
+                        redoOps.push({ type: 'set', collection: 'agenda_sesiones', id: s.id, data: updateData, merge: true });
                         prevExercises = currentExercises;
                         lastAffectedSession = s;
                     }
 
                     batch.delete(doc(db, "agenda_sesiones", sourceSession.id));
+                    redoOps.push({ type: 'delete', collection: 'agenda_sesiones', id: sourceSession.id });
                 } else {
                     const futureSessions = allSessions
                         .filter(s => s.fechaObj > nuevaFechaObj && s.id !== sourceSession.id)
                         .sort((a, b) => a.fechaObj - b.fechaObj);
 
-                    batch.set(doc(db, "agenda_sesiones", sourceSession.id), {
+                    const sourceUpdate = {
                         fecha_hora_inicio: nuevaFechaObj,
                         estado: "Pendiente",
                         ejercicios: futureSessions.length > 0 ? [] : prevExercises,
                         ultimo_modificado_por: autor,
                         fecha_modificacion: new Date(),
                         utc_migrado: true
-                    }, { merge: true });
+                    };
+                    batch.set(doc(db, "agenda_sesiones", sourceSession.id), sourceUpdate, { merge: true });
+                    redoOps.push({ type: 'set', collection: 'agenda_sesiones', id: sourceSession.id, data: sourceUpdate, merge: true });
 
                     for (let i = 0; i < futureSessions.length; i++) {
                         const s = futureSessions[i];
+                        undoOps.push({ type: 'set', collection: 'agenda_sesiones', id: s.id, data: s.docData, merge: false });
                         const currentExercises = s.ejercicios || [];
-                        batch.update(doc(db, "agenda_sesiones", s.id), {
+                        const sUpdate = {
                             ejercicios: prevExercises,
                             ultimo_modificado_por: autor,
                             fecha_modificacion: new Date()
-                        });
+                        };
+                        batch.update(doc(db, "agenda_sesiones", s.id), sUpdate);
+                        redoOps.push({ type: 'set', collection: 'agenda_sesiones', id: s.id, data: sUpdate, merge: true });
                         prevExercises = currentExercises;
                         lastAffectedSession = s;
                     }
@@ -1621,7 +1706,7 @@
                     const codeCli = clientData.ID_Cliente || clientId;
                     const aliasCli = (clientData.Alias && clientData.Alias.trim() !== '') ? clientData.Alias : (clientData.Nombre_Cliente || 'Sin nombre');
 
-                    batch.set(doc(db, "agenda_sesiones", newDocId), {
+                    const extraDocData = {
                         id_sesion_global: newDocId,
                         id_cliente: codeCli,
                         alias: aliasCli,
@@ -1637,13 +1722,25 @@
                         fecha_creacion: new Date(),
                         fecha_modificacion: new Date(),
                         utc_migrado: true
-                    });
+                    };
+
+                    batch.set(doc(db, "agenda_sesiones", newDocId), extraDocData);
+                    undoOps.push({ type: 'delete', collection: 'agenda_sesiones', id: newDocId });
+                    redoOps.push({ type: 'set', collection: 'agenda_sesiones', id: newDocId, data: extraDocData, merge: false });
                 }
 
                 await batch.commit();
 
                 cerrarModalReprogramar();
                 await loadSessions(); renderSessions();
+
+                undoHistory.pushAction({
+                    label: "Reprogramación en cascada (adelante)",
+                    undoOps,
+                    redoOps,
+                    showToast: true,
+                    toastMessage: "📅 Rutinas desplazadas hacia adelante"
+                });
             } catch (err) { console.error(err); alert("Error al desplazar las rutinas en cascada."); }
         };
 
@@ -1654,32 +1751,51 @@
             try {
                 const batch = writeBatch(db);
                 let anchorSessionId = sourceSession.id;
+                const undoOps = [
+                    { type: 'set', collection: 'agenda_sesiones', id: sourceSession.id, data: sourceSession.docData, merge: false }
+                ];
+                const redoOps = [];
 
                 if (targetSession) {
+                    undoOps.push({ type: 'set', collection: 'agenda_sesiones', id: targetSession.id, data: targetSession.docData, merge: false });
                     anchorSessionId = targetSession.id;
                     batch.delete(doc(db, "agenda_sesiones", sourceSession.id));
+                    redoOps.push({ type: 'delete', collection: 'agenda_sesiones', id: sourceSession.id });
                 }
 
-                batch.set(doc(db, "agenda_sesiones", anchorSessionId), {
+                const anchorUpdate = {
                     fecha_hora_inicio: nuevaFechaObj, estado: "Pendiente",
                     ultimo_modificado_por: autor, fecha_modificacion: new Date(),
                     utc_migrado: true,
                     ejercicios: sessionsToPull.length > 0 ? (sessionsToPull[0].ejercicios || []) : []
-                }, { merge: true });
+                };
+                batch.set(doc(db, "agenda_sesiones", anchorSessionId), anchorUpdate, { merge: true });
+                redoOps.push({ type: 'set', collection: 'agenda_sesiones', id: anchorSessionId, data: anchorUpdate, merge: true });
 
                 for (let i = 0; i < sessionsToPull.length; i++) {
                     const currentSess = sessionsToPull[i];
+                    undoOps.push({ type: 'set', collection: 'agenda_sesiones', id: currentSess.id, data: currentSess.docData, merge: false });
                     const nextSess = sessionsToPull[i + 1];
 
-                    batch.set(doc(db, "agenda_sesiones", currentSess.id), {
+                    const pullUpdate = {
                         ejercicios: nextSess ? (nextSess.ejercicios || []) : [],
                         ultimo_modificado_por: autor, fecha_modificacion: new Date()
-                    }, { merge: true });
+                    };
+                    batch.set(doc(db, "agenda_sesiones", currentSess.id), pullUpdate, { merge: true });
+                    redoOps.push({ type: 'set', collection: 'agenda_sesiones', id: currentSess.id, data: pullUpdate, merge: true });
                 }
 
                 await batch.commit();
                 cerrarModalReprogramar();
                 await loadSessions(); renderSessions();
+
+                undoHistory.pushAction({
+                    label: "Reprogramación en cascada (atrás)",
+                    undoOps,
+                    redoOps,
+                    showToast: true,
+                    toastMessage: "📅 Rutinas recogidas en cascada"
+                });
             } catch (err) { console.error(err); alert("Error al recoger las rutinas en cascada."); }
         };
 
@@ -1914,10 +2030,17 @@
             };
 
             try {
+                const prevClientData = JSON.parse(JSON.stringify(clientData));
                 await setDoc(doc(db, "clientes", clientId), updatedData, { merge: true });
                 cerrarModal();
                 await loadClientInfo();
                 document.getElementById('btnGuardarEdit').innerText = "Guardar Cambios";
+
+                undoHistory.pushAction({
+                    label: "Editar ficha del cliente",
+                    undoOps: [{ type: 'set', collection: 'clientes', id: clientId, data: prevClientData, merge: true }],
+                    redoOps: [{ type: 'set', collection: 'clientes', id: clientId, data: updatedData, merge: true }]
+                });
             } catch (error) {
                 console.error("Error al actualizar:", error);
                 alert("No se pudo guardar la información.");

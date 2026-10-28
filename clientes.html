@@ -158,6 +158,7 @@
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
         import { getValoresMaestro, getMapaOrdenMaestro, poblarSelect } from './js/maestros-service.js';
         import { normalizarTexto, getChevronSVG, iconTrash } from './js/utils.js';
+        import { eliminarDocumentoConDeshacer } from './js/undo-service.js';
 
         let todosLosClientes = [];
         let currentSort = { column: 'Nombre_Cliente', dir: 'asc' };
@@ -216,10 +217,15 @@
         }
 
         window.borrarCliente = async (id) => {
-            if (confirm("¿Seguro que deseas eliminar permanentemente este cliente de la base de datos?")) {
-                await deleteDoc(doc(db, "clientes", id));
-                loadClientes();
-            }
+            const cli = todosLosClientes.find(c => c.id === id);
+            const nombre = cli ? (cli.Alias || cli.Nombre_Cliente || 'Cliente') : 'Cliente';
+            await eliminarDocumentoConDeshacer({
+                coleccion: "clientes",
+                id: id,
+                nombreElemento: `Cliente "${nombre}"`,
+                mensajeConfirmacion: "¿Seguro que deseas eliminar permanentemente este cliente de la base de datos?",
+                onAfterChange: loadClientes
+            });
         };
 
         function getEstadoConfig(estado) {

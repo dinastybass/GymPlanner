@@ -241,7 +241,8 @@
     </div>
 
     <script type="module">
-        import { auth } from './firebase-config.js';
+        import { auth, db } from './firebase-config.js';
+        import { doc, getDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
         import {
             ESTRUCTURA_MAESTROS, cargarTodosLosMaestros, limpiarCacheMaestros,
@@ -249,6 +250,7 @@
             comprobarDependenciasMaestro, reasignarOQuitarDependencia
         } from './js/maestros-service.js';
         import { iconTrash } from './js/utils.js';
+        import { mostrarToastDeshacer, ejecutarOperacionesFirestore, serializarDatosFirestore } from './js/undo-service.js';
 
         let mapaMaestros = {};
         let seccionActual = "Ejercicios";
@@ -435,6 +437,8 @@
         }
 
         window.borrarItem = async (clave, itemId, valor) => {
+            const seccionRespaldo = seccionActual;
+            const listaPrevia = [...((mapaMaestros[seccionActual] && mapaMaestros[seccionActual][clave]) || [])];
             const dependencias = await comprobarDependenciasMaestro(clave, valor);
 
             if (dependencias.length > 0) {
@@ -464,6 +468,21 @@
                     document.getElementById('btnConfirmarBorrado').innerText = "Procesando...";
 
                     try {
+                        // Capturar copia de seguridad de los documentos dependientes antes de modificarlos
+                        const opsRestaurarDeps = [];
+                        for (const dep of dependencias) {
+                            const snapDep = await getDoc(doc(db, dep.coleccion, dep.id));
+                            if (snapDep.exists()) {
+                                opsRestaurarDeps.push({
+                                    type: 'set',
+                                    collection: dep.coleccion,
+                                    id: dep.id,
+                                    data: serializarDatosFirestore(snapDep.data()),
+                                    merge: false
+                                });
+                            }
+                        }
+
                         await reasignarOQuitarDependencia(clave, valor, nuevoVal);
                         await eliminarValorMaestro(clave, itemId);
                         await reindexarTrasBorrado(clave, itemId);
@@ -471,7 +490,12 @@
                         modal.style.display = 'none';
                         document.getElementById('btnConfirmarBorrado').innerText = "Confirmar Borrado";
                         await recargarVista();
-                        alert(`Elemento eliminado correctamente. Los registros afectados han sido actualizados.`);
+
+                        mostrarToastDeshacer(`🗑️ Valor "${valor}" eliminado (${dependencias.length} reg. actualizados)`, async () => {
+                            await reordenarValoresMaestro(seccionRespaldo, clave, listaPrevia);
+                            await ejecutarOperacionesFirestore(opsRestaurarDeps);
+                            await recargarVista();
+                        });
                     } catch (err) {
                         alert("Error al procesar: " + err.message);
                         document.getElementById('btnConfirmarBorrado').innerText = "Confirmar Borrado";
@@ -484,6 +508,11 @@
                     await eliminarValorMaestro(clave, itemId);
                     await reindexarTrasBorrado(clave, itemId);
                     await recargarVista();
+
+                    mostrarToastDeshacer(`🗑️ Valor "${valor}" eliminado de ${clave}`, async () => {
+                        await reordenarValoresMaestro(seccionRespaldo, clave, listaPrevia);
+                        await recargarVista();
+                    });
                 } catch (err) {
                     alert("No se pudo eliminar: " + err.message);
                 }

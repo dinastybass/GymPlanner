@@ -36,7 +36,10 @@
                 <h1 id="ui-plantilla-name">Cargando plantilla...</h1>
                 <div class="header-meta" id="ui-plantilla-meta">...</div>
             </div>
-            <button class="btn-primary" onclick="abrirModal()">+ Añadir ejercicio</button>
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <div id="undoToolbarContainer"></div>
+                <button class="btn-primary" onclick="abrirModal()">+ Añadir ejercicio</button>
+            </div>
         </div>
 
         <div class="session-preview" id="previewContainer"></div>
@@ -128,6 +131,7 @@
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
         import { poblarSelect, getValoresMaestro, getMapaOrdenMaestro } from './js/maestros-service.js';
         import { normalizarTexto, iconTrash } from './js/utils.js';
+        import { crearHistorialUndo } from './js/undo-service.js';
 
         const urlParams = new URLSearchParams(window.location.search);
         const idPlantilla = urlParams.get('id');
@@ -140,6 +144,20 @@
         let ordenBloques = {};
         let seriePorDefecto = "3 x 10";
         let sortableInstance = null;
+
+        const undoHistory = crearHistorialUndo({
+            contextKey: `editar_plantilla_${idPlantilla}`,
+            maxSteps: 15,
+            containerId: 'undoToolbarContainer',
+            onAfterApply: async () => {
+                const docSnap = await getDoc(doc(db, "plantillas_sesiones", idPlantilla));
+                if (docSnap.exists()) {
+                    plantillaData = docSnap.data();
+                    ejerciciosSesion = plantillaData.ejercicios || [];
+                    renderSesionActual();
+                }
+            }
+        });
 
         // --- Manejo dinámico de Subgrupos en el Modal ---
         function actualizarComboSubgrupos(selectedVal = '') {
@@ -291,10 +309,21 @@
                     if (exItems.length === 0) return;
 
                     const newOrderIndices = exItems.map(el => parseInt(el.getAttribute('data-index')));
+                    const huboCambio = newOrderIndices.some((val, i) => val !== i);
+                    if (!huboCambio) return;
+
+                    const prevEjercicios = JSON.parse(JSON.stringify(ejerciciosSesion));
                     ejerciciosSesion = newOrderIndices.map(idx => ejerciciosSesion[idx]);
+                    const nextEjercicios = JSON.parse(JSON.stringify(ejerciciosSesion));
 
                     renderSesionActual();
                     await setDoc(doc(db, "plantillas_sesiones", idPlantilla), { ejercicios: ejerciciosSesion }, { merge: true });
+
+                    undoHistory.pushAction({
+                        label: "Reordenar ejercicios",
+                        undoOps: [{ type: 'set', collection: 'plantillas_sesiones', id: idPlantilla, data: { ejercicios: prevEjercicios }, merge: true }],
+                        redoOps: [{ type: 'set', collection: 'plantillas_sesiones', id: idPlantilla, data: { ejercicios: nextEjercicios }, merge: true }]
+                    });
                 }
             });
         }
@@ -388,6 +417,8 @@
             if (formAddEx) {
                 formAddEx.addEventListener('submit', async (e) => {
                     e.preventDefault();
+                    const prevEjercicios = JSON.parse(JSON.stringify(ejerciciosSesion));
+                    const wasEditing = editingIndex >= 0;
                     const ejCat = catalogoEjercicios.find(x => x.id_doc === document.getElementById('m_ejercicio_select').value);
 
                     let subName = document.getElementById('m_subgrupo_select').value;
@@ -451,9 +482,16 @@
                         else ejerciciosSesion.push(itemData);
                     }
 
+                    const nextEjercicios = JSON.parse(JSON.stringify(ejerciciosSesion));
                     await setDoc(doc(db, "plantillas_sesiones", idPlantilla), { ejercicios: ejerciciosSesion, orden_customizado: true }, { merge: true });
                     renderSesionActual();
                     cerrarModal();
+
+                    undoHistory.pushAction({
+                        label: `${wasEditing ? 'Editar' : 'Añadir'} "${itemData.Acrónimo || itemData.Nombre_Ejercicio}"`,
+                        undoOps: [{ type: 'set', collection: 'plantillas_sesiones', id: idPlantilla, data: { ejercicios: prevEjercicios, orden_customizado: true }, merge: true }],
+                        redoOps: [{ type: 'set', collection: 'plantillas_sesiones', id: idPlantilla, data: { ejercicios: nextEjercicios, orden_customizado: true }, merge: true }]
+                    });
                 });
             }
         });
@@ -553,9 +591,23 @@
 
         window.borrarEx = async (idx) => {
             if (confirm("¿Quitar de la plantilla?")) {
+                const prevEjercicios = JSON.parse(JSON.stringify(ejerciciosSesion));
+                const ejBorrado = ejerciciosSesion[idx];
+                const nombreEj = ejBorrado ? (ejBorrado.Acrónimo || ejBorrado.Nombre_Ejercicio || 'Ejercicio') : 'Ejercicio';
+
                 ejerciciosSesion.splice(idx, 1);
+                const nextEjercicios = JSON.parse(JSON.stringify(ejerciciosSesion));
+
                 await setDoc(doc(db, "plantillas_sesiones", idPlantilla), { ejercicios: ejerciciosSesion }, { merge: true });
                 renderSesionActual();
+
+                undoHistory.pushAction({
+                    label: `Quitar "${nombreEj}"`,
+                    undoOps: [{ type: 'set', collection: 'plantillas_sesiones', id: idPlantilla, data: { ejercicios: prevEjercicios }, merge: true }],
+                    redoOps: [{ type: 'set', collection: 'plantillas_sesiones', id: idPlantilla, data: { ejercicios: nextEjercicios }, merge: true }],
+                    showToast: true,
+                    toastMessage: `🗑️ "${nombreEj}" quitado de la plantilla`
+                });
             }
         };
 

@@ -389,7 +389,8 @@
             <button class="filter-btn active" id="tab-individuales">Sesiones individuales</button>
             <button class="filter-btn inactive" id="tab-sg">Small Groups</button>
 
-            <div style="margin-left: auto; display: flex; gap: 10px;">
+            <div style="margin-left: auto; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <div id="undoToolbarContainer"></div>
                 <a href="programaciones_pendientes.html" class="btn-outline">Programaciones pendientes</a>
                 <button class="btn-primary" id="btn-planificar-dias" onclick="abrirModalPlanificar()">+ Planificar Días
                     de Cliente</button>
@@ -579,8 +580,18 @@
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
         import { getValoresMaestro } from './js/maestros-service.js';
         import { normalizarTexto, getChevronSVG as getChevronSVGUtil } from './js/utils.js';
+        import { crearHistorialUndo } from './js/undo-service.js';
 
         window.actualizarCalculo = () => { };
+
+        const undoHistory = crearHistorialUndo({
+            contextKey: 'agenda_calendario',
+            maxSteps: 15,
+            containerId: 'undoToolbarContainer',
+            onAfterApply: async () => {
+                await loadAgenda();
+            }
+        });
 
         let pendingCreationData = null;
         let currentView = 'individuales';
@@ -1211,12 +1222,16 @@
 
         async function ejecutarGuardadoNormal(fechas, isSG, emailAutor, idCliente, nombreCli, horaIni) {
             const batch = writeBatch(db);
-            for (let f of fechas) {
+            const undoOps = [];
+            const redoOps = [];
+
+            for (let i = 0; i < fechas.length; i++) {
+                const f = fechas[i];
                 const fechaGuardar = new Date(f);
                 const [h, m] = horaIni.split(':');
                 fechaGuardar.setUTCHours(parseInt(h), parseInt(m), 0, 0);
 
-                const idDoc = `SES-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+                const idDoc = `SES-${Date.now()}-${i}-${Math.floor(Math.random() * 1000)}`;
                 const dataToSave = {
                     id_sesion_global: idDoc, id_cliente: idCliente, alias: nombreCli, nombre_cliente: nombreCli,
                     estado: "Pendiente", tipo_sesion: isSG ? "Small Group" : "Individual",
@@ -1224,8 +1239,23 @@
                     utc_migrado: true
                 };
                 batch.set(doc(db, "agenda_sesiones", idDoc), dataToSave);
+                undoOps.push({ type: 'delete', collection: 'agenda_sesiones', id: idDoc });
+                redoOps.push({ type: 'set', collection: 'agenda_sesiones', id: idDoc, data: dataToSave, merge: false });
             }
             await batch.commit();
+
+            const numCitas = fechas.length;
+            const labelAccion = numCitas === 1
+                ? `Agendar sesión de ${nombreCli} (${horaIni})`
+                : `Planificar ${numCitas} sesiones de ${nombreCli}`;
+
+            undoHistory.pushAction({
+                label: labelAccion,
+                undoOps,
+                redoOps,
+                showToast: true,
+                toastMessage: `📅 ${labelAccion}`
+            });
         }
 
         window.mostrarOpcionesCascada = (prefix) => {
@@ -1282,25 +1312,49 @@
                 f.setUTCHours(parseInt(h), parseInt(m), 0, 0);
 
                 const newDocId = `SES-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-                batch.set(doc(db, "agenda_sesiones", newDocId), {
+                const newDocData = {
                     id_sesion_global: newDocId, id_cliente: idCliente, alias: nombreCli, nombre_cliente: nombreCli,
                     estado: "Pendiente", tipo_sesion: "Individual",
                     fecha_hora_inicio: f,
                     ejercicios: futureSessions.length > 0 ? (futureSessions[0].data.ejercicios || []) : [],
                     creado_por: emailAutor, fecha_creacion: new Date(),
                     utc_migrado: true
-                });
+                };
+                batch.set(doc(db, "agenda_sesiones", newDocId), newDocData);
+
+                const undoOps = [
+                    { type: 'delete', collection: 'agenda_sesiones', id: newDocId }
+                ];
+                const redoOps = [
+                    { type: 'set', collection: 'agenda_sesiones', id: newDocId, data: newDocData, merge: false }
+                ];
 
                 // Iteramos: La 1 coge de la 2, la 2 de la 3, etc.
                 for (let i = 0; i < futureSessions.length; i++) {
                     const currentSess = futureSessions[i];
                     const nextSess = futureSessions[i + 1];
 
-                    batch.set(doc(db, "agenda_sesiones", currentSess.id), {
+                    undoOps.push({
+                        type: 'set',
+                        collection: 'agenda_sesiones',
+                        id: currentSess.id,
+                        data: currentSess.data,
+                        merge: false
+                    });
+
+                    const updateObj = {
                         ejercicios: nextSess ? (nextSess.data.ejercicios || []) : [],
                         ultimo_modificado_por: emailAutor,
                         fecha_modificacion: new Date()
-                    }, { merge: true });
+                    };
+                    batch.set(doc(db, "agenda_sesiones", currentSess.id), updateObj, { merge: true });
+                    redoOps.push({
+                        type: 'set',
+                        collection: 'agenda_sesiones',
+                        id: currentSess.id,
+                        data: updateObj,
+                        merge: true
+                    });
                 }
 
                 await batch.commit();
@@ -1308,6 +1362,14 @@
                 if (modalPrefix === 'plan') cerrarModalPlanificar();
                 else cerrarModalCita();
                 loadAgenda();
+
+                undoHistory.pushAction({
+                    label: `Agendar en cascada (${nombreCli})`,
+                    undoOps,
+                    redoOps,
+                    showToast: true,
+                    toastMessage: `📅 Sesión creada de ${nombreCli} (rutinas adelantadas en cascada)`
+                });
             } catch (e) {
                 console.error(e);
                 alert("Error al recoger las rutinas en cascada.");

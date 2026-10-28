@@ -83,7 +83,10 @@
     <div class="container">
         <div class="page-header">
             <h1>Sesiones Predefinidas</h1>
-            <button class="btn-primary" onclick="window.abrirModalNueva()">+ Nueva Plantilla</button>
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <div id="undoToolbarContainer"></div>
+                <button class="btn-primary" onclick="window.abrirModalNueva()">+ Nueva Plantilla</button>
+            </div>
         </div>
 
         <div id="plantillasContainer">
@@ -123,13 +126,23 @@
 
     <script type="module">
         import { auth, db } from './firebase-config.js';
-        import { collection, getDocs, doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
+        import { collection, getDocs, getDoc, doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
         import { poblarSelect, getValoresMaestro, getMapaOrdenMaestro } from './js/maestros-service.js';
         import { iconTrash, getChevronSVG } from './js/utils.js';
+        import { crearHistorialUndo } from './js/undo-service.js';
 
         let tiposSesionMaestro = [];
         let ordenTiposSesion = {};
+
+        const undoHistory = crearHistorialUndo({
+            contextKey: 'plantillas_catalogo',
+            maxSteps: 15,
+            containerId: 'undoToolbarContainer',
+            onAfterApply: async () => {
+                await loadPlantillas();
+            }
+        });
 
         window.abrirModalNueva = (tipoPreseleccionado = null) => {
             document.getElementById('formNueva').reset();
@@ -272,20 +285,40 @@
         }
 
         window.borrarPlantilla = async (id) => {
-            if (confirm("¿Borrar esta plantilla? No se puede deshacer.")) {
+            if (confirm("¿Seguro que deseas eliminar esta plantilla?")) {
+                const snap = await getDoc(doc(db, "plantillas_sesiones", id));
+                const backupData = snap.exists() ? snap.data() : null;
+                const nombre = backupData ? (backupData.nombre || 'Plantilla') : 'Plantilla';
+
                 await deleteDoc(doc(db, "plantillas_sesiones", id));
-                loadPlantillas();
+                await loadPlantillas();
+
+                if (backupData) {
+                    undoHistory.pushAction({
+                        label: `Eliminar plantilla "${nombre}"`,
+                        undoOps: [{ type: 'set', collection: 'plantillas_sesiones', id, data: backupData, merge: false }],
+                        redoOps: [{ type: 'delete', collection: 'plantillas_sesiones', id }],
+                        showToast: true,
+                        toastMessage: `🗑️ Plantilla "${nombre}" eliminada`
+                    });
+                }
             }
         };
 
         document.getElementById('formNueva').addEventListener('submit', async (e) => {
             e.preventDefault();
             const id = `PLANTILLA-${Date.now()}`;
-            await setDoc(doc(db, "plantillas_sesiones", id), {
+            const newPlantillaData = {
                 tipo_sesion: document.getElementById('p_tipo').value,
                 nombre: document.getElementById('p_nombre').value.trim(),
                 nivel: document.getElementById('p_nivel').value,
                 ejercicios: []
+            };
+            await setDoc(doc(db, "plantillas_sesiones", id), newPlantillaData);
+            undoHistory.pushAction({
+                label: `Crear plantilla "${newPlantillaData.nombre}"`,
+                undoOps: [{ type: 'delete', collection: 'plantillas_sesiones', id }],
+                redoOps: [{ type: 'set', collection: 'plantillas_sesiones', id, data: newPlantillaData, merge: false }]
             });
             window.location.href = `editar_plantilla.html?id=${id}`;
         });

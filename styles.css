@@ -839,3 +839,156 @@ textarea.form-control {
   color: var(--accent-dark);
   white-space: nowrap;
 }
+
+/* --- Sistema Global de Deshacer / Rehacer (Toast + Barra Historial) --- */
+.undo-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--hover-bg);
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.btn-undo-bar {
+  background: var(--surface);
+  color: var(--text-main);
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.btn-undo-bar:hover:not(:disabled) {
+  background: #f0fdfa;
+  border-color: var(--accent-dark);
+  color: var(--accent-dark);
+}
+
+.btn-undo-bar:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: transparent;
+  border-color: transparent;
+}
+
+.undo-count-badge {
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 10px;
+  line-height: 1.2;
+}
+
+.undo-toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 420px;
+  width: calc(100% - 48px);
+  pointer-events: none;
+}
+
+.undo-toast {
+  pointer-events: auto;
+  background: #0f172a;
+  color: #f8fafc;
+  border-radius: 10px;
+  padding: 14px 16px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  font-size: 0.88rem;
+  position: relative;
+  overflow: hidden;
+  animation: undoToastSlideIn 0.22s ease-out;
+}
+
+@keyframes undoToastSlideIn {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.undo-toast-msg {
+  flex: 1;
+  line-height: 1.35;
+  font-weight: 500;
+}
+
+.undo-toast-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.undo-toast-btn {
+  background: #14b8a6;
+  color: #042f2e;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-weight: 800;
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  transition: background 0.15s;
+}
+
+.undo-toast-btn:hover:not(:disabled) {
+  background: #2dd4bf;
+}
+
+.undo-toast-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.undo-toast-close {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 1.2rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+.undo-toast-close:hover {
+  color: #ffffff;
+}
+
+.undo-toast-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: #14b8a6;
+  width: 100%;
+  transform-origin: left;
+  transition: transform linear;
+}
