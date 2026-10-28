@@ -844,25 +844,28 @@ textarea.form-control {
 .undo-toolbar {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  background: var(--hover-bg);
-  padding: 4px;
+  gap: 4px;
+  background: #f8fafc;
+  padding: 3px;
   border-radius: 8px;
   border: 1px solid var(--border);
 }
 
 .btn-undo-bar {
   background: var(--surface);
-  color: var(--text-main);
+  color: #334155;
   border: 1px solid var(--border);
-  padding: 6px 12px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0 7px;
   border-radius: 6px;
-  font-size: 0.82rem;
-  font-weight: 600;
+  font-size: 0.78rem;
+  font-weight: 700;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  gap: 4px;
   transition: all 0.15s ease;
   user-select: none;
   white-space: nowrap;
@@ -875,7 +878,7 @@ textarea.form-control {
 }
 
 .btn-undo-bar:disabled {
-  opacity: 0.45;
+  opacity: 0.35;
   cursor: not-allowed;
   background: transparent;
   border-color: transparent;
@@ -884,11 +887,11 @@ textarea.form-control {
 .undo-count-badge {
   background: #e0f2fe;
   color: #0369a1;
-  font-size: 0.7rem;
-  font-weight: 700;
-  padding: 1px 6px;
-  border-radius: 10px;
-  line-height: 1.2;
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 999px;
+  line-height: 1.1;
 }
 
 .undo-toast-container {

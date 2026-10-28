@@ -303,6 +303,9 @@ export function crearHistorialUndo({
 
     cargarDesdeStorage();
 
+    const svgUndo = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"></path><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path></svg>`;
+    const svgRedo = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"></path><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"></path></svg>`;
+
     function actualizarBotonesUI() {
         const btnUndo = document.getElementById(`btn-undo-${contextKey}`);
         const btnRedo = document.getElementById(`btn-redo-${contextKey}`);
@@ -314,7 +317,7 @@ export function crearHistorialUndo({
             btnUndo.title = last
                 ? `Deshacer: ${last.label} (Ctrl+Z)`
                 : 'Nada que deshacer (Ctrl+Z)';
-            btnUndo.innerHTML = `↩ Deshacer${count > 0 ? ` <span class="undo-count-badge">${count}</span>` : ''}`;
+            btnUndo.innerHTML = `${svgUndo}${count > 0 ? `<span class="undo-count-badge">${count}</span>` : ''}`;
         }
 
         if (btnRedo) {
@@ -324,7 +327,7 @@ export function crearHistorialUndo({
             btnRedo.title = last
                 ? `Rehacer: ${last.label} (Ctrl+Y)`
                 : 'Nada que rehacer (Ctrl+Y)';
-            btnRedo.innerHTML = `↪ Rehacer${count > 0 ? ` <span class="undo-count-badge">${count}</span>` : ''}`;
+            btnRedo.innerHTML = `${svgRedo}${count > 0 ? `<span class="undo-count-badge">${count}</span>` : ''}`;
         }
     }
 
@@ -415,23 +418,47 @@ export function crearHistorialUndo({
     }
 
     function montarToolbar(targetId = containerId) {
-        const container = typeof targetId === 'string' ? document.getElementById(targetId) : targetId;
-        if (!container) return;
+        const resolverContenedor = () => {
+            if (targetId) {
+                const el = typeof targetId === 'string' ? document.getElementById(targetId) : targetId;
+                if (el) return el;
+            }
+            return document.getElementById('navUndoContainer');
+        };
 
-        container.innerHTML = `
-            <div class="undo-toolbar">
-                <button type="button" class="btn-undo-bar" id="btn-undo-${contextKey}" disabled>↩ Deshacer</button>
-                <button type="button" class="btn-undo-bar" id="btn-redo-${contextKey}" disabled>↪ Rehacer</button>
-            </div>
-        `;
+        const renderizarEn = (container) => {
+            if (!container) return;
+            container.innerHTML = `
+                <div class="undo-toolbar">
+                    <button type="button" class="btn-undo-bar" id="btn-undo-${contextKey}" disabled aria-label="Deshacer">${svgUndo}</button>
+                    <button type="button" class="btn-undo-bar" id="btn-redo-${contextKey}" disabled aria-label="Rehacer">${svgRedo}</button>
+                </div>
+            `;
 
-        const btnUndo = document.getElementById(`btn-undo-${contextKey}`);
-        const btnRedo = document.getElementById(`btn-redo-${contextKey}`);
+            const btnUndo = document.getElementById(`btn-undo-${contextKey}`);
+            const btnRedo = document.getElementById(`btn-redo-${contextKey}`);
 
-        if (btnUndo) btnUndo.addEventListener('click', undo);
-        if (btnRedo) btnRedo.addEventListener('click', redo);
+            if (btnUndo) btnUndo.addEventListener('click', undo);
+            if (btnRedo) btnRedo.addEventListener('click', redo);
 
-        actualizarBotonesUI();
+            actualizarBotonesUI();
+        };
+
+        const cont = resolverContenedor();
+        if (cont) {
+            renderizarEn(cont);
+        } else {
+            const intentarMontar = () => {
+                const c = resolverContenedor();
+                if (c) renderizarEn(c);
+            };
+            if (window.customElements && window.customElements.whenDefined) {
+                window.customElements.whenDefined('gym-navbar').then(() => {
+                    requestAnimationFrame(intentarMontar);
+                });
+            }
+            document.addEventListener('DOMContentLoaded', intentarMontar, { once: true });
+        }
     }
 
     // Atajos de teclado globales Ctrl+Z y Ctrl+Y / Ctrl+Shift+Z
@@ -464,9 +491,7 @@ export function crearHistorialUndo({
         }
     });
 
-    if (containerId) {
-        montarToolbar(containerId);
-    }
+    montarToolbar(containerId);
 
     return {
         pushAction,

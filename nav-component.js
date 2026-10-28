@@ -19,6 +19,8 @@ class GymNavbar extends HTMLElement {
         .nav-links a { text-decoration: none; color: #64748b; font-weight: 600; font-size: 0.9rem; padding: 8px 12px; border-radius: 6px; transition: all 0.2s; }
         .nav-links a:hover { background: #f1f5f9; color: #0f172a; }
         .nav-links a.active { background: #e0f2fe; color: #0369a1; }
+        .nav-right-group { display: flex; align-items: center; gap: 14px; }
+        .nav-undo-slot { display: flex; align-items: center; }
         .nav-user { display: flex; align-items: center; gap: 15px; font-size: 0.9rem; font-weight: 600; color: #334155; }
         .btn-logout { background: none; border: none; color: #ef4444; font-weight: bold; cursor: pointer; font-size: 0.85rem; padding: 6px 12px; border-radius: 6px; transition: 0.2s; }
         .btn-logout:hover { background: #fee2e2; }
@@ -36,7 +38,6 @@ class GymNavbar extends HTMLElement {
         <a href="planificacion.html" class="nav-brand">
           <img src="assets/logo.png" alt="GO & train"> GO&Train
         </a>
-        <button class="hamburger" id="navToggle">☰</button>
         <div class="nav-links" id="navMenu">
           <a href="planificacion.html" class="${this.activePage === 'planificacion' ? 'active' : ''}">Planificación</a>
           <a href="agenda.html" class="${this.activePage === 'agenda' ? 'active' : ''}">Agenda</a>
@@ -46,9 +47,13 @@ class GymNavbar extends HTMLElement {
           <a href="maestros.html" class="${this.activePage === 'maestros' ? 'active' : ''}">Maestros</a>
           <button class="btn-logout" id="btnLogoutMobile" style="display: none; margin-top: 10px; text-align: left; padding: 8px 12px;">Cerrar Sesión</button>
         </div>
-        <div class="nav-user">
-          <span>Hola, ${userName}</span>
-          <button class="btn-logout" id="btnLogoutDesktop">Cerrar Sesión</button>
+        <div class="nav-right-group">
+          <div id="navUndoContainer" class="nav-undo-slot"></div>
+          <div class="nav-user">
+            <span>Hola, ${userName}</span>
+            <button class="btn-logout" id="btnLogoutDesktop">Cerrar Sesión</button>
+          </div>
+          <button class="hamburger" id="navToggle">☰</button>
         </div>
       </nav>
     `;
