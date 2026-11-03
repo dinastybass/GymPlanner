@@ -145,6 +145,14 @@
                     <label>Nivel Objetivo *</label>
                     <select id="p_nivel" required></select>
                 </div>
+                <div class="form-group">
+                    <label>Intensidad de la Sesión *</label>
+                    <select id="p_intensidad" required>
+                        <option value="LOW">LOW</option>
+                        <option value="MED" selected>MED</option>
+                        <option value="HIGH">HIGH</option>
+                    </select>
+                </div>
                 <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
                     <button type="button" class="btn-secondary"
                         onclick="document.getElementById('modalNueva').style.display='none'">Cancelar</button>
@@ -159,7 +167,7 @@
         import { collection, getDocs, getDoc, doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
         import { poblarSelect, getValoresMaestro, getMapaOrdenMaestro } from './js/maestros-service.js';
-        import { iconTrash, getChevronSVG } from './js/utils.js';
+        import { iconTrash, getChevronSVG, renderEtiquetaIntensidad } from './js/utils.js';
         import { crearHistorialUndo } from './js/undo-service.js';
 
         let tiposSesionMaestro = [];
@@ -263,7 +271,7 @@
                     } else {
                         const filasHTML = lista.map(p => `
                             <tr class="row-link" onclick="window.location.href='editar_plantilla.html?id=${p.id}'">
-                                <td><strong>${p.nombre || 'Sin nombre'}</strong></td>
+                                <td><strong>${p.nombre || 'Sin nombre'}</strong> <span style="margin-left:8px;">${renderEtiquetaIntensidad(p.intensidad || p.Intensidad || 'MED')}</span></td>
                                 <td><span class="pill pill-nivel">${p.nivel || '-'}</span></td>
                                 <td>${p.ejercicios ? p.ejercicios.length : 0} ejercicios</td>
                                 <td>
@@ -342,6 +350,8 @@
                 tipo_sesion: document.getElementById('p_tipo').value,
                 nombre: document.getElementById('p_nombre').value.trim(),
                 nivel: document.getElementById('p_nivel').value,
+                intensidad: document.getElementById('p_intensidad').value || 'MED',
+                Intensidad: document.getElementById('p_intensidad').value || 'MED',
                 ejercicios: []
             };
             await setDoc(doc(db, "plantillas_sesiones", id), newPlantillaData);

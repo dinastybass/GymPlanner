@@ -1250,6 +1250,7 @@
             abrirModalEnviarSesion({
                 ejercicios: sesionOrigen.ejercicios,
                 tipoSesionDefecto: sesionOrigen.tipo_sesion || null,
+                intensidadDefecto: sesionOrigen.docData?.intensidad || sesionOrigen.docData?.Intensidad || 'MED',
                 undoHistory,
                 onSuccess: async ({ modo }) => {
                     if (modo === 'cliente') {

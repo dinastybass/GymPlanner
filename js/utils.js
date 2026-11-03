@@ -31,6 +31,16 @@ export const iconCalendar = `<svg width="16" height="16" viewBox="0 0 24 24" fil
 export const iconArrowRight = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>`;
 
 /**
+ * Devuelve una etiqueta visual (badge) para la intensidad (LOW, MED, HIGH)
+ */
+export function renderEtiquetaIntensidad(intensidadRaw, defaultVal = 'MED') {
+    const val = String(intensidadRaw || defaultVal || '').trim().toUpperCase();
+    if (!val) return '';
+    const cls = val === 'LOW' ? 'int-low' : val === 'HIGH' ? 'int-high' : 'int-med';
+    return `<span class="intensity-badge ${cls}" title="Intensidad: ${val}">⚡ ${val}</span>`;
+}
+
+/**
  * Devuelve un icono chevron envuelto en .chevron-icon con rotación según su estado abierto/cerrado
  */
 export function getChevronSVG(isExpanded = true, size = 18) {
@@ -426,9 +436,17 @@ function asegurarModalEnviarDOM() {
                         <label>Nombre de la plantilla *</label>
                         <input type="text" id="enviar_p_nombre" class="form-control" placeholder="Ej. Tren Inferior - Día 1">
                     </div>
-                    <div class="form-group">
+                    <div class="form-group" style="margin-bottom: 15px;">
                         <label>Nivel Objetivo *</label>
                         <select id="enviar_p_nivel" class="form-control"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Intensidad de la Plantilla *</label>
+                        <select id="enviar_p_intensidad" class="form-control">
+                            <option value="LOW">LOW</option>
+                            <option value="MED" selected>MED</option>
+                            <option value="HIGH">HIGH</option>
+                        </select>
                     </div>
                 </div>
 
@@ -561,8 +579,11 @@ async function manejarSubmitModalEnviar(e) {
             const prevDestinoEjercicios = sesionDestinoPrevia ? JSON.parse(JSON.stringify(sesionDestinoPrevia.ejercicios || [])) : [];
             const nextDestinoEjercicios = JSON.parse(JSON.stringify(ejerciciosOrigen));
 
+            const intensOrigen = __enviarContextoActual.intensidadDefecto || 'MED';
             await updateDoc(doc(db, "agenda_sesiones", idSesionDestino), {
                 ejercicios: nextDestinoEjercicios,
+                intensidad: intensOrigen,
+                Intensidad: intensOrigen,
                 programado_por: autorNombre,
                 fecha_programacion: new Date(),
                 orden_customizado: true
@@ -593,6 +614,7 @@ async function manejarSubmitModalEnviar(e) {
         const tipoSesion = document.getElementById('enviar_p_tipo')?.value;
         const nombrePlantilla = document.getElementById('enviar_p_nombre')?.value.trim();
         const nivelPlantilla = document.getElementById('enviar_p_nivel')?.value;
+        const intensidadPlantilla = document.getElementById('enviar_p_intensidad')?.value || __enviarContextoActual.intensidadDefecto || 'MED';
 
         if (!tipoSesion || !nombrePlantilla || !nivelPlantilla) {
             alert("Por favor, completa el tipo de sesión, el nombre de la plantilla y el nivel.");
@@ -608,6 +630,8 @@ async function manejarSubmitModalEnviar(e) {
                 tipo_sesion: tipoSesion,
                 nombre: nombrePlantilla,
                 nivel: nivelPlantilla,
+                intensidad: intensidadPlantilla,
+                Intensidad: intensidadPlantilla,
                 ejercicios: ejerciciosNormalizados,
                 orden_customizado: true
             };
@@ -645,12 +669,14 @@ async function manejarSubmitModalEnviar(e) {
 export async function abrirModalEnviarSesion({
     ejercicios = [],
     tipoSesionDefecto = null,
+    intensidadDefecto = 'MED',
     undoHistory = null,
     onSuccess = null
 } = {}) {
     __enviarContextoActual = {
         ejercicios: Array.isArray(ejercicios) ? ejercicios : [],
         tipoSesionDefecto,
+        intensidadDefecto: intensidadDefecto || 'MED',
         undoHistory,
         onSuccess
     };
@@ -685,6 +711,10 @@ export async function abrirModalEnviarSesion({
     const selTipo = document.getElementById('enviar_p_tipo');
     if (selTipo && tipoSesionDefecto && selTipo.querySelector(`option[value="${tipoSesionDefecto}"]`)) {
         selTipo.value = tipoSesionDefecto;
+    }
+    const selInt = document.getElementById('enviar_p_intensidad');
+    if (selInt) {
+        selInt.value = String(intensidadDefecto || 'MED').toUpperCase();
     }
 
     // Cargar lista de clientes para la pestaña de Sesión de Cliente
@@ -1567,6 +1597,7 @@ export function abrirMenuAccionesSesion(event, sesionData, {
         await abrirModalEnviarSesion({
             ejercicios: acciones.ejercicios,
             tipoSesionDefecto: acciones.tipo_sesion,
+            intensidadDefecto: sFmt.docData?.intensidad || sFmt.docData?.Intensidad || 'MED',
             undoHistory: undoHistoryFinal,
             onSuccess: onAfterChangeFinal
         });

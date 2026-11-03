@@ -47,6 +47,21 @@
             </div>
         </div>
 
+        <div class="session-intensity-bar" id="sessionIntensityBar">
+            <div class="session-intensity-bar-left">
+                <span>⚡ Intensidad de la sesión:</span>
+                <span id="badgeIntensidadSesion"></span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <label for="selectIntensidadSesion" style="margin:0; font-size:0.82rem; color:var(--text-muted); font-weight:600;">Editar intensidad:</label>
+                <select id="selectIntensidadSesion" class="session-intensity-select" onchange="window.cambiarIntensidadSesion(this.value)">
+                    <option value="LOW">LOW</option>
+                    <option value="MED" selected>MED</option>
+                    <option value="HIGH">HIGH</option>
+                </select>
+            </div>
+        </div>
+
         <div class="session-preview" id="previewContainer">
             <div class="empty-preview">Cargando datos de la sesión...</div>
         </div>
@@ -238,7 +253,7 @@
         import { doc, getDoc, setDoc, collection, getDocs, updateDoc, writeBatch, query, where } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
         import { poblarSelect, getValoresMaestro, getMapaOrdenMaestro } from './js/maestros-service.js';
-        import { normalizarTexto, iconTrash, toggleDropdown, closeDropdown, filterDropdown, selectSingleOption, renderizarOpcionesDropdown, buildDropdownOptions, updateMultiSelection, clearDropdown, setDropdownValues, abrirModalEnviarSesion } from './js/utils.js';
+        import { normalizarTexto, iconTrash, toggleDropdown, closeDropdown, filterDropdown, selectSingleOption, renderizarOpcionesDropdown, buildDropdownOptions, updateMultiSelection, clearDropdown, setDropdownValues, abrirModalEnviarSesion, renderEtiquetaIntensidad } from './js/utils.js';
         import { crearHistorialUndo } from './js/undo-service.js';
 
         const urlParams = new URLSearchParams(window.location.search);
@@ -255,6 +270,39 @@
         let seriePorDefecto = "3 x 10";
         let sortableInstance = null;
         let selectedGrupoMuscular = "";
+        let intensidadSesionActual = "MED";
+
+        function sincronizarUIIntensidadSesion() {
+            const sel = document.getElementById('selectIntensidadSesion');
+            const badge = document.getElementById('badgeIntensidadSesion');
+            const val = String(intensidadSesionActual || 'MED').toUpperCase();
+            if (sel) sel.value = ['LOW', 'MED', 'HIGH'].includes(val) ? val : 'MED';
+            if (badge) badge.innerHTML = renderEtiquetaIntensidad(val);
+        }
+
+        window.cambiarIntensidadSesion = async (nuevoVal) => {
+            const prevVal = intensidadSesionActual || 'MED';
+            const nextVal = String(nuevoVal || 'MED').toUpperCase();
+            if (prevVal === nextVal) return;
+            intensidadSesionActual = nextVal;
+            sessionData.intensidad = nextVal;
+            sessionData.Intensidad = nextVal;
+            sincronizarUIIntensidadSesion();
+
+            try {
+                await guardarSesionEnFirebase({
+                    label: `Intensidad de sesión a ${nextVal}`,
+                    prevEjercicios: JSON.parse(JSON.stringify(ejerciciosSesion)),
+                    prevIntensidad: prevVal,
+                    nextIntensidad: nextVal,
+                    showToast: true,
+                    toastMessage: `⚡ Intensidad de la sesión cambiada a ${nextVal}`
+                });
+            } catch (e) {
+                console.error("Error guardando intensidad de sesión:", e);
+                alert("No se pudo guardar la intensidad de la sesión.");
+            }
+        };
 
         const undoHistory = crearHistorialUndo({
             contextKey: `programar_sesion_${sessionId}`,
@@ -265,6 +313,10 @@
                 if (docSnap.exists()) {
                     sessionData = docSnap.data();
                     ejerciciosSesion = sessionData.ejercicios || [];
+                intensidadSesionActual = String(sessionData.intensidad || sessionData.Intensidad || 'MED').toUpperCase();
+                sincronizarUIIntensidadSesion();
+                    intensidadSesionActual = String(sessionData.intensidad || sessionData.Intensidad || 'MED').toUpperCase();
+                    sincronizarUIIntensidadSesion();
                     renderSesionActual();
                 }
             }
@@ -432,6 +484,8 @@
             if (docSnap.exists()) {
                 sessionData = docSnap.data();
                 ejerciciosSesion = sessionData.ejercicios || [];
+                intensidadSesionActual = String(sessionData.intensidad || sessionData.Intensidad || 'MED').toUpperCase();
+                sincronizarUIIntensidadSesion();
 
                 if (!sessionData.orden_customizado && ejerciciosSesion.length > 0) {
                     ejerciciosSesion.sort((a, b) => {
@@ -621,7 +675,28 @@
                 if (!reps) reps = '-';
 
                 const pesoStr = (ej.Peso && String(ej.Peso).trim() !== '') ? ` ⚖️ ${ej.Peso}` : '';
-                const intensStr = (ej.Intensidad && ej.Intensidad !== 'MED' && ej.Intensidad !== '') ? ` · ${ej.Intensidad}` : '';
+                const pesoStr = (ej.Peso && String(ej.Peso).trim() !== '') ? ` ⚖️ ${ej.Peso}` : '';
+                const intensVal = ej.Intensidad || ej.intensidad || 'MED';
+                const intensBadge = renderEtiquetaIntensidad(intensVal);
+
+                const itemClass = subName ? 'ex-item in-subgroup' : 'ex-item';
+
+                html += `
+                    <div class="${itemClass}" data-index="${index}" onclick="abrirModalEditar(${index})">
+                        <div class="drag-handle" title="Arrastra para reordenar">⋮⋮</div>
+                        <div class="ex-item-info">
+                            <span class="ex-item-title">${nombreStr}</span>
+                            ${desc}
+                        </div>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span class="ex-item-presc">${reps}${pesoStr}</span>
+                            ${intensBadge}
+                            <button class="btn-icon danger" onclick="event.stopPropagation(); borrarEjercicioDeSesion(${index})" title="Quitar de la sesión">${iconTrash}</button>
+                        </div>
+                    </div>
+                `;
+                if (false) {
+                const intensStr = '';
 
                 const itemClass = subName ? 'ex-item in-subgroup' : 'ex-item';
 
@@ -638,6 +713,8 @@
                         </div>
                     </div>
                 `;
+            });
+                }
             });
             container.innerHTML = html;
         }
@@ -883,6 +960,8 @@
             const autorNombre = localStorage.getItem('gym_user_name') || "Usuario desconocido";
             const dataToSave = {
                 ejercicios: ejerciciosSesion,
+                intensidad: intensidadSesionActual || 'MED',
+                Intensidad: intensidadSesionActual || 'MED',
                 programado_por: autorNombre,
                 fecha_programacion: new Date(),
                 orden_customizado: true
@@ -934,14 +1013,14 @@
                     type: 'set',
                     collection: 'agenda_sesiones',
                     id,
-                    data: { ejercicios: historyMeta.prevEjercicios, orden_customizado: true },
+                    data: { ejercicios: historyMeta.prevEjercicios, intensidad: historyMeta.prevIntensidad || intensidadSesionActual || 'MED', Intensidad: historyMeta.prevIntensidad || intensidadSesionActual || 'MED', orden_customizado: true },
                     merge: true
                 }));
                 const redoOps = targetDocIds.map(id => ({
                     type: 'set',
                     collection: 'agenda_sesiones',
                     id,
-                    data: { ejercicios: nextEjercicios, orden_customizado: true },
+                    data: { ejercicios: nextEjercicios, intensidad: historyMeta.nextIntensidad || intensidadSesionActual || 'MED', Intensidad: historyMeta.nextIntensidad || intensidadSesionActual || 'MED', orden_customizado: true },
                     merge: true
                 }));
                 undoHistory.pushAction({
@@ -1088,7 +1167,8 @@
 
             filtradas.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '')).forEach(p => {
                 const prefix = p.tipo_sesion ? `[${p.tipo_sesion}] ` : '';
-                selectPlantilla.innerHTML += `<option value="${p.id}">${prefix}${p.nombre} (${p.ejercicios ? p.ejercicios.length : 0} ej.)</option>`;
+                const intP = String(p.intensidad || p.Intensidad || 'MED').toUpperCase();
+                selectPlantilla.innerHTML += `<option value="${p.id}">${prefix}${p.nombre} [⚡ ${intP}] (${p.ejercicios ? p.ejercicios.length : 0} ej.)</option>`;
             });
         };
 
@@ -1104,6 +1184,12 @@
 
             document.getElementById('btn-submit-import').innerText = "Importando...";
             const prevEjercicios = JSON.parse(JSON.stringify(ejerciciosSesion));
+            if (plantillaSeleccionada.intensidad || plantillaSeleccionada.Intensidad) {
+                intensidadSesionActual = String(plantillaSeleccionada.intensidad || plantillaSeleccionada.Intensidad).toUpperCase();
+                sessionData.intensidad = intensidadSesionActual;
+                sessionData.Intensidad = intensidadSesionActual;
+                sincronizarUIIntensidadSesion();
+            }
             ejerciciosSesion = [...ejerciciosSesion, ...plantillaSeleccionada.ejercicios];
 
             try {
@@ -1127,6 +1213,7 @@
             abrirModalEnviarSesion({
                 ejercicios: ejerciciosSesion,
                 tipoSesionDefecto: sessionData.tipo_sesion || null,
+                intensidadDefecto: intensidadSesionActual || sessionData.intensidad || sessionData.Intensidad || 'MED',
                 undoHistory,
                 onSuccess: ({ modo }) => {
                     if (modo === 'plantilla') {

@@ -39,6 +39,21 @@
             <button class="btn-primary" onclick="abrirModal()">+ Añadir ejercicio</button>
         </div>
 
+        <div class="session-intensity-bar" id="plantillaIntensityBar">
+            <div class="session-intensity-bar-left">
+                <span>⚡ Intensidad de la sesión de plantilla:</span>
+                <span id="badgeIntensidadPlantilla"></span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <label for="selectIntensidadPlantilla" style="margin:0; font-size:0.82rem; color:var(--text-muted); font-weight:600;">Editar intensidad:</label>
+                <select id="selectIntensidadPlantilla" class="session-intensity-select" onchange="window.cambiarIntensidadPlantilla(this.value)">
+                    <option value="LOW">LOW</option>
+                    <option value="MED" selected>MED</option>
+                    <option value="HIGH">HIGH</option>
+                </select>
+            </div>
+        </div>
+
         <div class="session-preview" id="previewContainer"></div>
     </div>
 
@@ -166,7 +181,7 @@
         import { doc, getDoc, setDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
         import { poblarSelect, getValoresMaestro, getMapaOrdenMaestro } from './js/maestros-service.js';
-        import { normalizarTexto, iconTrash, toggleDropdown, closeDropdown, filterDropdown, selectSingleOption, renderizarOpcionesDropdown, buildDropdownOptions, updateMultiSelection, clearDropdown, setDropdownValues } from './js/utils.js';
+        import { normalizarTexto, iconTrash, toggleDropdown, closeDropdown, filterDropdown, selectSingleOption, renderizarOpcionesDropdown, buildDropdownOptions, updateMultiSelection, clearDropdown, setDropdownValues, renderEtiquetaIntensidad } from './js/utils.js';
         import { crearHistorialUndo } from './js/undo-service.js';
 
         const urlParams = new URLSearchParams(window.location.search);
@@ -181,6 +196,43 @@
         let materialesMaestro = [];
         let seriePorDefecto = "3 x 10";
         let sortableInstance = null;
+        let intensidadPlantillaActual = "MED";
+
+        function sincronizarUIIntensidadPlantilla() {
+            const sel = document.getElementById('selectIntensidadPlantilla');
+            const badge = document.getElementById('badgeIntensidadPlantilla');
+            const titleEl = document.getElementById('ui-plantilla-name');
+            const val = String(intensidadPlantillaActual || 'MED').toUpperCase();
+            if (sel) sel.value = ['LOW', 'MED', 'HIGH'].includes(val) ? val : 'MED';
+            if (badge) badge.innerHTML = renderEtiquetaIntensidad(val);
+            if (titleEl && plantillaData && plantillaData.nombre) {
+                titleEl.innerHTML = `<span style="vertical-align:middle;">${plantillaData.nombre}</span> <span style="margin-left:8px;">${renderEtiquetaIntensidad(val)}</span>`;
+            }
+        }
+
+        window.cambiarIntensidadPlantilla = async (nuevoVal) => {
+            const prevVal = intensidadPlantillaActual || 'MED';
+            const nextVal = String(nuevoVal || 'MED').toUpperCase();
+            if (prevVal === nextVal) return;
+            intensidadPlantillaActual = nextVal;
+            plantillaData.intensidad = nextVal;
+            plantillaData.Intensidad = nextVal;
+            sincronizarUIIntensidadPlantilla();
+
+            try {
+                await setDoc(doc(db, "plantillas_sesiones", idPlantilla), { intensidad: nextVal, Intensidad: nextVal }, { merge: true });
+                undoHistory.pushAction({
+                    label: `Intensidad de plantilla a ${nextVal}`,
+                    undoOps: [{ type: 'set', collection: 'plantillas_sesiones', id: idPlantilla, data: { intensidad: prevVal, Intensidad: prevVal }, merge: true }],
+                    redoOps: [{ type: 'set', collection: 'plantillas_sesiones', id: idPlantilla, data: { intensidad: nextVal, Intensidad: nextVal }, merge: true }],
+                    showToast: true,
+                    toastMessage: `⚡ Intensidad de la plantilla cambiada a ${nextVal}`
+                });
+            } catch (e) {
+                console.error("Error guardando intensidad de plantilla:", e);
+                alert("No se pudo guardar la intensidad de la plantilla.");
+            }
+        };
 
         const undoHistory = crearHistorialUndo({
             contextKey: `editar_plantilla_${idPlantilla}`,
@@ -191,6 +243,8 @@
                 if (docSnap.exists()) {
                     plantillaData = docSnap.data();
                     ejerciciosSesion = plantillaData.ejercicios || [];
+                    intensidadPlantillaActual = String(plantillaData.intensidad || plantillaData.Intensidad || 'MED').toUpperCase();
+                    sincronizarUIIntensidadPlantilla();
                     renderSesionActual();
                 }
             }
@@ -363,7 +417,8 @@
                     await setDoc(doc(db, "plantillas_sesiones", idPlantilla), { orden_customizado: true, ejercicios: ejerciciosSesion }, { merge: true });
                 }
 
-                document.getElementById('ui-plantilla-name').innerText = plantillaData.nombre;
+                intensidadPlantillaActual = String(plantillaData.intensidad || plantillaData.Intensidad || 'MED').toUpperCase();
+                sincronizarUIIntensidadPlantilla();
                 const tipoTxt = plantillaData.tipo_sesion ? `Tipo de Sesión: ${plantillaData.tipo_sesion} · ` : '';
                 document.getElementById('ui-plantilla-meta').innerText = `${tipoTxt}Nivel Objetivo: ${plantillaData.nivel || '-'}`;
                 renderSesionActual();
@@ -453,6 +508,9 @@
                 const n = ej.Nombre_Ejercicio || 'Sin nombre';
                 const acro = ej.Acrónimo || ej.Acronimo || '';
                 const r = ej.Series || ej.Volumen_Series_Reps || '-';
+                const pesoStr = (ej.Peso && String(ej.Peso).trim() !== '') ? ` ⚖️ ${ej.Peso}` : '';
+                const intensVal = ej.Intensidad || ej.intensidad || 'MED';
+                const intensBadge = renderEtiquetaIntensidad(intensVal);
                 const itemClass = subName ? 'ex-item in-subgroup' : 'ex-item';
 
                 let extraInfo = [];
@@ -466,7 +524,8 @@
             <div class="drag-handle" title="Arrastra para reordenar">⋮⋮</div>
             <div class="ex-item-info"><span class="ex-item-title">${acro ? acro + ' · ' : ''}${n}</span>${desc}</div>
             <div style="display:flex; gap:15px; align-items:center;">
-              <span class="ex-item-presc">${r}</span>
+              <span class="ex-item-presc">${r}${pesoStr}</span>
+              ${intensBadge}
               <button class="btn-icon danger" onclick="event.stopPropagation(); borrarEx(${index})" title="Quitar de la plantilla">${iconTrash}</button>
             </div>
           </div>
