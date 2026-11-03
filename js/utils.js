@@ -11,7 +11,7 @@ export function normalizarTexto(texto) {
     if (!texto) return "";
     return String(texto)
         .toLowerCase()
-        .normalizeAcc("NFD")
+        .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "");
 }
 
@@ -1445,12 +1445,16 @@ export function abrirMenuAccionesSesion(event, sesionData, {
     }
     cerrarMenuAccionesSesion();
 
-    if (!sesionData || !sesionData.id) return;
+    const idReal = sesionData?.id || sesionData?.idSesion || sesionData?.sesionObj?.id || '';
+    if (!sesionData || !idReal) return;
 
-    const sFmt = sesionData.fechaStr ? sesionData : formatearSesionAgenda(sesionData.id, sesionData.docData || sesionData);
+    const undoHistoryFinal = undoHistory || sesionData.undoHistory || null;
+    const onAfterChangeFinal = onAfterChange || sesionData.onAfterChange || null;
+    const baseObj = sesionData.sesionObj || sesionData;
+    const sFmt = baseObj.fechaStr ? baseObj : formatearSesionAgenda(idReal, baseObj.docData || baseObj);
     const acciones = obtenerAccionesDisponiblesSesion(sFmt.docData || sFmt);
     const idCliente = sesionData.idCliente || sFmt.id_cliente || '';
-    const nombreCliente = sesionData.nombre || sFmt.alias || sFmt.nombre_cliente || 'Cliente';
+    const nombreCliente = sesionData.nombreCliente || sesionData.nombre || sFmt.alias || sFmt.nombre_cliente || 'Cliente';
     const horaInicio = sFmt.horaStr ? sFmt.horaStr.split(' - ')[0] : '';
     const pillClass = acciones.estado === 'Completada' ? 'pill-completada' : acciones.estado === 'Vencida' ? 'pill-vencida' : 'pill-pendiente';
 
@@ -1554,8 +1558,8 @@ export function abrirMenuAccionesSesion(event, sesionData, {
             idSesion: sFmt.id,
             idCliente,
             nombreCliente,
-            undoHistory,
-            onSuccess: onAfterChange
+            undoHistory: undoHistoryFinal,
+            onSuccess: onAfterChangeFinal
         });
     });
 
@@ -1564,8 +1568,8 @@ export function abrirMenuAccionesSesion(event, sesionData, {
         await abrirModalEnviarSesion({
             ejercicios: acciones.ejercicios,
             tipoSesionDefecto: acciones.tipo_sesion,
-            undoHistory,
-            onSuccess: onAfterChange
+            undoHistory: undoHistoryFinal,
+            onSuccess: onAfterChangeFinal
         });
     });
 
@@ -1574,8 +1578,8 @@ export function abrirMenuAccionesSesion(event, sesionData, {
         await eliminarSesionConDeshacer({
             idSesion: sFmt.id,
             sesionObj: sFmt,
-            undoHistory,
-            onSuccess: onAfterChange
+            undoHistory: undoHistoryFinal,
+            onSuccess: onAfterChangeFinal
         });
     });
 

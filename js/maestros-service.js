@@ -529,7 +529,7 @@ export async function asegurarRolesYPermisosIniciales() {
     }
 
     // Asegurar documento de configuración de matriz de permisos por rol
-    const matrizRef = doc(db, "configuracion_app", "permisos_roles");
+    const matrizRef = doc(db, "maestros", "config_permisos_roles");
     const matrizSnap = await getDoc(matrizRef);
     const rolesFinales = await getValoresMaestro("Gestión de Perfiles", "Roles");
     let matrizData = matrizSnap.exists() ? (matrizSnap.data().roles || {}) : {};
@@ -557,7 +557,7 @@ export async function asegurarRolesYPermisosIniciales() {
 }
 
 export async function cargarMatrizPermisos() {
-    const matrizRef = doc(db, "configuracion_app", "permisos_roles");
+    const matrizRef = doc(db, "maestros", "config_permisos_roles");
     const snap = await getDoc(matrizRef);
     if (!snap.exists()) {
         const init = await asegurarRolesYPermisosIniciales();
@@ -567,7 +567,7 @@ export async function cargarMatrizPermisos() {
 }
 
 export async function guardarMatrizPermisos(nuevaMatriz) {
-    const matrizRef = doc(db, "configuracion_app", "permisos_roles");
+    const matrizRef = doc(db, "maestros", "config_permisos_roles");
     await setDoc(matrizRef, {
         roles: nuevaMatriz,
         updated_at: new Date().toISOString()
