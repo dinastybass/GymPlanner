@@ -149,14 +149,168 @@
         .action-btns {
             justify-content: flex-end;
         }
-        .perfiles-subcard { margin-top: 24px; border-top: 2px solid var(--border); padding-top: 22px; }
-        .perfiles-subcard h3 { margin: 0 0 6px 0; font-size: 1.15rem; color: var(--accent-dark); }
-        .perfiles-subcard p.sub-desc { margin: 0 0 16px 0; font-size: 0.88rem; color: var(--text-muted); }
-        .role-badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: 0.78rem; font-weight: 700; background: #e0f2fe; color: #0369a1; text-transform: capitalize; }
-        .role-select-inline { padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); font-size: 0.88rem; font-weight: 600; background: var(--surface); color: var(--text-main); cursor: pointer; }
-        .perm-cat-row td { background: #f1f5f9; font-weight: 800; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--accent-dark); padding: 10px 14px !important; }
-        .perm-check { width: 18px; height: 18px; accent-color: var(--accent-dark); cursor: pointer; }
-        .perm-desc { display: block; font-size: 0.8rem; color: var(--text-muted); font-weight: 400; margin-top: 2px; }
+
+        .perfiles-subcard {
+            margin-top: 24px;
+            border-top: 2px solid var(--border);
+            padding-top: 22px;
+        }
+
+        .perfiles-subcard.standalone {
+            margin-top: 0;
+            border-top: none;
+            padding-top: 4px;
+        }
+
+        .perfiles-subcard h3 {
+            margin: 0 0 6px 0;
+            font-size: 1.15rem;
+            color: var(--accent-dark);
+        }
+
+        .perfiles-subcard p.sub-desc {
+            margin: 0 0 16px 0;
+            font-size: 0.88rem;
+            color: var(--text-muted);
+            line-height: 1.45;
+        }
+
+        .role-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            background: #e0f2fe;
+            color: #0369a1;
+        }
+
+        .role-select-inline {
+            padding: 6px 10px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            font-size: 0.88rem;
+            font-weight: 600;
+            background: var(--surface);
+            color: var(--text-main);
+            cursor: pointer;
+        }
+
+        .role-select-inline:disabled {
+            opacity: 0.65;
+            cursor: not-allowed;
+        }
+
+        .perm-cat-row td {
+            background: #f1f5f9;
+            font-weight: 800;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--accent-dark);
+            padding: 10px 14px !important;
+        }
+
+        .perm-check {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--accent-dark);
+            cursor: pointer;
+        }
+
+        .perm-check:disabled {
+            cursor: not-allowed;
+            opacity: 0.65;
+        }
+
+        .perm-desc {
+            display: block;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-weight: 400;
+            margin-top: 2px;
+        }
+
+        .roles-tabs-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 18px;
+            background: #f8fafc;
+            padding: 8px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+        }
+
+        .rol-tab-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 14px;
+            border-radius: 8px;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--text-main);
+            font-weight: 700;
+            font-size: 0.88rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .rol-tab-btn:hover {
+            background: #e2e8f0;
+        }
+
+        .rol-tab-btn.active {
+            background: var(--accent-dark);
+            color: #ffffff;
+            box-shadow: 0 2px 6px rgba(14, 116, 144, 0.25);
+        }
+
+        .rol-tab-count {
+            font-size: 0.73rem;
+            padding: 2px 7px;
+            border-radius: 999px;
+            background: rgba(15, 23, 42, 0.08);
+            color: var(--text-muted);
+            font-weight: 700;
+        }
+
+        .rol-tab-btn.active .rol-tab-count {
+            background: rgba(255, 255, 255, 0.22);
+            color: #ffffff;
+        }
+
+        .readonly-banner {
+            background: #fffbeb;
+            border: 1px solid #fde68a;
+            color: #92400e;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 0.86rem;
+            font-weight: 600;
+            margin-bottom: 16px;
+            display: none;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .info-acciones-fijas {
+            background: #f0f9ff;
+            border: 1px solid #bae6fd;
+            color: #0c4a6e;
+            padding: 11px 14px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            line-height: 1.45;
+            margin-bottom: 16px;
+        }
+
+        .op-col-header {
+            text-align: center !important;
+            width: 92px;
+            min-width: 82px;
         }
     </style>
 </head>
@@ -190,6 +344,10 @@
                         valores</span>
                 </div>
 
+                <div id="bannerSoloLecturaMaestros" class="readonly-banner">
+                    <span>🔒 Modo consulta: Solo un usuario con rol <strong>Administrador</strong> puede modificar valores en los Maestros o cambiar permisos.</span>
+                </div>
+
                 <form class="add-bar" id="formMaestro">
                     <input type="hidden" id="editId" value="">
                     <input type="text" id="inputValor" placeholder="Escribe el nuevo valor (se añadirá al final)..."
@@ -198,7 +356,7 @@
                     <button type="button" class="btn-secondary" id="btnCancelar" style="display:none;">Cancelar</button>
                 </form>
 
-                <div style="overflow-x:auto;">
+                <div style="overflow-x:auto;" id="contenedorTablaPrincipalMaestros">
                     <table id="tablaPrincipalMaestros" class="maestros-table">
                         <thead>
                             <tr>
@@ -214,9 +372,10 @@
                             </tr>
                         </tbody>
                     </table>
+                </div>
+
                 <!-- PANEL ADICIONAL PARA GESTIÓN DE PERFILES (ROLES / PERMISOS) -->
                 <div id="panelExtraPerfiles" style="display:none;"></div>
-                </div>
             </main>
         </div>
     </div>
@@ -259,8 +418,10 @@
             ESTRUCTURA_MAESTROS, cargarTodosLosMaestros, limpiarCacheMaestros,
             guardarValorMaestro, reordenarValoresMaestro, eliminarValorMaestro,
             comprobarDependenciasMaestro, reasignarOQuitarDependencia,
-            CATALOGO_PERMISOS_APP, PermisosPorDefectoParaRol, asegurarRolesYPermisosIniciales,
-            cargarMatrizPermisos, guardarMatrizPermisos, cargarUsuariosAutenticacion, generarIdItem
+            CATALOGO_PERMISOS_APP, TIPOS_OPERACION_PERMISO, PermisosPorDefectoParaRol,
+            normalizarPermisosAccion, esRolAdmin, esRolProyectorSala,
+            asegurarRolesYPermisosIniciales, cargarMatrizPermisos, guardarMatrizPermisos,
+            cargarUsuariosAutenticacion
         } from './js/maestros-service.js';
         import { iconTrash } from './js/utils.js';
         import { mostrarToastDeshacer, ejecutarOperacionesFirestore, serializarDatosFirestore } from './js/undo-service.js';
@@ -269,6 +430,8 @@
         let seccionActual = "Ejercicios";
         let claveActual = "Niveles";
         let sortableInstance = null;
+        let usuarioEsAdmin = false;
+        let rolPermisosSeleccionado = null;
 
         function renderSidebar() {
             const sb = document.getElementById('sidebarMaestros');
@@ -281,7 +444,9 @@
                 group.innerHTML = `<div class="sec-title">${sec}</div>`;
 
                 claves.forEach(clv => {
-                    const count = (mapaMaestros[sec] && mapaMaestros[sec][clv]) ? mapaMaestros[sec][clv].length : 0;
+                    const count = (sec === "Gestión de Perfiles" && clv === "Permisos")
+                        ? CATALOGO_PERMISOS_APP.length
+                        : ((mapaMaestros[sec] && mapaMaestros[sec][clv]) ? mapaMaestros[sec][clv].length : 0);
                     const btn = document.createElement('button');
                     btn.className = `clave-btn ${(sec === seccionActual && clv === claveActual) ? 'active' : ''}`;
                     btn.innerHTML = `<span>${clv}</span><span class="count-pill">${count}</span>`;
@@ -310,6 +475,10 @@
                 sortableInstance = null;
             }
 
+            if (!usuarioEsAdmin || (seccionActual === "Gestión de Perfiles" && claveActual === "Permisos")) {
+                return;
+            }
+
             const lista = (mapaMaestros[seccionActual] && mapaMaestros[seccionActual][claveActual]) || [];
             if (lista.length <= 1) return;
 
@@ -318,6 +487,7 @@
                 handle: '.drag-handle',
                 ghostClass: 'sortable-ghost',
                 onEnd: async function () {
+                    if (!usuarioEsAdmin) return;
                     const filas = Array.from(tbody.querySelectorAll('tr.maestro-row'));
                     if (filas.length === 0) return;
 
@@ -332,7 +502,6 @@
                         };
                     });
 
-                    // Actualizamos en memoria y refrescamos numeración visual al instante
                     mapaMaestros[seccionActual][claveActual] = nuevaLista;
                     renderTabla();
 
@@ -342,7 +511,7 @@
                         console.error("Error guardando el nuevo orden:", err);
                         alert("No se pudo guardar el nuevo orden: " + err.message);
                         try { await asegurarRolesYPermisosIniciales(); } catch (e) { console.warn("Aviso inicializando perfiles:", e); }
-            await recargarVista();
+                        await recargarVista();
                     }
                 }
             });
@@ -353,17 +522,38 @@
             const clvEl = document.getElementById('uiClave');
             const totalEl = document.getElementById('uiTotal');
             const tbody = document.getElementById('tablaValores');
+            const formMaestro = document.getElementById('formMaestro');
+            const contenedorTabla = document.getElementById('contenedorTablaPrincipalMaestros');
+            const bannerReadonly = document.getElementById('bannerSoloLecturaMaestros');
 
             if (!secEl || !tbody) return;
 
             secEl.innerText = `SECCIÓN · ${seccionActual}`;
             clvEl.innerText = claveActual;
 
+            if (bannerReadonly) {
+                bannerReadonly.style.display = usuarioEsAdmin ? 'none' : 'flex';
+            }
+
+            const esVistaPermisos = (seccionActual === "Gestión de Perfiles" && claveActual === "Permisos");
+
+            if (esVistaPermisos) {
+                if (formMaestro) formMaestro.style.display = 'none';
+                if (contenedorTabla) contenedorTabla.style.display = 'none';
+                totalEl.innerText = `${CATALOGO_PERMISOS_APP.length} acciones del sistema`;
+                renderPanelExtraPerfiles();
+                return;
+            }
+
+            if (contenedorTabla) contenedorTabla.style.display = 'block';
+            if (formMaestro) formMaestro.style.display = usuarioEsAdmin ? 'flex' : 'none';
+
             const lista = (mapaMaestros[seccionActual] && mapaMaestros[seccionActual][claveActual]) || [];
             totalEl.innerText = `${lista.length} valor(es)`;
 
             if (lista.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding:30px; color:var(--text-muted);">No hay valores registrados en esta clave.</td></tr>`;
+                renderPanelExtraPerfiles();
                 return;
             }
 
@@ -371,16 +561,18 @@
                 <tr class="maestro-row" data-id="${item.id}" data-valor="${item.valor.replace(/"/g, '&quot;')}">
                     <td>
                         <div class="drag-cell">
-                            <span class="drag-handle" title="Arrastra para cambiar el orden">⋮⋮</span>
+                            ${usuarioEsAdmin ? `<span class="drag-handle" title="Arrastra para cambiar el orden">⋮⋮</span>` : ''}
                             <span class="orden-badge">${idx + 1}</span>
                         </div>
                     </td>
                     <td style="font-weight:600;">${item.valor}</td>
                     <td>
+                        ${usuarioEsAdmin ? `
                         <div class="action-btns">
                             <button class="btn-icon" onclick="window.editarItem('${item.id}', '${item.valor.replace(/'/g, "\\'")}')">Editar</button>
                             <button class="btn-icon danger" onclick="window.borrarItem('${claveActual}', '${item.id}', '${item.valor.replace(/'/g, "\\'")}')" title="Eliminar">${iconTrash}</button>
                         </div>
+                        ` : `<div style="text-align:right; color:var(--text-muted); font-size:0.8rem;">Solo lectura</div>`}
                     </td>
                 </tr>
             `).join('');
@@ -388,6 +580,23 @@
             initSortableTabla();
             renderPanelExtraPerfiles();
         }
+
+        function contarChecksRol(permisosRol) {
+            let activos = 0;
+            const total = CATALOGO_PERMISOS_APP.length * TIPOS_OPERACION_PERMISO.length;
+            CATALOGO_PERMISOS_APP.forEach(acc => {
+                const pAcc = permisosRol[acc.id] || {};
+                TIPOS_OPERACION_PERMISO.forEach(op => {
+                    if (pAcc[op]) activos++;
+                });
+            });
+            return { activos, total };
+        }
+
+        window.seleccionarRolPermisos = (rol) => {
+            rolPermisosSeleccionado = rol;
+            renderPanelExtraPerfiles();
+        };
 
         async function renderPanelExtraPerfiles() {
             const panelExtra = document.getElementById('panelExtraPerfiles');
@@ -397,11 +606,8 @@
 
             if (inputValor && !document.getElementById('editId').value) {
                 if (seccionActual === "Gestión de Perfiles" && claveActual === "Roles") {
-                    inputValor.placeholder = "Escribe el nombre del nuevo Rol (ej: Recepción, Fisioterapeuta, Entrenador)...";
+                    inputValor.placeholder = "Escribe el nombre del nuevo Rol (ej: Proyector Sala, Recepción, Entrenador)...";
                     if (btnGuardar) btnGuardar.innerText = "Dar de alta Rol";
-                } else if (seccionActual === "Gestión de Perfiles" && claveActual === "Permisos") {
-                    inputValor.placeholder = "Añadir nueva acción / permiso personalizado a la lista...";
-                    if (btnGuardar) btnGuardar.innerText = "Añadir Permiso";
                 } else {
                     inputValor.placeholder = "Escribe el nuevo valor (se añadirá al final)...";
                     if (btnGuardar) btnGuardar.innerText = "Añadir valor";
@@ -438,7 +644,7 @@
                 };
 
                 const filasUsuarios = usuarios.length === 0
-                    ? `<tr><td colspan="4" style="text-align:center; padding:20px; color:var(--text-muted);">No se encontraron empleados en <code>usuarios_app</code>. Usa el formulario inferior para registrar un empleado de autenticación.</td></tr>`
+                    ? `<tr><td colspan="4" style="text-align:center; padding:20px; color:var(--text-muted);">No se encontraron perfiles en <code>usuarios_app</code>.</td></tr>`
                     : usuarios.map(u => `
                         <tr class="maestro-row">
                             <td style="font-weight:700;">
@@ -450,7 +656,8 @@
                                 <span class="role-badge" id="badge-rol-${u.id.replace(/[^a-zA-Z0-9_-]/g, '_')}">${u.rol || 'Sin asignar'}</span>
                             </td>
                             <td style="text-align:right;">
-                                <select class="role-select-inline" onchange="window.asignarRolEmpleado('${u.id.replace(/'/g, "\\'")}', this.value, '${(u.rol || '').replace(/'/g, "\\'")}', '${u.nombre.replace(/'/g, "\\'")}')">
+                                <select class="role-select-inline" ${!usuarioEsAdmin ? 'disabled title="Solo un Administrador puede cambiar roles"' : ''}
+                                    onchange="window.asignarRolEmpleado('${u.id.replace(/'/g, "\\'")}', this.value, '${(u.rol || '').replace(/'/g, "\\'")}', '${u.nombre.replace(/'/g, "\\'")}')">
                                     ${opcionesRolesHTML(u.rol)}
                                 </select>
                             </td>
@@ -461,14 +668,14 @@
 
                 panelExtra.innerHTML = `
                     <div class="perfiles-subcard">
-                        <h3>👥 Empleados en Autenticación y Asignación de Roles</h3>
-                        <p class="sub-desc">Visualiza los empleados registrados en autenticación (colección <code>usuarios_app</code>), consulta su rol actual y asígnales cualquiera de los Roles dados de alta arriba.</p>
+                        <h3>👥 Usuarios en Autenticación y Asignación de Roles</h3>
+                        <p class="sub-desc">Visualiza los perfiles registrados en autenticación (colección <code>usuarios_app</code>), consulta su rol actual y asígnales cualquiera de los Roles dados de alta arriba.</p>
 
                         <div style="overflow-x:auto; margin-bottom:18px;">
                             <table class="maestros-table">
                                 <thead>
                                     <tr>
-                                        <th>Empleado</th>
+                                        <th>Usuario / Perfil</th>
                                         <th>Cuenta / Email (Auth)</th>
                                         <th>Rol Actual</th>
                                         <th style="text-align:right;">Asignar / Cambiar Rol</th>
@@ -480,61 +687,71 @@
                             </table>
                         </div>
 
+                        ${usuarioEsAdmin ? `
                         <div style="background: var(--hover-bg); padding: 14px; border-radius: 8px; border: 1px solid var(--border);">
-                            <div style="font-weight: 700; font-size: 0.88rem; margin-bottom: 10px; color: var(--text-main);">➕ Registrar / Vincular empleado de Firebase Authentication</div>
+                            <div style="font-weight: 700; font-size: 0.88rem; margin-bottom: 10px; color: var(--text-main);">➕ Registrar / Vincular usuario de Firebase Authentication</div>
                             <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-                                <input type="email" id="nuevoEmpEmail" placeholder="Email en Authentication (ej: entrenador@goandtrain.com)" style="flex: 1.5; min-width: 210px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.88rem;">
-                                <input type="text" id="nuevoEmpNombre" placeholder="Nombre / Alias (ej: Carlos)" style="flex: 1; min-width: 140px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.88rem;">
-                                <select id="nuevoEmpRol" class="role-select-inline" style="min-width: 140px; padding: 8px 10px;">
+                                <input type="email" id="nuevoEmpEmail" placeholder="Email en Authentication (ej: invitado@goandtrain.com)" style="flex: 1.5; min-width: 210px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.88rem;">
+                                <input type="text" id="nuevoEmpNombre" placeholder="Nombre / Alias (ej: Invitado Sala)" style="flex: 1; min-width: 140px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.88rem;">
+                                <select id="nuevoEmpRol" class="role-select-inline" style="min-width: 150px; padding: 8px 10px;">
                                     ${selectNuevoEmpRoles}
                                 </select>
-                                <button type="button" class="btn-primary" onclick="window.guardarNuevoEmpleadoAuth()" style="padding: 8px 14px; font-size: 0.88rem;">Guardar Empleado</button>
+                                <button type="button" class="btn-primary" onclick="window.guardarNuevoEmpleadoAuth()" style="padding: 8px 14px; font-size: 0.88rem;">Guardar Perfil</button>
                             </div>
                         </div>
+                        ` : ''}
                     </div>
                 `;
             } else if (claveActual === "Permisos") {
-                panelExtra.innerHTML = `<div class="perfiles-subcard"><p style="color:var(--text-muted);">Cargando matriz de permisos de la aplicación...</p></div>`;
+                panelExtra.innerHTML = `<div class="perfiles-subcard standalone"><p style="color:var(--text-muted);">Cargando matriz de permisos por rol...</p></div>`;
                 const rolesItems = (mapaMaestros["Gestión de Perfiles"] && mapaMaestros["Gestión de Perfiles"]["Roles"]) || [];
-                const listaRoles = rolesItems.length > 0 ? rolesItems.map(r => r.valor) : ['admin', 'programador'];
+                const listaRoles = rolesItems.length > 0 ? rolesItems.map(r => r.valor) : ['admin', 'programador', 'Proyector Sala'];
                 const matriz = await cargarMatrizPermisos();
 
-                // Combinar catálogo oficial con cualquier permiso extra dado de alta en el maestro "Permisos"
-                const permisosMaestro = (mapaMaestros["Gestión de Perfiles"] && mapaMaestros["Gestión de Perfiles"]["Permisos"]) || [];
-                const nombresCatalogo = new Set(CATALOGO_PERMISOS_APP.map(p => p.nombre.toLowerCase()));
-                const catalogoCompleto = [...CATALOGO_PERMISOS_APP];
+                if (!rolPermisosSeleccionado || !listaRoles.includes(rolPermisosSeleccionado)) {
+                    rolPermisosSeleccionado = listaRoles[0];
+                }
 
-                permisosMaestro.forEach(pm => {
-                    if (!nombresCatalogo.has(pm.valor.toLowerCase())) {
-                        catalogoCompleto.push({
-                            id: generarIdItem(pm.valor),
-                            categoria: "Permisos Personalizados",
-                            nombre: pm.valor,
-                            descripcion: "Acción personalizada dada de alta en el maestro de Permisos."
-                        });
-                    }
-                });
+                const tabsRolesHTML = listaRoles.map(rol => {
+                    const permRol = matriz[rol] || PermisosPorDefectoParaRol(rol);
+                    const { activos, total } = contarChecksRol(permRol);
+                    const isActive = rol === rolPermisosSeleccionado;
+                    return `
+                        <button type="button" class="rol-tab-btn ${isActive ? 'active' : ''}"
+                            onclick="window.seleccionarRolPermisos('${rol.replace(/'/g, "\\'")}')">
+                            <span>🛡️ ${rol}</span>
+                            <span class="rol-tab-count" id="tab-count-${rol.replace(/[^a-zA-Z0-9_-]/g, '_')}">${activos}/${total}</span>
+                        </button>
+                    `;
+                }).join('');
 
                 const porCategoria = {};
-                catalogoCompleto.forEach(p => {
+                CATALOGO_PERMISOS_APP.forEach(p => {
                     if (!porCategoria[p.categoria]) porCategoria[p.categoria] = [];
                     porCategoria[p.categoria].push(p);
                 });
 
-                const thRoles = listaRoles.map(r => `<th style="text-align:center; min-width:110px;">${r}</th>`).join('');
+                const permisosRolActivo = matriz[rolPermisosSeleccionado] || PermisosPorDefectoParaRol(rolPermisosSeleccionado);
+                const defaultsRolActivo = PermisosPorDefectoParaRol(rolPermisosSeleccionado);
 
                 let filasMatrizHTML = '';
                 for (const [cat, acciones] of Object.entries(porCategoria)) {
-                    filasMatrizHTML += `<tr class="perm-cat-row"><td colspan="${listaRoles.length + 1}">📌 ${cat}</td></tr>`;
+                    filasMatrizHTML += `<tr class="perm-cat-row"><td colspan="5">📌 ${cat}</td></tr>`;
                     acciones.forEach(acc => {
-                        const celdasRoles = listaRoles.map(rol => {
-                            const permisosRol = matriz[rol] || PermisosPorDefectoParaRol(rol);
-                            const activo = permisosRol[acc.id] !== undefined ? Boolean(permisosRol[acc.id]) : Boolean(PermisosPorDefectoParaRol(rol)[acc.id]);
+                        const permAccion = normalizarPermisosAccion(permisosRolActivo[acc.id], defaultsRolActivo[acc.id]);
+
+                        const celdasOperaciones = TIPOS_OPERACION_PERMISO.map(op => {
+                            const checked = Boolean(permAccion[op]);
+                            const labelOp = op.charAt(0).toUpperCase() + op.slice(1);
+                            const disabledAttr = !usuarioEsAdmin ? 'disabled' : '';
+                            const titleTxt = usuarioEsAdmin
+                                ? `${labelOp} (${checked ? 'Permitido' : 'Denegado'}) para ${rolPermisosSeleccionado}`
+                                : `Solo un Administrador puede modificar permisos (${labelOp}: ${checked ? 'Sí' : 'No'})`;
                             return `
                                 <td style="text-align:center; vertical-align:middle;">
-                                    <input type="checkbox" class="perm-check" ${activo ? 'checked' : ''}
-                                        onchange="window.togglePermisoRol('${rol.replace(/'/g, "\\'")}', '${acc.id}', this.checked, '${acc.nombre.replace(/'/g, "\\'")}')"
-                                        title="${activo ? 'Permitido' : 'Denegado'} para ${rol}">
+                                    <input type="checkbox" class="perm-check" ${checked ? 'checked' : ''} ${disabledAttr}
+                                        onchange="window.togglePermisoRol('${rolPermisosSeleccionado.replace(/'/g, "\\'")}', '${acc.id}', '${op}', this.checked, '${acc.nombre.replace(/'/g, "\\'")}')"
+                                        title="${titleTxt.replace(/"/g, '&quot;')}">
                                 </td>
                             `;
                         }).join('');
@@ -545,22 +762,39 @@
                                     <span style="font-weight:700; color:var(--text-main);">${acc.nombre}</span>
                                     <span class="perm-desc">${acc.descripcion}</span>
                                 </td>
-                                ${celdasRoles}
+                                ${celdasOperaciones}
                             </tr>
                         `;
                     });
                 }
 
                 panelExtra.innerHTML = `
-                    <div class="perfiles-subcard">
-                        <h3>🔐 Matriz de Permisos por Rol (Acciones de la Aplicación)</h3>
-                        <p class="sub-desc">Activa o desactiva qué acciones puede realizar cada Rol dentro de la aplicación. Los cambios se guardan automáticamente.</p>
+                    <div class="perfiles-subcard standalone">
+                        <div class="info-acciones-fijas">
+                            <strong>ℹ️ Acciones generadas por defecto por la aplicación:</strong>
+                            Las acciones listadas a continuación pertenecen a las funcionalidades propias del sistema y no se pueden crear ni borrar manualmente. Si en el futuro se incorpora una nueva funcionalidad a la aplicación, aparecerá automáticamente aquí para asignar sus permisos a cada rol.
+                        </div>
+
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
+                            <h3 style="margin:0;">🔐 Permisos del Rol: <span style="color:var(--accent);">${rolPermisosSeleccionado}</span></h3>
+                            <span style="font-size:0.82rem; color:var(--text-muted); font-weight:600;">
+                                ${usuarioEsAdmin ? '✅ Como Administrador puedes marcar o desmarcar cualquier permiso' : '🔒 Solo un Administrador puede marcar o desmarcar estos permisos'}
+                            </span>
+                        </div>
+
+                        <div class="roles-tabs-bar">
+                            ${tabsRolesHTML}
+                        </div>
+
                         <div style="overflow-x:auto;">
                             <table class="maestros-table">
                                 <thead>
                                     <tr>
-                                        <th>Acción / Permiso en la Aplicación</th>
-                                        ${thRoles}
+                                        <th>Acción / Funcionalidad de la Aplicación</th>
+                                        <th class="op-col-header">👁️ Ver</th>
+                                        <th class="op-col-header">✏️ Editar</th>
+                                        <th class="op-col-header">➕ Crear</th>
+                                        <th class="op-col-header">🗑️ Borrar</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -574,15 +808,26 @@
         }
 
         window.asignarRolEmpleado = async (docId, nuevoRol, rolAnterior, nombreEmpleado) => {
+            if (!usuarioEsAdmin) {
+                alert("Solo un Administrador puede modificar el rol de un usuario.");
+                await renderPanelExtraPerfiles();
+                return;
+            }
             try {
                 const ref = doc(db, "usuarios_app", docId);
-                await setDoc(ref, { rol: nuevoRol }, { merge: true });
+                const esProg = !esRolProyectorSala(nuevoRol);
+                await setDoc(ref, { rol: nuevoRol, es_programador: esProg }, { merge: true });
+                sessionStorage.removeItem('gym_programadores_cache_v1');
+
                 if (auth.currentUser && auth.currentUser.email === docId) {
                     localStorage.setItem('userRole', nuevoRol);
+                    usuarioEsAdmin = esRolAdmin(nuevoRol);
                 }
                 await renderPanelExtraPerfiles();
                 mostrarToastDeshacer(`👤 Rol de ${nombreEmpleado} actualizado a "${nuevoRol || 'Sin rol'}"`, async () => {
-                    await setDoc(ref, { rol: rolAnterior }, { merge: true });
+                    const esProgPrev = !esRolProyectorSala(rolAnterior);
+                    await setDoc(ref, { rol: rolAnterior, es_programador: esProgPrev }, { merge: true });
+                    sessionStorage.removeItem('gym_programadores_cache_v1');
                     await renderPanelExtraPerfiles();
                 });
             } catch (e) {
@@ -592,6 +837,10 @@
         };
 
         window.guardarNuevoEmpleadoAuth = async () => {
+            if (!usuarioEsAdmin) {
+                alert("Solo un Administrador puede registrar o vincular usuarios.");
+                return;
+            }
             const emailEl = document.getElementById('nuevoEmpEmail');
             const nombreEl = document.getElementById('nuevoEmpNombre');
             const rolEl = document.getElementById('nuevoEmpRol');
@@ -600,58 +849,77 @@
             const rol = (rolEl?.value || 'programador').trim();
 
             if (!email || !email.includes('@')) {
-                alert("Introduce el email válido del empleado en Firebase Authentication.");
+                alert("Introduce el email válido del usuario en Firebase Authentication.");
                 return;
             }
             if (!nombre) {
-                alert("Introduce el nombre o alias del empleado.");
+                alert("Introduce el nombre o alias del usuario.");
                 return;
             }
 
             try {
                 const ref = doc(db, "usuarios_app", email);
+                const esProg = !esRolProyectorSala(rol);
                 await setDoc(ref, {
                     email,
                     nombre,
                     alias: nombre,
                     rol,
-                    es_programador: true
+                    es_programador: esProg
                 }, { merge: true });
+                sessionStorage.removeItem('gym_programadores_cache_v1');
                 emailEl.value = '';
                 nombreEl.value = '';
                 await renderPanelExtraPerfiles();
-                mostrarToastDeshacer(`👤 Empleado "${nombre}" vinculado con rol "${rol}"`, async () => {
+                mostrarToastDeshacer(`👤 Usuario "${nombre}" vinculado con rol "${rol}"`, async () => {
                     await renderPanelExtraPerfiles();
                 });
             } catch (e) {
                 console.error("Error registrando empleado:", e);
-                alert("No se pudo guardar el empleado: " + e.message);
+                alert("No se pudo guardar el usuario: " + e.message);
             }
         };
 
-        window.togglePermisoRol = async (rol, permId, nuevoEstado, nombrePermiso) => {
+        window.togglePermisoRol = async (rol, permId, tipoOp, nuevoEstado, nombrePermiso) => {
+            if (!usuarioEsAdmin) {
+                alert("Solo un Administrador puede marcar o desmarcar permisos.");
+                await renderPanelExtraPerfiles();
+                return;
+            }
             try {
                 const matrizActual = await cargarMatrizPermisos();
-                const estadoPrevio = matrizActual[rol] ? Boolean(matrizActual[rol][permId]) : !nuevoEstado;
-                if (!matrizActual[rol]) matrizActual[rol] = PermisosPorDefectoParaRol(rol);
-                matrizActual[rol][permId] = Boolean(nuevoEstado);
+                const defaultsRol = PermisosPorDefectoParaRol(rol);
+                if (!matrizActual[rol]) matrizActual[rol] = defaultsRol;
+                if (!matrizActual[rol][permId] || typeof matrizActual[rol][permId] !== 'object') {
+                    matrizActual[rol][permId] = normalizarPermisosAccion(matrizActual[rol][permId], defaultsRol[permId]);
+                }
+
+                const estadoPrevio = Boolean(matrizActual[rol][permId][tipoOp]);
+                matrizActual[rol][permId][tipoOp] = Boolean(nuevoEstado);
                 await guardarMatrizPermisos(matrizActual);
 
-                mostrarToastDeshacer(`🔐 Permiso "${nombrePermiso}" ${nuevoEstado ? 'activado' : 'desactivado'} para ${rol}`, async () => {
-                    matrizActual[rol][permId] = estadoPrevio;
+                // Actualizar contador en la pestaña del rol
+                const badgeEl = document.getElementById(`tab-count-${rol.replace(/[^a-zA-Z0-9_-]/g, '_')}`);
+                if (badgeEl) {
+                    const { activos, total } = contarChecksRol(matrizActual[rol]);
+                    badgeEl.innerText = `${activos}/${total}`;
+                }
+
+                const opLabel = tipoOp.charAt(0).toUpperCase() + tipoOp.slice(1);
+                mostrarToastDeshacer(`🔐 Permiso "${opLabel}" en "${nombrePermiso}" ${nuevoEstado ? 'activado' : 'desactivado'} para ${rol}`, async () => {
+                    matrizActual[rol][permId][tipoOp] = estadoPrevio;
                     await guardarMatrizPermisos(matrizActual);
                     await renderPanelExtraPerfiles();
                 });
             } catch (e) {
                 console.error("Error actualizando permiso:", e);
                 alert("No se pudo guardar el permiso: " + e.message);
+                await renderPanelExtraPerfiles();
             }
         };
 
-        function _unusedInitEnd() {
-        }
-
         window.editarItem = (id, valor) => {
+            if (!usuarioEsAdmin) return;
             document.getElementById('editId').value = id;
             document.getElementById('inputValor').value = valor;
             document.getElementById('btnGuardar').innerText = "Actualizar";
@@ -679,6 +947,13 @@
             if (formMaestro) {
                 formMaestro.addEventListener('submit', async (e) => {
                     e.preventDefault();
+                    if (!usuarioEsAdmin) {
+                        alert("Solo un Administrador puede modificar los Maestros.");
+                        return;
+                    }
+                    if (seccionActual === "Gestión de Perfiles" && claveActual === "Permisos") {
+                        return;
+                    }
                     const valor = document.getElementById('inputValor').value.trim();
                     const editId = document.getElementById('editId').value.trim();
                     if (!valor) return;
@@ -699,7 +974,7 @@
                         await guardarValorMaestro(seccionActual, claveActual, valor, ordenCalculado, editId || null);
                         resetFormulario();
                         try { await asegurarRolesYPermisosIniciales(); } catch (e) { console.warn("Aviso inicializando perfiles:", e); }
-            await recargarVista();
+                        await recargarVista();
                     } catch (err) {
                         alert("Error al guardar: " + err.message);
                         document.getElementById('btnGuardar').innerText = editId ? "Actualizar" : "Añadir valor";
@@ -715,6 +990,13 @@
         }
 
         window.borrarItem = async (clave, itemId, valor) => {
+            if (!usuarioEsAdmin) {
+                alert("Solo un Administrador puede eliminar valores de los Maestros.");
+                return;
+            }
+            if (seccionActual === "Gestión de Perfiles" && clave === "Permisos") {
+                return;
+            }
             const seccionRespaldo = seccionActual;
             const listaPrevia = [...((mapaMaestros[seccionActual] && mapaMaestros[seccionActual][clave]) || [])];
             const dependencias = await comprobarDependenciasMaestro(clave, valor);
@@ -746,7 +1028,6 @@
                     document.getElementById('btnConfirmarBorrado').innerText = "Procesando...";
 
                     try {
-                        // Capturar copia de seguridad de los documentos dependientes antes de modificarlos
                         const opsRestaurarDeps = [];
                         for (const dep of dependencias) {
                             const snapDep = await getDoc(doc(db, dep.coleccion, dep.id));
@@ -768,13 +1049,13 @@
                         modal.style.display = 'none';
                         document.getElementById('btnConfirmarBorrado').innerText = "Confirmar Borrado";
                         try { await asegurarRolesYPermisosIniciales(); } catch (e) { console.warn("Aviso inicializando perfiles:", e); }
-            await recargarVista();
+                        await recargarVista();
 
                         mostrarToastDeshacer(`🗑️ Valor "${valor}" eliminado (${dependencias.length} reg. actualizados)`, async () => {
                             await reordenarValoresMaestro(seccionRespaldo, clave, listaPrevia);
                             await ejecutarOperacionesFirestore(opsRestaurarDeps);
                             try { await asegurarRolesYPermisosIniciales(); } catch (e) { console.warn("Aviso inicializando perfiles:", e); }
-            await recargarVista();
+                            await recargarVista();
                         });
                     } catch (err) {
                         alert("Error al procesar: " + err.message);
@@ -788,12 +1069,12 @@
                     await eliminarValorMaestro(clave, itemId);
                     await reindexarTrasBorrado(clave, itemId);
                     try { await asegurarRolesYPermisosIniciales(); } catch (e) { console.warn("Aviso inicializando perfiles:", e); }
-            await recargarVista();
+                    await recargarVista();
 
                     mostrarToastDeshacer(`🗑️ Valor "${valor}" eliminado de ${clave}`, async () => {
                         await reordenarValoresMaestro(seccionRespaldo, clave, listaPrevia);
                         try { await asegurarRolesYPermisosIniciales(); } catch (e) { console.warn("Aviso inicializando perfiles:", e); }
-            await recargarVista();
+                        await recargarVista();
                     });
                 } catch (err) {
                     alert("No se pudo eliminar: " + err.message);
@@ -814,11 +1095,33 @@
             }
         }
 
-        // Solo requiere que el usuario esté autenticado en Firebase
         onAuthStateChanged(auth, async (user) => {
             if (!user) {
                 window.location.href = "index.html";
                 return;
+            }
+            const emailKey = (user.email || '').trim().toLowerCase();
+            if (emailKey === 'invitado@goandtrain.com') {
+                localStorage.setItem('userRole', 'Proyector Sala');
+                localStorage.setItem('gym_user_name', 'Invitado Sala');
+                window.location.replace("pantalla_sala.html");
+                return;
+            }
+            try {
+                const snapUser = await getDoc(doc(db, "usuarios_app", emailKey));
+                if (snapUser.exists() && snapUser.data().rol) {
+                    const rolDB = snapUser.data().rol;
+                    localStorage.setItem('userRole', rolDB);
+                    usuarioEsAdmin = esRolAdmin(rolDB);
+                    if (esRolProyectorSala(rolDB)) {
+                        window.location.replace("pantalla_sala.html");
+                        return;
+                    }
+                } else {
+                    usuarioEsAdmin = false;
+                }
+            } catch (e) {
+                console.warn("No se pudo verificar el rol en usuarios_app:", e);
             }
             try { await asegurarRolesYPermisosIniciales(); } catch (e) { console.warn("Aviso inicializando perfiles:", e); }
             await recargarVista();

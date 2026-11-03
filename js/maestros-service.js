@@ -2,7 +2,7 @@
 import { db } from '../firebase-config.js';
 import { collection, getDocs, getDoc, doc, setDoc, updateDoc, deleteField } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
 
-const CACHE_KEY = 'gym_maestros_doc_map_v4';
+const CACHE_KEY = 'gym_maestros_doc_map_v5';
 
 export const ESTRUCTURA_MAESTROS = {
     "Ejercicios": [
@@ -344,161 +344,203 @@ export async function reasignarOQuitarDependencia(clave, valorAntiguo, valorNuev
 // ============================================================================
 // CATÁLOGO DE ACCIONES / PERMISOS DE LA APLICACIÓN Y GESTIÓN DE PERFILES
 // ============================================================================
+export const TIPOS_OPERACION_PERMISO = ['ver', 'editar', 'crear', 'borrar'];
+
 export const CATALOGO_PERMISOS_APP = [
-    // 1. Programación y Sesiones
+    // 1. Programación y Sala
+    {
+        id: "planificacion",
+        categoria: "Programación y Sala",
+        nombre: "Planificación Diaria",
+        descripcion: "Panel diario de sesiones de mañana, tarde y Small Groups, y cambio de estado de sesión."
+    },
+    {
+        id: "pantalla_sala",
+        categoria: "Programación y Sala",
+        nombre: "Pantalla Sala (TV)",
+        descripcion: "Proyección en tiempo real de las sesiones y entrenamientos de la sala."
+    },
     {
         id: "programar_sesiones",
-        categoria: "Programación y Sesiones",
-        nombre: "Programar sesiones",
-        descripcion: "Añadir, editar, reordenar y quitar ejercicios, bloques o subgrupos dentro de una sesión y cargar plantillas."
+        categoria: "Programación y Sala",
+        nombre: "Programación de Sesiones",
+        descripcion: "Configurar bloques, subgrupos y ejercicios de una sesión, enviar/clonar rutinas y cargar plantillas."
     },
     {
-        id: "enviar_clonar_sesiones",
-        categoria: "Programación y Sesiones",
-        nombre: "Enviar / Clonar sesiones",
-        descripcion: "Enviar la rutina de una sesión a otra sesión de un cliente o guardarla como nueva plantilla."
-    },
-    {
-        id: "cambiar_estado_sesion",
-        categoria: "Programación y Sesiones",
-        nombre: "Cambiar estado de sesión",
-        descripcion: "Alternar el estado de una sesión (Completada, Pendiente, Vencida) en Planificación."
-    },
-    {
-        id: "ver_pantalla_sala",
-        categoria: "Programación y Sesiones",
-        nombre: "Acceso a Pantalla Sala (TV)",
-        descripcion: "Abrir y consultar la vista de Pantalla Sala en tiempo real."
+        id: "programaciones_pendientes",
+        categoria: "Programación y Sala",
+        nombre: "Programaciones Pendientes",
+        descripcion: "Consulta y acceso rápido a las sesiones próximas pendientes de programar."
     },
 
     // 2. Agenda y Calendario
     {
-        id: "agendar_sesiones",
+        id: "agenda",
         categoria: "Agenda y Calendario",
-        nombre: "Agendar sesiones y planificaciones",
-        descripcion: "Dar de alta citas individuales, Small Groups o planificaciones recurrentes en la Agenda."
-    },
-    {
-        id: "reprogramar_sesiones",
-        categoria: "Agenda y Calendario",
-        nombre: "Reprogramar sesiones",
-        descripcion: "Mover fecha y hora de sesiones pendientes o vencidas y ejecutar desplazamientos en cascada."
-    },
-    {
-        id: "eliminar_sesiones_agenda",
-        categoria: "Agenda y Calendario",
-        nombre: "Eliminar sesiones de la Agenda",
-        descripcion: "Borrar sesiones agendadas desde el calendario de Agenda o desde la ficha del cliente."
+        nombre: "Agenda y Calendario",
+        descripcion: "Calendario de citas individuales y Small Groups, alta de planificaciones, reprogramación y bajas."
     },
 
     // 3. Clientes
     {
-        id: "alta_clientes",
+        id: "clientes",
         categoria: "Clientes",
-        nombre: "Alta de Clientes",
-        descripcion: "Crear nuevos clientes en el directorio de clientes."
+        nombre: "Directorio y Fichas de Clientes",
+        descripcion: "Gestión de clientes, datos personales, estado, tipo, entrenador asignado, objetivos y lesiones."
     },
     {
-        id: "edicion_clientes",
+        id: "progreso_pr",
         categoria: "Clientes",
-        nombre: "Edición de Clientes",
-        descripcion: "Modificar ficha de cliente (datos personales, estado, tipo, entrenador asignado, Go & Kids, objetivos y salud/lesiones)."
-    },
-    {
-        id: "borrado_clientes",
-        categoria: "Clientes",
-        nombre: "Borrado de Clientes",
-        descripcion: "Eliminar fichas de clientes del directorio."
-    },
-    {
-        id: "registro_progreso_pr",
-        categoria: "Clientes",
-        nombre: "Registro de Progreso / Marcas (PR)",
-        descripcion: "Registrar y actualizar pesos máximos levantados en la pestaña de Progreso del cliente."
+        nombre: "Progreso y Marcas Personales (PR)",
+        descripcion: "Visualización y registro de pesos máximos levantados (PR) de cada cliente."
     },
 
-    // 4. Catálogo de Ejercicios
+    // 4. Catálogo y Plantillas
     {
-        id: "alta_ejercicios",
-        categoria: "Catálogo de Ejercicios",
-        nombre: "Alta de Ejercicios",
-        descripcion: "Crear nuevos ejercicios en el catálogo general."
+        id: "ejercicios",
+        categoria: "Catálogo y Plantillas",
+        nombre: "Catálogo de Ejercicios",
+        descripcion: "Base de datos de ejercicios, categorización técnica, vídeos y configuración de marcas PR."
     },
     {
-        id: "edicion_ejercicios",
-        categoria: "Catálogo de Ejercicios",
-        nombre: "Edición de Ejercicios",
-        descripcion: "Modificar datos técnicos, categorización, enlace de vídeo y marca de progreso de un ejercicio."
-    },
-    {
-        id: "borrado_ejercicios",
-        categoria: "Catálogo de Ejercicios",
-        nombre: "Borrado de Ejercicios",
-        descripcion: "Eliminar ejercicios del catálogo general."
+        id: "plantillas",
+        categoria: "Catálogo y Plantillas",
+        nombre: "Plantillas de Entrenamiento",
+        descripcion: "Catálogo de plantillas predefinidas por tipo de sesión, nivel e intensidad."
     },
 
-    // 5. Plantillas de Entrenamiento
+    // 5. Administración y Configuración
     {
-        id: "alta_plantillas",
-        categoria: "Plantillas de Entrenamiento",
-        nombre: "Alta de Plantillas",
-        descripcion: "Crear nuevas plantillas de sesiones o guardarlas a partir de una sesión existente."
-    },
-    {
-        id: "edicion_plantillas",
-        categoria: "Plantillas de Entrenamiento",
-        nombre: "Edición de Plantillas",
-        descripcion: "Modificar metadatos y ejercicios dentro de las plantillas de entrenamiento."
-    },
-    {
-        id: "borrado_plantillas",
-        categoria: "Plantillas de Entrenamiento",
-        nombre: "Borrado de Plantillas",
-        descripcion: "Eliminar plantillas del catálogo de plantillas."
-    },
-
-    // 6. Administración y Maestros
-    {
-        id: "gestion_maestros",
-        categoria: "Administración y Maestros",
+        id: "maestros",
+        categoria: "Administración y Configuración",
         nombre: "Gestión de Maestros",
-        descripcion: "Añadir, editar, reordenar y eliminar valores en los maestros de Ejercicios, Sesiones, Clientes y Agenda."
+        descripcion: "Configuración de desplegables y valores maestros de Ejercicios, Sesiones, Clientes y Agenda."
     },
     {
-        id: "gestion_perfiles_roles",
-        categoria: "Administración y Maestros",
+        id: "perfiles_roles",
+        categoria: "Administración y Configuración",
         nombre: "Gestión de Perfiles (Roles y Permisos)",
-        descripcion: "Dar de alta roles, asignarlos a los empleados en autenticación y configurar los permisos de cada rol."
+        descripcion: "Administración de roles del sistema, asignación a usuarios y matriz de permisos por rol."
     }
 ];
 
+export function esRolAdmin(nombreRol) {
+    const rNorm = String(nombreRol || '')
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+    return rNorm === 'admin' || rNorm === 'administrador' || rNorm === 'direccion';
+}
+
+export function esRolProyectorSala(nombreRol) {
+    const rNorm = String(nombreRol || '')
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+    return rNorm === 'proyector sala' || rNorm === 'proyector_sala' || rNorm === 'proyector' || rNorm === 'invitado';
+}
+
+export function normalizarPermisosAccion(val, defaultObj = { ver: false, editar: false, crear: false, borrar: false }) {
+    if (val && typeof val === 'object' && !Array.isArray(val)) {
+        return {
+            ver: val.ver !== undefined ? Boolean(val.ver) : Boolean(defaultObj.ver),
+            editar: val.editar !== undefined ? Boolean(val.editar) : Boolean(defaultObj.editar),
+            crear: val.crear !== undefined ? Boolean(val.crear) : Boolean(defaultObj.crear),
+            borrar: val.borrar !== undefined ? Boolean(val.borrar) : Boolean(defaultObj.borrar)
+        };
+    }
+    if (typeof val === 'boolean') {
+        return {
+            ver: val ? true : Boolean(defaultObj.ver),
+            editar: val ? Boolean(defaultObj.editar) : false,
+            crear: val ? Boolean(defaultObj.crear) : false,
+            borrar: val ? Boolean(defaultObj.borrar) : false
+        };
+    }
+    return {
+        ver: Boolean(defaultObj.ver),
+        editar: Boolean(defaultObj.editar),
+        crear: Boolean(defaultObj.crear),
+        borrar: Boolean(defaultObj.borrar)
+    };
+}
+
 export function PermisosPorDefectoParaRol(nombreRol) {
-    const rNorm = String(nombreRol || '').trim().toLowerCase();
-    const esAdmin = rNorm === 'admin' || rNorm === 'administrador' || rNorm === 'dirección' || rNorm === 'direccion';
-    const esLectura = rNorm === 'recepción' || rNorm === 'recepcion' || rNorm === 'consulta' || rNorm === 'lectura';
+    const rNorm = String(nombreRol || '')
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+    const isAdmin = esRolAdmin(nombreRol);
+    const isProyector = esRolProyectorSala(nombreRol);
+    const isLectura = rNorm === 'recepcion' || rNorm === 'consulta' || rNorm === 'lectura';
 
     const mapa = {};
     CATALOGO_PERMISOS_APP.forEach(p => {
-        if (esAdmin) {
-            mapa[p.id] = true;
-        } else if (esLectura) {
-            mapa[p.id] = ['ver_pantalla_sala', 'agendar_sesiones', 'reprogramar_sesiones', 'alta_clientes', 'edicion_clientes'].includes(p.id);
+        if (isAdmin) {
+            mapa[p.id] = { ver: true, editar: true, crear: true, borrar: true };
+        } else if (isProyector) {
+            if (p.id === 'pantalla_sala') {
+                mapa[p.id] = { ver: true, editar: false, crear: false, borrar: false };
+            } else {
+                mapa[p.id] = { ver: false, editar: false, crear: false, borrar: false };
+            }
+        } else if (isLectura) {
+            if (['planificacion', 'pantalla_sala', 'clientes', 'ejercicios', 'plantillas'].includes(p.id)) {
+                mapa[p.id] = { ver: true, editar: false, crear: false, borrar: false };
+            } else if (p.id === 'agenda') {
+                mapa[p.id] = { ver: true, editar: true, crear: true, borrar: false };
+            } else {
+                mapa[p.id] = { ver: false, editar: false, crear: false, borrar: false };
+            }
         } else {
-            // Por defecto para Programador / Entrenador: todas las operativas salvo borrado crítico de clientes y gestión de perfiles
-            mapa[p.id] = !['borrado_clientes', 'gestion_perfiles_roles'].includes(p.id);
+            // Por defecto para Programador / Entrenador
+            if (p.id === 'pantalla_sala') {
+                mapa[p.id] = { ver: true, editar: false, crear: false, borrar: false };
+            } else if (p.id === 'planificacion' || p.id === 'programaciones_pendientes') {
+                mapa[p.id] = { ver: true, editar: true, crear: true, borrar: false };
+            } else if (p.id === 'clientes') {
+                mapa[p.id] = { ver: true, editar: true, crear: false, borrar: false };
+            } else if (p.id === 'maestros' || p.id === 'perfiles_roles') {
+                mapa[p.id] = { ver: true, editar: false, crear: false, borrar: false };
+            } else {
+                mapa[p.id] = { ver: true, editar: true, crear: true, borrar: true };
+            }
         }
     });
     return mapa;
 }
 
 /**
- * Garantiza que existan los roles actuales detectados en usuarios_app (y Admin / Programador)
- * dentro del maestro Gestión de Perfiles -> Roles, y que exista el documento de matriz de permisos.
+ * Garantiza que existan los roles por defecto (admin, programador, Proyector Sala) y el perfil
+ * invitado@goandtrain.com, sincroniza las acciones por defecto del catálogo en el maestro "Permisos"
+ * y asegura la matriz de permisos (Ver, Editar, Crear, Borrar) por rol.
  */
 export async function asegurarRolesYPermisosIniciales() {
+    // 1. Asegurar perfil invitado@goandtrain.com con rol "Proyector Sala" en usuarios_app
+    const invitadoRef = doc(db, "usuarios_app", "invitado@goandtrain.com");
+    const invitadoSnap = await getDoc(invitadoRef);
+    if (
+        !invitadoSnap.exists() ||
+        !esRolProyectorSala(invitadoSnap.data().rol) ||
+        invitadoSnap.data().es_programador !== false
+    ) {
+        const datosPrev = invitadoSnap.exists() ? invitadoSnap.data() : {};
+        await setDoc(invitadoRef, {
+            email: "invitado@goandtrain.com",
+            nombre: datosPrev.nombre && datosPrev.nombre !== "invitado" ? datosPrev.nombre : "Invitado Sala",
+            alias: datosPrev.alias && datosPrev.alias !== "invitado" ? datosPrev.alias : "Invitado",
+            rol: "Proyector Sala",
+            es_programador: false
+        }, { merge: true });
+    }
+
+    // 2. Asegurar roles en Gestión de Perfiles -> Roles
     const rolesExistentes = await getValoresMaestro("Gestión de Perfiles", "Roles");
     const snapUsers = await getDocs(collection(db, "usuarios_app"));
-    const rolesDetectados = new Set(['admin', 'programador']);
+    const rolesDetectados = new Set(['admin', 'programador', 'Proyector Sala']);
 
     snapUsers.forEach(d => {
         const data = d.data();
@@ -518,60 +560,106 @@ export async function asegurarRolesYPermisosIniciales() {
     }
     if (huboAltaRol) limpiarCacheMaestros();
 
-    // Asegurar que las acciones del catálogo estén también sincronizadas en el maestro "Permisos"
+    // 3. Sincronizar las acciones del catálogo oficial en el maestro "Permisos" (solo acciones del sistema)
     const permisosMaestro = await getValoresMaestro("Gestión de Perfiles", "Permisos");
-    if (permisosMaestro.length === 0) {
-        let ord = 1;
-        for (const p of CATALOGO_PERMISOS_APP) {
-            await guardarValorMaestro("Gestión de Perfiles", "Permisos", p.nombre, ord++);
-        }
+    const nombresCatalogo = CATALOGO_PERMISOS_APP.map(p => p.nombre);
+    const requiereSyncPermisos =
+        permisosMaestro.length !== nombresCatalogo.length ||
+        permisosMaestro.some((val, idx) => val !== nombresCatalogo[idx]);
+
+    if (requiereSyncPermisos) {
+        await reordenarValoresMaestro(
+            "Gestión de Perfiles",
+            "Permisos",
+            CATALOGO_PERMISOS_APP.map((p, idx) => ({
+                id: p.id,
+                valor: p.nombre,
+                orden: idx + 1
+            }))
+        );
         limpiarCacheMaestros();
     }
 
-    // Asegurar documento de configuración de matriz de permisos por rol
+    // 4. Asegurar documento de configuración de matriz de permisos (Ver, Editar, Crear, Borrar) por rol
     const matrizRef = doc(db, "maestros", "config_permisos_roles");
     const matrizSnap = await getDoc(matrizRef);
     const rolesFinales = await getValoresMaestro("Gestión de Perfiles", "Roles");
-    let matrizData = matrizSnap.exists() ? (matrizSnap.data().roles || {}) : {};
-    let matrizModificada = !matrizSnap.exists();
+    const esVersionActual = matrizSnap.exists() && matrizSnap.data().schema_version === 2;
+    const rolesExistentesMatriz = esVersionActual ? (matrizSnap.data().roles || {}) : {};
+    const matrizLimpia = {};
+    let matrizModificada = !esVersionActual;
 
     rolesFinales.forEach(rol => {
-        if (!matrizData[rol]) {
-            matrizData[rol] = PermisosPorDefectoParaRol(rol);
+        const defaultsRol = PermisosPorDefectoParaRol(rol);
+        const mapaPrevio = rolesExistentesMatriz[rol];
+        matrizLimpia[rol] = {};
+
+        if (!mapaPrevio || typeof mapaPrevio !== 'object') {
+            matrizLimpia[rol] = defaultsRol;
             matrizModificada = true;
         } else {
             CATALOGO_PERMISOS_APP.forEach(p => {
-                if (matrizData[rol][p.id] === undefined) {
-                    matrizData[rol][p.id] = PermisosPorDefectoParaRol(rol)[p.id];
+                const actual = mapaPrevio[p.id];
+                const defAccion = defaultsRol[p.id];
+                if (
+                    !actual ||
+                    typeof actual !== 'object' ||
+                    actual.ver === undefined ||
+                    actual.editar === undefined ||
+                    actual.crear === undefined ||
+                    actual.borrar === undefined
+                ) {
+                    matrizLimpia[rol][p.id] = defAccion;
                     matrizModificada = true;
+                } else {
+                    matrizLimpia[rol][p.id] = {
+                        ver: Boolean(actual.ver),
+                        editar: Boolean(actual.editar),
+                        crear: Boolean(actual.crear),
+                        borrar: Boolean(actual.borrar)
+                    };
                 }
             });
         }
     });
 
     if (matrizModificada) {
-        await setDoc(matrizRef, { roles: matrizData, updated_at: new Date().toISOString() }, { merge: true });
+        await setDoc(matrizRef, {
+            schema_version: 2,
+            roles: matrizLimpia,
+            updated_at: new Date().toISOString()
+        });
     }
 
-    return { roles: rolesFinales, matriz: matrizData };
+    return { roles: rolesFinales, matriz: matrizLimpia };
 }
 
 export async function cargarMatrizPermisos() {
     const matrizRef = doc(db, "maestros", "config_permisos_roles");
     const snap = await getDoc(matrizRef);
-    if (!snap.exists()) {
+    if (!snap.exists() || snap.data().schema_version !== 2) {
         const init = await asegurarRolesYPermisosIniciales();
         return init.matriz;
     }
-    return snap.data().roles || {};
+    const rolesRaw = snap.data().roles || {};
+    const rolesNormalizados = {};
+    for (const [rol, mapaRol] of Object.entries(rolesRaw)) {
+        const defaultsRol = PermisosPorDefectoParaRol(rol);
+        rolesNormalizados[rol] = {};
+        CATALOGO_PERMISOS_APP.forEach(p => {
+            rolesNormalizados[rol][p.id] = normalizarPermisosAccion(mapaRol ? mapaRol[p.id] : undefined, defaultsRol[p.id]);
+        });
+    }
+    return rolesNormalizados;
 }
 
 export async function guardarMatrizPermisos(nuevaMatriz) {
     const matrizRef = doc(db, "maestros", "config_permisos_roles");
     await setDoc(matrizRef, {
+        schema_version: 2,
         roles: nuevaMatriz,
         updated_at: new Date().toISOString()
-    }, { merge: true });
+    });
 }
 
 export async function cargarUsuariosAutenticacion() {
@@ -591,8 +679,4 @@ export async function cargarUsuariosAutenticacion() {
     });
     lista.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
     return lista;
-}
-function _noopClosure() { if (false) { {
-        }
-    }
 }

@@ -1,4 +1,60 @@
 // nav-component.js
+function esRolProyectorSalaNav(rol) {
+    const rNorm = String(rol || '')
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+    return rNorm === 'proyector sala' || rNorm === 'proyector_sala' || rNorm === 'proyector' || rNorm === 'invitado';
+}
+
+// Bloqueo inmediato por caché local si el rol es Proyector Sala
+if (esRolProyectorSalaNav(localStorage.getItem('userRole'))) {
+    window.location.replace("pantalla_sala.html");
+}
+
+// Verificación activa contra Firebase Auth y usuarios_app en todas las pantallas con navbar
+(async () => {
+    try {
+        const [{ auth, db }, { onAuthStateChanged }, { doc, getDoc }] = await Promise.all([
+            import('./firebase-config.js'),
+            import("https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js"),
+            import("https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js")
+        ]);
+
+        onAuthStateChanged(auth, async (user) => {
+            if (!user) return;
+            const emailKey = (user.email || '').trim().toLowerCase();
+            if (emailKey === 'invitado@goandtrain.com') {
+                localStorage.setItem('userRole', 'Proyector Sala');
+                localStorage.setItem('gym_user_name', 'Invitado Sala');
+                window.location.replace("pantalla_sala.html");
+                return;
+            }
+            try {
+                const snap = await getDoc(doc(db, "usuarios_app", emailKey));
+                if (snap.exists()) {
+                    const data = snap.data();
+                    if (data.rol) {
+                        localStorage.setItem('userRole', data.rol);
+                        if (esRolProyectorSalaNav(data.rol)) {
+                            window.location.replace("pantalla_sala.html");
+                            return;
+                        }
+                    }
+                    if (data.nombre) {
+                        localStorage.setItem('gym_user_name', data.nombre);
+                    }
+                }
+            } catch (err) {
+                console.warn("Error verificando rol en nav-component:", err);
+            }
+        });
+    } catch (e) {
+        console.warn("No se pudo inicializar verificación de rol en nav-component:", e);
+    }
+})();
+
 class GymNavbar extends HTMLElement {
     constructor() {
         super();
@@ -8,7 +64,11 @@ class GymNavbar extends HTMLElement {
     connectedCallback() {
         const userName = localStorage.getItem('gym_user_name') || 'Usuario';
         const userRole = localStorage.getItem('userRole') || 'programador';
-        const isAdmin = userRole === 'admin';
+
+        if (esRolProyectorSalaNav(userRole)) {
+            window.location.replace("pantalla_sala.html");
+            return;
+        }
 
         this.innerHTML = `
       <style>

@@ -118,10 +118,11 @@
         import { auth, db } from './firebase-config.js';
         import { signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
         import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
+        import { esRolProyectorSala } from './js/maestros-service.js';
 
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const email = document.getElementById('email').value;
+            const email = document.getElementById('email').value.trim();
             const password = document.getElementById('password').value;
             const errorDiv = document.getElementById('errorMsg');
             const btnLogin = document.getElementById('btnLogin');
@@ -132,25 +133,58 @@
 
             try {
                 const userCredential = await signInWithEmailAndPassword(auth, email, password);
-                const userEmail = userCredential.user.email;
+                const userEmail = (userCredential.user.email || email).trim();
+                const emailKey = userEmail.toLowerCase();
+                const esCuentaInvitadoSala = emailKey === 'invitado@goandtrain.com';
 
-                const userDocRef = doc(db, "usuarios_app", userEmail);
-                const userDoc = await getDoc(userDocRef);
+                let userDoc = await getDoc(doc(db, "usuarios_app", emailKey));
+                if (!userDoc.exists() && userEmail !== emailKey) {
+                    userDoc = await getDoc(doc(db, "usuarios_app", userEmail));
+                }
+
+                let rolAsignado = esCuentaInvitadoSala ? 'Proyector Sala' : 'programador';
+                let nombreAsignado = esCuentaInvitadoSala ? 'Invitado Sala' : (userEmail ? userEmail.split('@')[0] : 'Empleado');
 
                 if (userDoc.exists()) {
                     const userData = userDoc.data();
-                    localStorage.setItem('userRole', userData.rol);
-                    if (userData.nombre) localStorage.setItem('gym_user_name', userData.nombre);
+                    if (esCuentaInvitadoSala) {
+                        rolAsignado = 'Proyector Sala';
+                        nombreAsignado = (userData.nombre && userData.nombre !== 'invitado') ? userData.nombre : 'Invitado Sala';
+                        try {
+                            await setDoc(doc(db, "usuarios_app", emailKey), {
+                                email: emailKey,
+                                nombre: nombreAsignado,
+                                alias: 'Invitado',
+                                rol: 'Proyector Sala',
+                                es_programador: false
+                            }, { merge: true });
+                        } catch (e) { }
+                    } else {
+                        rolAsignado = userData.rol || rolAsignado;
+                        nombreAsignado = userData.nombre || userData.alias || nombreAsignado;
+                    }
                 } else {
-                    localStorage.setItem('userRole', 'programador');
-                    const nombreBase = userEmail ? userEmail.split('@')[0] : 'Empleado';
                     try {
-                        await setDoc(userDocRef, { email: userEmail, nombre: nombreBase, alias: nombreBase, rol: 'programador', es_programador: true }, { merge: true });
-                    } catch (e) { console.warn("No se pudo autovinculuar usuario en usuarios_app:", e); }
-                    console.warn("Usuario sin documento de rol asignado. Se aplica rol restrictivo.");
+                        await setDoc(doc(db, "usuarios_app", emailKey), {
+                            email: emailKey,
+                            nombre: nombreAsignado,
+                            alias: esCuentaInvitadoSala ? 'Invitado' : nombreAsignado,
+                            rol: rolAsignado,
+                            es_programador: !esRolProyectorSala(rolAsignado)
+                        }, { merge: true });
+                    } catch (e) {
+                        console.warn("No se pudo autovincular usuario en usuarios_app:", e);
+                    }
                 }
 
-                window.location.href = "planificacion.html";
+                localStorage.setItem('userRole', rolAsignado);
+                localStorage.setItem('gym_user_name', nombreAsignado);
+
+                if (esRolProyectorSala(rolAsignado)) {
+                    window.location.href = "pantalla_sala.html";
+                } else {
+                    window.location.href = "planificacion.html";
+                }
             } catch (error) {
                 auth.signOut();
                 errorDiv.innerText = error.message.includes("sin rol") ? error.message : "Credenciales incorrectas.";

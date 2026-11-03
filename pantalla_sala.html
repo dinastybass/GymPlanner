@@ -275,14 +275,43 @@
     <header class="sala-header">
         <div class="sala-brand"><img src="assets/logo.png" alt="Logo"> PANTALLA SALA</div>
         <div class="sala-time-info" id="salaFranjaHora">ANALIZANDO AGENDA...</div>
-        <a href="planificacion.html" class="btn-salir">✕ Cerrar Sala</a>
+        <a href="planificacion.html" class="btn-salir" id="btnSalirSala">✕ Cerrar Sala</a>
     </header>
 
     <div class="sala-grid" id="salaGrid"></div>
 
     <script type="module">
-        import { db } from './firebase-config.js';
-        import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
+        import { auth, db } from './firebase-config.js';
+        import { collection, query, where, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
+        import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+        import { esRolProyectorSala } from './js/maestros-service.js';
+
+        let soloProyectorSala = esRolProyectorSala(localStorage.getItem('userRole'));
+
+        function actualizarBotonSalidaSala() {
+            const btnSalir = document.getElementById('btnSalirSala');
+            if (!btnSalir) return;
+            if (soloProyectorSala) {
+                btnSalir.textContent = '⏻ Cerrar Sesión';
+                btnSalir.href = '#';
+                btnSalir.onclick = async (e) => {
+                    e.preventDefault();
+                    if (confirm("¿Seguro que quieres cerrar sesión?")) {
+                        try {
+                            await signOut(auth);
+                        } catch (err) { }
+                        localStorage.removeItem('userRole');
+                        localStorage.removeItem('gym_user_name');
+                        window.location.href = "index.html";
+                    }
+                };
+            } else {
+                btnSalir.textContent = '✕ Cerrar Sala';
+                btnSalir.href = 'planificacion.html';
+                btnSalir.onclick = null;
+            }
+        }
+        actualizarBotonSalidaSala();
 
         const ordenBloques = { "Calentamiento Dinámico": 1, "Calentamiento Específico": 2, "Calentamiento": 3, "Movilidad": 4, "Activación": 5, "Core": 6, "Parte Principal": 7, "Fuerza": 8 };
 
@@ -533,9 +562,12 @@
 
                     const card = document.createElement('div');
                     card.className = 'client-card';
+                    const nombreClienteHTML = (!soloProyectorSala && s.idCliente)
+                        ? `<a href="ficha_cliente.html?id=${encodeURIComponent(s.idCliente)}" class="client-link" title="Ir a la ficha de ${s.nombre}">${s.nombre}</a>`
+                        : s.nombre;
                     card.innerHTML = `
             <div class="client-card-header">
-              <span class="client-name">${s.idCliente ? `<a href="ficha_cliente.html?id=${encodeURIComponent(s.idCliente)}" class="client-link" title="Ir a la ficha de ${s.nombre}">${s.nombre}</a>` : s.nombre}</span>
+              <span class="client-name">${nombreClienteHTML}</span>
               <span class="client-time">${s.inicioStr}</span>
             </div>
             <div class="exercises-container">
@@ -560,8 +592,33 @@
             }
         }
 
-        cargarPantallaSala();
-        setInterval(cargarPantallaSala, 120000);
+        let intervaloSala = null;
+        onAuthStateChanged(auth, async (user) => {
+            if (!user) {
+                window.location.href = "index.html";
+                return;
+            }
+            try {
+                const emailKey = (user.email || '').trim().toLowerCase();
+                let rolActual = localStorage.getItem('userRole') || '';
+                const snapUser = await getDoc(doc(db, "usuarios_app", emailKey));
+                if (snapUser.exists() && snapUser.data().rol) {
+                    rolActual = snapUser.data().rol;
+                    localStorage.setItem('userRole', rolActual);
+                } else if (emailKey === 'invitado@goandtrain.com') {
+                    rolActual = 'Proyector Sala';
+                    localStorage.setItem('userRole', rolActual);
+                }
+                soloProyectorSala = esRolProyectorSala(rolActual);
+            } catch (e) {
+                console.warn("No se pudo verificar el rol en pantalla_sala:", e);
+            }
+            actualizarBotonSalidaSala();
+            cargarPantallaSala();
+            if (!intervaloSala) {
+                intervaloSala = setInterval(cargarPantallaSala, 120000);
+            }
+        });
     </script>
 </body>
 

@@ -90,6 +90,9 @@ export async function getListaProgramadores(forzar = false) {
         snap.forEach(docSnap => {
             const d = docSnap.data();
             if (d.es_programador === false) return;
+            const rolNorm = normalizarTexto(d.rol || '');
+            if (rolNorm === 'proyector sala' || rolNorm === 'proyector_sala' || rolNorm === 'invitado') return;
+            if (String(d.email || docSnap.id || '').trim().toLowerCase() === 'invitado@goandtrain.com') return;
             const nombre = String(d.alias || d.nombre_corto || d.nombre || '').trim();
             const norm = normalizarTexto(nombre);
             if (nombre && !vistos.has(norm)) {
