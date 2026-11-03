@@ -32,7 +32,6 @@ export const ESTRUCTURA_MAESTROS = {
         "Roles",
         "Permisos"
     ]
-    ]
 };
 
 export function limpiarNombreDoc(clave) {

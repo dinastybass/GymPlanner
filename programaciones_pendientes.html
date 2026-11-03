@@ -234,7 +234,6 @@
 
                 // Mapa de cliente -> Entrenador / Programador asignado
                 const progPorId = {};
-                const progPorNombre = {};
                 const idClientePorNombre = {};
                 const progPorNombre = {};
                 const resolverNombreProgramador = (raw) => {
@@ -295,7 +294,6 @@
                                 horaStr: d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
                                 cliente: nombreCli,
                                 idCliente: idCli || idClientePorNombre[normalizarTexto(nombreCli)] || '',
-                                entrenador: entrenadorAsignado
                                 entrenador: entrenadorAsignado
                             });
                         }
