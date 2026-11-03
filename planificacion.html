@@ -758,8 +758,17 @@
 
             try {
                 const clientesMap = {};
+                const idClientePorNombre = {};
                 const clientesSnap = await getDocs(collection(db, "clientes"));
-                clientesSnap.forEach(doc => { const c = doc.data(); if (c.ID_Cliente) clientesMap[c.ID_Cliente] = (c.Alias && c.Alias.trim() !== '') ? c.Alias : c.Nombre_Cliente; });
+                clientesSnap.forEach(doc => {
+                    const c = doc.data();
+                    const idRef = c.ID_Cliente || doc.id;
+                    if (idRef) {
+                        clientesMap[idRef] = (c.Alias && c.Alias.trim() !== '') ? c.Alias : c.Nombre_Cliente;
+                        if (c.Alias) idClientePorNombre[c.Alias.trim().toLowerCase()] = idRef;
+                        if (c.Nombre_Cliente) idClientePorNombre[c.Nombre_Cliente.trim().toLowerCase()] = idRef;
+                    }
+                });
 
                 const q = query(collection(db, "agenda_sesiones"), where("fecha_hora_inicio", ">=", startOfDay), where("fecha_hora_inicio", "<=", endOfDay));
                 const querySnapshot = await getDocs(q);
@@ -771,12 +780,14 @@
                     const fecha = data.fecha_hora_inicio.toDate();
                     const horaFormateada = fecha.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
 
-                    const idCliente = data.id_cliente || data.ID_Cliente;
-                    const nombreMostrar = (idCliente && clientesMap[idCliente]) ? clientesMap[idCliente] : (data.Alias || data.alias || data.Nombre_Cliente || data.nombre_cliente);
+                    const rawIdCliente = data.id_cliente || data.ID_Cliente || '';
+                    const nombreMostrar = (rawIdCliente && clientesMap[rawIdCliente]) ? clientesMap[rawIdCliente] : (data.Alias || data.alias || data.Nombre_Cliente || data.nombre_cliente || 'Sin nombre');
+                    const idCliente = rawIdCliente || idClientePorNombre[String(nombreMostrar).trim().toLowerCase()] || '';
+
 
                     if (data.tipo_sesion === 'Small Group') {
                         if (!sgGroups[horaFormateada]) sgGroups[horaFormateada] = [];
-                        sgGroups[horaFormateada].push(nombreMostrar);
+                        sgGroups[horaFormateada].push({ nombre: nombreMostrar, idCliente });
                     } else {
                         let estadoBase = data.estado || 'Pendiente'; let dot = '⚪'; let statusClass = 'pendiente';
                         if (estadoBase === 'Completada') { dot = '🟢'; statusClass = 'completada'; }
@@ -864,7 +875,7 @@
 
                         const cardHTML = `
                             <div class="card" onclick="window.location.href='ficha_cliente.html?id=${idCliente}'">
-                                <div class="card-header"><span>${nombreMostrar}</span><span class="card-time">🕒 ${horaFormateada}</span></div>
+                                <div class="card-header"><span>${idCliente ? `<a href="ficha_cliente.html?id=${encodeURIComponent(idCliente)}" class="client-link" onclick="event.stopPropagation();" title="Ir a la ficha de ${nombreMostrar}">${nombreMostrar}</a>` : nombreMostrar}</span><span class="card-time">🕒 ${horaFormateada}</span></div>
                                 ${bodyContent}
                                 <div class="card-footer">
                                     <span class="status ${statusClass}" onclick="event.stopPropagation(); toggleEstado('${idSesion}', '${estadoBase}')" title="Haz click para cambiar estado">${dot} ${estadoBase}</span>
@@ -879,7 +890,7 @@
                 let sgHTML = ''; let countSg = Object.keys(sgGroups).length;
                 for (const [hora, clientes] of Object.entries(sgGroups)) {
                     const [h, m] = hora.split(':'); const horaFin = `${(parseInt(h) + 1).toString().padStart(2, '0')}:${m}`;
-                    sgHTML += `<div class="sg-card"><div class="sg-time">${hora}-${horaFin}</div><div class="sg-clients">${clientes.map(c => `<span>${c}</span>`).join('')}</div></div>`;
+                    sgHTML += `<div class="sg-card"><div class="sg-time">${hora}-${horaFin}</div><div class="sg-clients">${clientes.map(c => c.idCliente ? `<a href="ficha_cliente.html?id=${encodeURIComponent(c.idCliente)}" class="client-link" title="Ir a la ficha de ${c.nombre}">${c.nombre}</a>` : `<span>${c.nombre}</span>`).join('')}</div></div>`;
                 }
 
                 document.getElementById('display-total-sessions').innerText = (countManana + countTarde) === 1 ? '1 sesión programada' : `${countManana + countTarde} sesiones programadas`;

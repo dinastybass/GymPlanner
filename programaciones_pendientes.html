@@ -235,6 +235,8 @@
                 // Mapa de cliente -> Entrenador / Programador asignado
                 const progPorId = {};
                 const progPorNombre = {};
+                const idClientePorNombre = {};
+                const progPorNombre = {};
                 const resolverNombreProgramador = (raw) => {
                     const val = String(raw || '').trim();
                     if (!val) return '';
@@ -244,6 +246,9 @@
 
                 clientesSnap.forEach(cDoc => {
                     const cData = cDoc.data();
+                    const idRef = cData.ID_Cliente ? String(cData.ID_Cliente).trim() : cDoc.id;
+                    if (cData.Alias) idClientePorNombre[normalizarTexto(cData.Alias)] = idRef;
+                    if (cData.Nombre_Cliente) idClientePorNombre[normalizarTexto(cData.Nombre_Cliente)] = idRef;
                     const prog = resolverNombreProgramador(cData.Programador || cData.Entrenador || '');
                     if (prog) {
                         progPorId[cDoc.id] = prog;
@@ -289,6 +294,8 @@
                                 diaStr: diasSemanaNombres[d.getUTCDay()],
                                 horaStr: d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
                                 cliente: nombreCli,
+                                idCliente: idCli || idClientePorNombre[normalizarTexto(nombreCli)] || '',
+                                entrenador: entrenadorAsignado
                                 entrenador: entrenadorAsignado
                             });
                         }
@@ -447,7 +454,7 @@
                             clientesHTML += `
                                 <div class="client-accordion">
                                     <div class="client-header" onclick="const t = this.nextElementSibling; const s = this.querySelector('svg'); if(t.style.display==='none'){t.style.display='block';s.style.transform='rotate(180deg)';}else{t.style.display='none';s.style.transform='rotate(0deg)';}">
-                                        <span>${clave}</span>
+                                        <span>${sesiones[0]?.idCliente ? `<a href="ficha_cliente.html?id=${encodeURIComponent(sesiones[0].idCliente)}" class="client-link" onclick="event.stopPropagation();" title="Ir a la ficha de ${clave}">${clave}</a>` : clave}</span>
                                         <span style="font-weight:normal; font-size:0.85rem; color:var(--text-muted); display:flex; align-items:center; gap:8px;">
                                             <span style="color:#dc2626; font-weight:bold;">${sesiones.length} pendientes</span>
                                             <span class="chevron-icon" style="transform:rotate(180deg);">${chevronSVG}</span>

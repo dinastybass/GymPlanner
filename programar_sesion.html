@@ -449,7 +449,23 @@
                 const isSG = (sessionData.tipo_sesion === 'Small Group' || sessionData.Tipo === 'SG');
                 const tituloHeader = isSG ? "Small Group" : (sessionData.alias || sessionData.nombre_cliente || 'Desconocido');
 
-                document.getElementById('ui-client-name').innerText = `Programar: ${tituloHeader}`;
+                let resolvedCliId = sessionData.id_cliente || sessionData.ID_Cliente || '';
+                if (!isSG && !resolvedCliId && tituloHeader && tituloHeader !== 'Desconocido') {
+                    try {
+                        const snapAlias = await getDocs(query(collection(db, "clientes"), where("Alias", "==", tituloHeader)));
+                        if (!snapAlias.empty) {
+                            resolvedCliId = snapAlias.docs[0].id;
+                        } else {
+                            const snapNom = await getDocs(query(collection(db, "clientes"), where("Nombre_Cliente", "==", tituloHeader)));
+                            if (!snapNom.empty) resolvedCliId = snapNom.docs[0].id;
+                        }
+                    } catch (e) { console.warn("Error buscando id de cliente:", e); }
+                }
+                if (!isSG && resolvedCliId) {
+                    document.getElementById('ui-client-name').innerHTML = `Programar: <a href="ficha_cliente.html?id=${encodeURIComponent(resolvedCliId)}" class="client-link" title="Ir a la ficha de ${tituloHeader}">${tituloHeader}</a>`;
+                } else {
+                    document.getElementById('ui-client-name').innerText = `Programar: ${tituloHeader}`;
+                }
                 document.getElementById('ui-session-meta').innerText = `Fecha: ${dStr} a las ${hStr}`;
                 document.getElementById('modal-meta-text').innerText = `Fecha: ${dStr}`;
                 document.getElementById('ui-programado-por').innerText = `Última edición por: ${sessionData.programado_por || 'Sin registrar'}`;
@@ -479,6 +495,26 @@
                     const pillStyle = entrenadorAsignado ? 'margin-left: 6px;' : 'margin-left: 6px; background: var(--hover-bg); color: var(--text-muted);';
                     elEntrenador.innerHTML = `Entrenador asignado: <span class="${pillClass}" style="${pillStyle}">${labelEntrenador}</span>`;
                     elEntrenador.style.display = 'block';
+                } else if (isSG && elEntrenador && sessionData.fecha_hora_inicio) {
+                    try {
+                        const qSG = query(collection(db, "agenda_sesiones"), where("fecha_hora_inicio", "==", sessionData.fecha_hora_inicio), where("tipo_sesion", "==", "Small Group"));
+                        const snapSG = await getDocs(qSG);
+                        const asistentes = [];
+                        snapSG.forEach(dSG => {
+                            const ds = dSG.data();
+                            const cid = ds.id_cliente || ds.ID_Cliente || '';
+                            const cnom = ds.alias || ds.Alias || ds.nombre_cliente || ds.Nombre_Cliente || 'Cliente';
+                            if (cid) {
+                                asistentes.push(`<a href="ficha_cliente.html?id=${encodeURIComponent(cid)}" class="client-link" title="Ir a la ficha de ${cnom}">${cnom}</a>`);
+                            } else {
+                                asistentes.push(`<span>${cnom}</span>`);
+                            }
+                        });
+                        if (asistentes.length > 0) {
+                            elEntrenador.innerHTML = `Clientes en este grupo: ${asistentes.join(', ')}`;
+                            elEntrenador.style.display = 'block';
+                        }
+                    } catch (e) { console.warn("Error cargando asistentes SG:", e); }
                 }
 
                 renderSesionActual();

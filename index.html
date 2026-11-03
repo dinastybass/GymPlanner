@@ -117,7 +117,7 @@
     <script type="module">
         import { auth, db } from './firebase-config.js';
         import { signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
-        import { doc, getDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
+        import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
 
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -143,6 +143,10 @@
                     if (userData.nombre) localStorage.setItem('gym_user_name', userData.nombre);
                 } else {
                     localStorage.setItem('userRole', 'programador');
+                    const nombreBase = userEmail ? userEmail.split('@')[0] : 'Empleado';
+                    try {
+                        await setDoc(userDocRef, { email: userEmail, nombre: nombreBase, alias: nombreBase, rol: 'programador', es_programador: true }, { merge: true });
+                    } catch (e) { console.warn("No se pudo autovinculuar usuario en usuarios_app:", e); }
                     console.warn("Usuario sin documento de rol asignado. Se aplica rol restrictivo.");
                 }
 

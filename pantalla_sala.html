@@ -368,8 +368,17 @@
 
             try {
                 const clientesMap = {};
+                const idClientePorNombre = {};
                 const clientesSnap = await getDocs(collection(db, "clientes"));
-                clientesSnap.forEach(doc => { const c = doc.data(); if (c.ID_Cliente) clientesMap[c.ID_Cliente] = (c.Alias && c.Alias.trim() !== '') ? c.Alias : c.Nombre_Cliente; });
+                clientesSnap.forEach(doc => {
+                    const c = doc.data();
+                    const idRef = c.ID_Cliente || doc.id;
+                    if (idRef) {
+                        clientesMap[idRef] = (c.Alias && c.Alias.trim() !== '') ? c.Alias : c.Nombre_Cliente;
+                        if (c.Alias) idClientePorNombre[c.Alias.trim().toLowerCase()] = idRef;
+                        if (c.Nombre_Cliente) idClientePorNombre[c.Nombre_Cliente.trim().toLowerCase()] = idRef;
+                    }
+                });
 
                 const q = query(collection(db, "agenda_sesiones"), where("fecha_hora_inicio", ">=", startOfDay), where("fecha_hora_inicio", "<=", endOfDay));
                 const snapshot = await getDocs(q);
@@ -394,10 +403,12 @@
                         if (diffMins > 150) return;
                     }
 
-                    const idCliente = data.id_cliente || data.ID_Cliente;
-                    const nombreMostrar = (idCliente && clientesMap[idCliente]) ? clientesMap[idCliente] : (data.Alias || data.alias || data.Nombre_Cliente || data.nombre_cliente);
+                    const rawIdCliente = data.id_cliente || data.ID_Cliente || '';
+                    const nombreMostrar = (rawIdCliente && clientesMap[rawIdCliente]) ? clientesMap[rawIdCliente] : (data.Alias || data.alias || data.Nombre_Cliente || data.nombre_cliente);
+                    const idCliente = rawIdCliente || idClientePorNombre[String(nombreMostrar || '').trim().toLowerCase()] || '';
 
                     sesionesValidas.push({
+                        idCliente,
                         nombre: nombreMostrar,
                         inicioObj: fInicio,
                         inicioStr: fInicio.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
@@ -524,7 +535,7 @@
                     card.className = 'client-card';
                     card.innerHTML = `
             <div class="client-card-header">
-              <span class="client-name">${s.nombre}</span>
+              <span class="client-name">${s.idCliente ? `<a href="ficha_cliente.html?id=${encodeURIComponent(s.idCliente)}" class="client-link" title="Ir a la ficha de ${s.nombre}">${s.nombre}</a>` : s.nombre}</span>
               <span class="client-time">${s.inicioStr}</span>
             </div>
             <div class="exercises-container">

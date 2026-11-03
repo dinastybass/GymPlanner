@@ -598,7 +598,7 @@
         import { collection, query, where, getDocs, doc, setDoc, addDoc, writeBatch } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
         import { getValoresMaestro } from './js/maestros-service.js';
-        import { normalizarTexto, getChevronSVG as getChevronSVGUtil, renderizarOpcionesDropdown, clearDropdown } from './js/utils.js';
+        import { normalizarTexto, getChevronSVG as getChevronSVGUtil, renderizarOpcionesDropdown, clearDropdown, abrirMenuAccionesSesion, formatearSesionAgenda } from './js/utils.js';
         import { crearHistorialUndo } from './js/undo-service.js';
 
         window.actualizarCalculo = () => { };
@@ -617,6 +617,24 @@
         const nowInit = new Date();
         let currentMonthDate = new Date(Date.UTC(nowInit.getFullYear(), nowInit.getMonth(), 1));
         let globalClientes = [];
+        let sesionesAgendaMap = {};
+
+        window.abrirMenuAccionesAgenda = (event, idSesion) => {
+            const info = sesionesAgendaMap[idSesion];
+            if (!info) return;
+            const triggerEl = event.currentTarget || event.target;
+            triggerEl.setAttribute('data-session-menu-trigger', 'true');
+            abrirMenuAccionesSesion(event, {
+                idSesion,
+                idCliente: info.idCliente,
+                nombreCliente: info.nombreCliente,
+                sesionObj: formatearSesionAgenda(idSesion, info.docData),
+                undoHistory,
+                onAfterChange: async () => {
+                    await loadAgenda();
+                }
+            });
+        };
         let aforoGlobalPorFila = {};
 
         let diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
@@ -820,7 +838,7 @@
             else container.innerHTML += generateSGWeekHTML(w, tempMon, isCurrentWeekExtra, customTitleExtra);
 
             try {
-                const clientesMap = {}; globalClientes = [];
+                const clientesMap = {}; globalClientes = []; sesionesAgendaMap = {};
                 const clientesSnap = await getDocs(collection(db, "clientes"));
                 clientesSnap.forEach(doc => {
                     const c = doc.data();
@@ -872,8 +890,14 @@
                         if (dayIndex >= 1 && dayIndex <= diasSemana.length) {
                             const col = dayIndex + 1; const row = timeToRowMap[timeStr];
                             if (row) {
-                                const idCliente = data.id_cliente || data.ID_Cliente;
-                                const nombreMostrar = (idCliente && clientesMap[idCliente]) ? clientesMap[idCliente] : (data.Alias || data.alias || data.Nombre_Cliente || 'Sin nombre');
+                                let idCliente = data.id_cliente || data.ID_Cliente || '';
+                                const nombreMostrar = (idCliente && clientesMap[idCliente]) ? clientesMap[idCliente] : (data.Alias || data.alias || data.Nombre_Cliente || data.nombre_cliente || 'Sin nombre');
+                                if (!idCliente) {
+                                    const found = globalClientes.find(gc => normalizarTexto(gc.alias) === normalizarTexto(nombreMostrar) || normalizarTexto(gc.nombre) === normalizarTexto(nombreMostrar));
+                                    if (found) idCliente = found.id;
+                                }
+                                sesionesAgendaMap[doc.id] = { id: doc.id, docData: data, idCliente, nombreCliente: nombreMostrar };
+
 
                                 const dayKey = `w${weekNum}-c${col}`;
                                 if (!dayEvents[dayKey]) dayEvents[dayKey] = [];
@@ -916,7 +940,7 @@
 
                                 const linksHTML = evt.clientes.map(c => {
                                     const colorStyle = c.isPending ? 'color: #dc2626;' : 'color: inherit;';
-                                    return `<a href="programar_sesion.html?id_sesion=${c.idSesion}" style="${colorStyle} text-decoration: none; transition: opacity 0.2s;" onclick="event.stopPropagation()" onmouseover="this.style.textDecoration='underline'; this.style.opacity='0.7'" onmouseout="this.style.textDecoration='none'; this.style.opacity='1'" title="${c.isPending ? 'Pendiente de programar' : ''}">${c.nombre}</a>`;
+                                    return `<span data-session-menu-trigger="true" style="${colorStyle} cursor: pointer; text-decoration: none; transition: opacity 0.2s;" onclick="window.abrirMenuAccionesAgenda(event, '${c.idSesion}')" onmouseover="this.style.textDecoration='underline'; this.style.opacity='0.7'" onmouseout="this.style.textDecoration='none'; this.style.opacity='1'" title="${c.isPending ? 'Pendiente de programar · Clic para opciones' : 'Clic para opciones de sesión y ficha'}">${c.nombre}</span>`;
                                 }).join(', ');
 
                                 const timeKey = Object.keys(timeToRowMap).find(key => timeToRowMap[key] === evt.row);
@@ -948,10 +972,16 @@
                             sgMap[slotKey].firstId = doc.id;
                         }
 
-                        const idCliente = data.id_cliente || data.ID_Cliente;
-                        const nombreMostrar = clientesMap[idCliente] || data.alias || data.nombre_cliente || 'Sin nombre';
 
-                        const enlace = `<span style="color: var(--text-main); font-weight: 500; cursor: default;">${nombreMostrar}</span>`;
+                        let idCliente = data.id_cliente || data.ID_Cliente || '';
+                        const nombreMostrar = (idCliente && clientesMap[idCliente]) ? clientesMap[idCliente] : (data.Alias || data.alias || data.Nombre_Cliente || data.nombre_cliente || 'Sin nombre');
+
+                        if (!idCliente) {
+                            const found = globalClientes.find(gc => normalizarTexto(gc.alias) === normalizarTexto(nombreMostrar) || normalizarTexto(gc.nombre) === normalizarTexto(nombreMostrar));
+                            if (found) idCliente = found.id;
+                        }
+                        sesionesAgendaMap[doc.id] = { id: doc.id, docData: data, idCliente, nombreCliente: nombreMostrar };
+                        const enlace = `<span data-session-menu-trigger="true" style="color: var(--text-main); font-weight: 500; cursor: pointer;" onclick="window.abrirMenuAccionesAgenda(event, '${doc.id}')" onmouseover="this.style.textDecoration='underline'; this.style.color='var(--accent)'" onmouseout="this.style.textDecoration='none'; this.style.color='var(--text-main)'" title="Clic para opciones y ficha de ${nombreMostrar}">${nombreMostrar}</span>`;
 
                         sgMap[slotKey].clientes.push(enlace);
                     });

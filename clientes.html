@@ -395,8 +395,9 @@
                         }
                         return `
                             <tr class="client-row" onclick="window.location.href='ficha_cliente.html?id=${c.id}'">
-                                <td>${c.Nombre_Cliente || '-'}</td>
-                                <td>${c.Alias || '-'}</td>
+                                <td><a href="ficha_cliente.html?id=${encodeURIComponent(c.id)}" class="client-link" onclick="event.stopPropagation();" title="Ir a la ficha de ${c.Nombre_Cliente || c.Alias || 'cliente'}">${c.Nombre_Cliente || '-'}</a></td>
+                                <td><a href="ficha_cliente.html?id=${encodeURIComponent(c.id)}" class="client-link" onclick="event.stopPropagation();" title="Ir a la ficha de ${c.Nombre_Cliente || c.Alias || 'cliente'}">${c.Alias || '-'}</a></td>
+
                                 <td style="color: var(--text-muted); font-weight: normal;">${c.Objetivo_Global || '-'}</td>
                                 ${btnEliminarHTML}
                             </tr>

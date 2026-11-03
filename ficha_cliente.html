@@ -867,7 +867,7 @@
         import { doc, getDoc, setDoc, deleteDoc, collection, query, where, getDocs, writeBatch, addDoc, updateDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
         import { getMapaOrdenMaestro, poblarSelect, getValoresMaestro } from './js/maestros-service.js';
-        import { normalizarTexto, toggleDropdown, closeDropdown, filterDropdown, clearDropdown, renderizarOpcionesDropdown, abrirModalEnviarSesion, poblarSelectProgramadores, iconChevron as chevronSVG, iconDumbbell as dumbbellSVG, iconTrash as trashSVG, iconCalendar as calendarSVG, iconArrowRight as arrowRightSVG } from './js/utils.js';
+        import { normalizarTexto, toggleDropdown, closeDropdown, filterDropdown, clearDropdown, renderizarOpcionesDropdown, abrirModalEnviarSesion, abrirModalReprogramarSesion, eliminarSesionConDeshacer, obtenerAccionesDisponiblesSesion, poblarSelectProgramadores, iconChevron as chevronSVG, iconDumbbell as dumbbellSVG, iconTrash as trashSVG, iconCalendar as calendarSVG, iconArrowRight as arrowRightSVG } from './js/utils.js';
         import { crearHistorialUndo } from './js/undo-service.js';
 
         const urlParams = new URLSearchParams(window.location.search);
@@ -1205,6 +1205,15 @@
         };
 
         window.borrarSesion = async (idSesion) => {
+            const sesionObj = allSessions.find(s => s.id === idSesion);
+            await eliminarSesionConDeshacer({
+                idSesion,
+                sesionObj,
+                undoHistory,
+                onSuccess: async () => { await loadSessions(); renderSessions(); }
+            });
+        };
+        window.borrarSesionLegacyUnused = async (idSesion) => {
             if (confirm("¿Estás seguro de que quieres eliminar esta sesión de la agenda?")) {
                 try {
                     const sesionObj = allSessions.find(s => s.id === idSesion);
@@ -1291,6 +1300,17 @@
         }
 
         window.abrirModalReprogramar = async (idSesion) => {
+            const s = allSessions.find(x => x.id === idSesion);
+            await abrirModalReprogramarSesion({
+                idSesion,
+                idCliente: clientId,
+                sesionOrigen: s,
+                sesionesCliente: allSessions,
+                undoHistory,
+                onSuccess: async () => { await loadSessions(); renderSessions(); }
+            });
+        };
+        window.abrirModalReprogramarLegacyUnused = async (idSesion) => {
             reprogSourceSessionId = idSesion;
             const s = allSessions.find(x => x.id === idSesion);
             if (!s) return;
@@ -1882,7 +1902,22 @@
                         detailsHTML = '<p style="color:var(--text-muted); margin:0;">Sin programación detallada</p>';
                     }
 
+                    const accDisponibles = obtenerAccionesDisponiblesSesion(s);
                     let btnProg = '', btnReprog = '', btnEnviar = '', btnDel = '';
+                    if (accDisponibles.puedeProgramar) {
+                        btnProg = `<button class="action-btn" onclick="event.stopPropagation(); window.location.href='programar_sesion.html?id_sesion=${s.id}'" title="Programar ejercicios">${dumbbellSVG}</button>`;
+                    }
+                    if (accDisponibles.puedeReprogramar) {
+                        btnReprog = `<button class="action-btn" onclick="event.stopPropagation(); abrirModalReprogramar('${s.id}')" title="${s.estado === 'Vencida' ? 'Reprogramar sesión vencida' : 'Reprogramar fecha/hora'}">${calendarSVG}</button>`;
+                    }
+                    if (accDisponibles.puedeEnviar) {
+                        btnEnviar = `<button class="action-btn send" onclick="event.stopPropagation(); abrirModalEnviarDesdeFicha('${s.id}')" title="Enviar a otra sesión o crear plantilla">${arrowRightSVG}</button>`;
+                    }
+                    if (accDisponibles.puedeEliminar) {
+                        btnDel = `<button class="action-btn del" onclick="event.stopPropagation(); borrarSesion('${s.id}')" title="Borrar sesión">${trashSVG}</button>`;
+                    }
+                    if (false) {
+                    let btnProgUnused = '', btnReprogUnused = '', btnEnviarUnused = '', btnDelUnused = '';
                     btnDel = `<button class="action-btn del" onclick="event.stopPropagation(); borrarSesion('${s.id}')" title="Borrar sesión">${trashSVG}</button>`;
 
                     if (s.ejercicios && s.ejercicios.length > 0) {
@@ -1898,6 +1933,7 @@
                         }
                     }
 
+                    }
                     const acciones = `<div class="action-icons">${btnProg}${btnReprog}${btnEnviar}${btnDel}</div>`;
                     const detailRowHTML = `<tr class="row-details" id="details-${s.id}"><td colspan="6" style="padding:0;"><div class="details-content">${detailsHTML}</div></td></tr>`;
 
