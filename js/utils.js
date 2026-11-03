@@ -1469,21 +1469,20 @@ export function abrirMenuAccionesSesion(event, sesionData, {
         : `<span>👤 ${nombreCliente}</span>`;
 
     let itemsHtml = '';
-    if (idCliente) {
-        itemsHtml += `
-            <a href="${fichaHref}" class="session-action-item" title="Abrir la ficha del cliente">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                <span>Ver ficha del cliente</span>
-            </a>
-            <div class="session-action-divider"></div>
-        `;
-    }
 
     if (acciones.puedeProgramar) {
+        const labelProg = acciones.ejercicios.length > 0 ? 'Ver / Editar programación' : 'Programar ejercicios';
         itemsHtml += `
-            <button type="button" class="session-action-item" data-action="programar" title="Programar ejercicios">
+            <button type="button" class="session-action-item" data-action="programar" title="${labelProg}">
                 ${iconDumbbell}
-                <span>Programar ejercicios</span>
+                <span>${labelProg}</span>
+            </button>
+        `;
+    } else if (acciones.ejercicios && acciones.ejercicios.length > 0) {
+        itemsHtml += `
+            <button type="button" class="session-action-item" data-action="programar" title="Ver programación de la sesión">
+                ${iconDumbbell}
+                <span>Ver programación</span>
             </button>
         `;
     }
