@@ -28,6 +28,10 @@ export const iconDumbbell = `<svg width="16" height="16" viewBox="0 0 24 24" fil
 
 export const iconCalendar = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>`;
 
+export const iconCalendarOff = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line><line x1="10" y1="14" x2="14" y2="18"></line><line x1="14" y1="14" x2="10" y2="18"></line></svg>`;
+
+export const iconCalendarPlus = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line><line x1="12" y1="13" x2="12" y2="19"></line><line x1="9" y1="16" x2="15" y2="16"></line></svg>`;
+
 export const iconArrowRight = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>`;
 
 /**
@@ -533,21 +537,34 @@ export async function cargarSesionesClienteEnviar() {
             __enviarSesionesClienteCache.push({ id: docSnap.id, ...docSnap.data() });
         });
 
-        __enviarSesionesClienteCache.sort((a, b) => b.fecha_hora_inicio.toMillis() - a.fecha_hora_inicio.toMillis());
+        __enviarSesionesClienteCache.sort((a, b) => {
+            const aSin = Boolean(a.sin_fecha || !a.fecha_hora_inicio);
+            const bSin = Boolean(b.sin_fecha || !b.fecha_hora_inicio);
+            if (aSin && !bSin) return -1;
+            if (!aSin && bSin) return 1;
+            const tA = a.fecha_hora_inicio?.toMillis ? a.fecha_hora_inicio.toMillis() : 0;
+            const tB = b.fecha_hora_inicio?.toMillis ? b.fecha_hora_inicio.toMillis() : 0;
+            return tB - tA;
+        });
 
         if (__enviarSesionesClienteCache.length === 0) {
             selectSesion.innerHTML = '<option value="">Este cliente no tiene sesiones agendadas</option>';
         } else {
             selectSesion.innerHTML = '<option value="">Elige una sesión destino...</option>';
             __enviarSesionesClienteCache.forEach(s => {
-                const d = s.fecha_hora_inicio.toDate();
-                const dStr = d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
-                const hStr = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
-
                 const numEj = s.ejercicios ? s.ejercicios.length : 0;
                 const textEj = numEj > 0 ? `(${numEj} ej. - SE SOBRESCRIBIRÁ)` : `(Vacía)`;
-
-                selectSesion.innerHTML += `<option value="${s.id}">${dStr} a las ${hStr} ${textEj}</option>`;
+                if (s.sin_fecha || !s.fecha_hora_inicio?.toDate) {
+                    const origStr = s.fecha_hora_anterior?.toDate
+                        ? ` [Orig: ${s.fecha_hora_anterior.toDate().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' })}]`
+                        : '';
+                    selectSesion.innerHTML += `<option value="${s.id}">📌 Sin fecha asignada${origStr} ${textEj}</option>`;
+                } else {
+                    const d = s.fecha_hora_inicio.toDate();
+                    const dStr = d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
+                    const hStr = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+                    selectSesion.innerHTML += `<option value="${s.id}">${dStr} a las ${hStr} ${textEj}</option>`;
+                }
             });
             selectSesion.disabled = false;
         }
@@ -753,9 +770,17 @@ export async function abrirModalEnviarSesion({
 // ============================================================================
 
 export function obtenerAccionesDisponiblesSesion(sesionRaw = {}) {
-    const d = sesionRaw.fechaObj instanceof Date
-        ? sesionRaw.fechaObj
-        : (sesionRaw.fecha_hora_inicio?.toDate ? sesionRaw.fecha_hora_inicio.toDate() : new Date(sesionRaw.fecha_hora_inicio || Date.now()));
+    const isSinFecha = Boolean(
+        sesionRaw.sin_fecha ||
+        sesionRaw.estado === 'Sin fecha' ||
+        (!sesionRaw.fechaObj && !sesionRaw.fecha_hora_inicio)
+    );
+
+    const d = isSinFecha
+        ? null
+        : (sesionRaw.fechaObj instanceof Date
+            ? sesionRaw.fechaObj
+            : (sesionRaw.fecha_hora_inicio?.toDate ? sesionRaw.fecha_hora_inicio.toDate() : new Date(sesionRaw.fecha_hora_inicio || Date.now())));
 
     const now = new Date();
     const nowNominalUTC = new Date(Date.UTC(
@@ -764,7 +789,9 @@ export function obtenerAccionesDisponiblesSesion(sesionRaw = {}) {
     ));
 
     let estado = 'Pendiente';
-    if (sesionRaw.estado === 'Completada') {
+    if (isSinFecha) {
+        estado = 'Sin fecha';
+    } else if (sesionRaw.estado === 'Completada') {
         estado = 'Completada';
     } else if (d < nowNominalUTC || sesionRaw.estado === 'Vencida') {
         estado = 'Vencida';
@@ -775,19 +802,22 @@ export function obtenerAccionesDisponiblesSesion(sesionRaw = {}) {
     const isSG = tipoSesion === 'Small Group' || tipoSesion === 'SG';
     const ejercicios = Array.isArray(sesionRaw.ejercicios) ? sesionRaw.ejercicios : [];
 
-    const puedeProgramar = !isSG && estado === 'Pendiente';
-    const puedeReprogramar = !isSG && (estado === 'Pendiente' || (estado === 'Vencida' && d >= limiteReprogramar));
+    const puedeProgramar = !isSG && (estado === 'Pendiente' || isSinFecha);
+    const puedeReprogramar = !isSG && (isSinFecha || estado === 'Pendiente' || (estado === 'Vencida' && d >= limiteReprogramar));
+    const puedeCancelarSinFecha = !isSG && !isSinFecha && estado !== 'Completada';
     const puedeEnviar = ejercicios.length > 0;
     const puedeEliminar = true;
 
     return {
         fechaObj: d,
+        sin_fecha: isSinFecha,
         estado,
         isSG,
         tipo_sesion: isSG ? 'Small Group' : 'Individual',
         ejercicios,
         puedeProgramar,
         puedeReprogramar,
+        puedeCancelarSinFecha,
         puedeEnviar,
         puedeEliminar
     };
@@ -796,12 +826,22 @@ export function obtenerAccionesDisponiblesSesion(sesionRaw = {}) {
 export function formatearSesionAgenda(id, data = {}) {
     const info = obtenerAccionesDisponiblesSesion(data);
     const d = info.fechaObj;
+    const isSinFecha = info.sin_fecha;
+    const dAnt = data.fecha_hora_anterior?.toDate ? data.fecha_hora_anterior.toDate() : null;
+
     return {
         id,
+        sin_fecha: isSinFecha,
         fechaObj: d,
-        fechaStr: d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }),
-        diaStr: d.toLocaleDateString('es-ES', { weekday: 'long', timeZone: 'UTC' }).replace(/^\w/, c => c.toUpperCase()),
-        horaStr: d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' - ' + new Date(d.getTime() + 60 * 60000).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
+        fechaStr: isSinFecha
+            ? 'Sin fecha'
+            : d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }),
+        diaStr: isSinFecha
+            ? (dAnt ? `Orig: ${dAnt.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' })}` : 'Sin fecha asignada')
+            : d.toLocaleDateString('es-ES', { weekday: 'long', timeZone: 'UTC' }).replace(/^\w/, c => c.toUpperCase()),
+        horaStr: isSinFecha
+            ? (dAnt ? `Antes: ${dAnt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })}` : 'Pendiente de ubicar')
+            : (d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' - ' + new Date(d.getTime() + 60 * 60000).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })),
         estado: info.estado,
         tipo_sesion: info.tipo_sesion,
         ejercicios: info.ejercicios,
@@ -811,6 +851,62 @@ export function formatearSesionAgenda(id, data = {}) {
         nombre_cliente: data.nombre_cliente || data.Nombre_Cliente || data.alias || data.Alias || 'Sin nombre',
         docData: data
     };
+}
+
+export async function cancelarSesionSinFechaConDeshacer({
+    idSesion,
+    sesionObj = null,
+    undoHistory = null,
+    onSuccess = null
+} = {}) {
+    if (!idSesion) return false;
+
+    try {
+        let backupData = sesionObj?.docData ? { ...sesionObj.docData } : null;
+        if (!backupData) {
+            const snap = await getDoc(doc(db, "agenda_sesiones", idSesion));
+            if (snap.exists()) backupData = snap.data();
+        }
+        if (!backupData) {
+            alert("No se encontró la sesión.");
+            return false;
+        }
+
+        const sesionFmt = sesionObj || formatearSesionAgenda(idSesion, backupData);
+        const autor = localStorage.getItem('gym_user_name') || "Usuario desconocido";
+        const nombreCli = sesionFmt.alias || sesionFmt.nombre_cliente || 'Cliente';
+        const fechaLabel = sesionFmt.sin_fecha ? 'sin fecha' : `${sesionFmt.fechaStr} (${sesionFmt.horaStr.split(' - ')[0]})`;
+
+        const updateData = {
+            sin_fecha: true,
+            fecha_hora_inicio: null,
+            fecha_hora_anterior: backupData.fecha_hora_inicio || backupData.fecha_hora_anterior || null,
+            estado: "Sin fecha",
+            ultimo_modificado_por: autor,
+            fecha_modificacion: new Date()
+        };
+
+        await setDoc(doc(db, "agenda_sesiones", idSesion), updateData, { merge: true });
+
+        if (typeof onSuccess === 'function') {
+            await onSuccess({ idSesion });
+        }
+
+        if (undoHistory) {
+            undoHistory.pushAction({
+                label: `Cancelar sin fecha (${nombreCli} · ${fechaLabel})`,
+                undoOps: [{ type: 'set', collection: 'agenda_sesiones', id: idSesion, data: backupData, merge: false }],
+                redoOps: [{ type: 'set', collection: 'agenda_sesiones', id: idSesion, data: updateData, merge: true }],
+                showToast: true,
+                toastMessage: `📌 Sesión de ${nombreCli} pasada a "Sin fecha"`
+            });
+        }
+        return true;
+    } catch (e) {
+        console.error("Error al cancelar sesión sin fecha:", e);
+        alert("No se pudo cancelar la sesión sin fecha.");
+        return false;
+    }
 }
 
 export async function eliminarSesionConDeshacer({
@@ -829,7 +925,9 @@ export async function eliminarSesionConDeshacer({
             if (snap.exists()) backupData = snap.data();
         }
         const sesionFmt = sesionObj || (backupData ? formatearSesionAgenda(idSesion, backupData) : null);
-        const fechaLabel = sesionFmt ? `${sesionFmt.fechaStr} (${sesionFmt.horaStr.split(' - ')[0]})` : idSesion;
+        const fechaLabel = sesionFmt
+            ? (sesionFmt.sin_fecha ? 'sin fecha' : `${sesionFmt.fechaStr} (${sesionFmt.horaStr.split(' - ')[0]})`)
+            : idSesion;
 
         await deleteDoc(doc(db, "agenda_sesiones", idSesion));
 
@@ -843,7 +941,7 @@ export async function eliminarSesionConDeshacer({
                 undoOps: [{ type: 'set', collection: 'agenda_sesiones', id: idSesion, data: backupData, merge: false }],
                 redoOps: [{ type: 'delete', collection: 'agenda_sesiones', id: idSesion }],
                 showToast: true,
-                toastMessage: `🗑️ Sesión del ${fechaLabel} eliminada`
+                toastMessage: `🗑️ Sesión ${fechaLabel} eliminada`
             });
         }
         return true;
@@ -1018,7 +1116,7 @@ function __renderCalendarioReprog() {
     weekEndUTC.setUTCDate(weekEndUTC.getUTCDate() + numDias);
     weekEndUTC.setUTCHours(0, 0, 0, 0);
 
-    const sesionesSemanaCliente = (__reprogContext.allSessions || []).filter(s => s.fechaObj >= weekStartUTC && s.fechaObj < weekEndUTC);
+    const sesionesSemanaCliente = (__reprogContext.allSessions || []).filter(s => !s.sin_fecha && s.fechaObj && s.fechaObj >= weekStartUTC && s.fechaObj < weekEndUTC);
 
     let eventsHTML = '';
     sesionesSemanaCliente.forEach(s => {
@@ -1098,7 +1196,12 @@ export async function abrirModalReprogramarSesion({
             snap.forEach(docSnap => {
                 listaSesiones.push(formatearSesionAgenda(docSnap.id, docSnap.data()));
             });
-            listaSesiones.sort((a, b) => b.fechaObj - a.fechaObj);
+            listaSesiones.sort((a, b) => {
+                if (a.sin_fecha && !b.sin_fecha) return -1;
+                if (!a.sin_fecha && b.sin_fecha) return 1;
+                if (!a.fechaObj && !b.fechaObj) return 0;
+                return (b.fechaObj || 0) - (a.fechaObj || 0);
+            });
         }
     }
 
@@ -1111,24 +1214,37 @@ export async function abrirModalReprogramarSesion({
     if (!idCliFinal) idCliFinal = s.id_cliente || s.docData?.id_cliente || s.docData?.ID_Cliente || '';
     if (!nombreCliFinal) nombreCliFinal = s.alias || s.docData?.alias || s.docData?.nombre_cliente || 'Cliente';
 
+    const now = new Date();
+    const hoyUTC = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+    const refFechaLunes = (!s.sin_fecha && s.fechaObj) ? s.fechaObj : hoyUTC;
+
     __reprogContext = {
         sourceSessionId: idSesion,
         idCliente: idCliFinal,
         nombreCliente: nombreCliFinal,
         allSessions: listaSesiones,
-        originMonday: __obtenerLunesUTC(s.fechaObj),
-        currentMonday: new Date(__obtenerLunesUTC(s.fechaObj)),
+        originMonday: __obtenerLunesUTC(refFechaLunes),
+        currentMonday: new Date(__obtenerLunesUTC(refFechaLunes)),
         pendingReprogData: null,
         undoHistory,
         onSuccess
     };
 
-    const horaOrigen = s.horaStr.split(' - ')[0];
+    const modalTitleEl = document.querySelector('#modalReprogramar .modal-header h2');
+    if (modalTitleEl) {
+        modalTitleEl.innerText = s.sin_fecha ? 'Asignar Fecha y Hora a Sesión' : 'Reprogramar Sesión';
+    }
+
+    const horaOrigen = s.horaStr ? s.horaStr.split(' - ')[0] : '--:--';
     const numEj = s.ejercicios ? s.ejercicios.length : 0;
     const banner = document.getElementById('reprog-origin-banner');
     if (banner) {
         const clientePrefix = nombreCliFinal ? `<strong>${nombreCliFinal}</strong> · ` : '';
-        banner.innerHTML = `📍 <strong>Sesión a reprogramar:</strong> ${clientePrefix}${s.diaStr} ${s.fechaStr} a las <strong>${horaOrigen}</strong> (${numEj} ejercicio${numEj === 1 ? '' : 's'}) &mdash; Haz clic en cualquier hora del calendario para ubicarla.`;
+        if (s.sin_fecha) {
+            banner.innerHTML = `📌 <strong>Sesión sin fecha a ubicar:</strong> ${clientePrefix}<strong>Sin fecha asignada</strong> (${numEj} ejercicio${numEj === 1 ? '' : 's'}) &mdash; Haz clic en cualquier día y hora del calendario para asignarla.`;
+        } else {
+            banner.innerHTML = `📍 <strong>Sesión a reprogramar:</strong> ${clientePrefix}${s.diaStr} ${s.fechaStr} a las <strong>${horaOrigen}</strong> (${numEj} ejercicio${numEj === 1 ? '' : 's'}) &mdash; Haz clic en cualquier hora del calendario para ubicarla.`;
+        }
     }
 
     document.getElementById('reprog-step-1').style.display = 'block';
@@ -1187,14 +1303,14 @@ export function seleccionarHuecoReprogramar(fechaStr, horaStr) {
     const sourceSession = allSessions.find(x => x.id === idSesion);
     if (!sourceSession) return;
 
-    const sesionesDestino = allSessions.filter(s => s.fechaStr === targetFechaStr && s.id !== idSesion);
+    const sesionesDestino = allSessions.filter(s => !s.sin_fecha && s.fechaStr === targetFechaStr && s.id !== idSesion);
     if (sesionesDestino.some(s => s.estado === 'Completada')) {
         alert("Operación bloqueada: No puedes reprogramar una sesión en un día que ya tiene una sesión completada.");
         return;
     }
 
     const targetSession = sesionesDestino[0] || null;
-    const sessionsToPull = allSessions.filter(s => s.fechaObj > nuevaFechaObj && s.id !== idSesion).sort((a, b) => a.fechaObj - b.fechaObj);
+    const sessionsToPull = allSessions.filter(s => !s.sin_fecha && s.fechaObj && s.fechaObj > nuevaFechaObj && s.id !== idSesion).sort((a, b) => a.fechaObj - b.fechaObj);
     const autor = localStorage.getItem('gym_user_name') || "Usuario desconocido";
 
     __reprogContext.pendingReprogData = { sourceSession, targetSession, sessionsToPull, autor, nuevaFechaObj };
@@ -1202,11 +1318,14 @@ export function seleccionarHuecoReprogramar(fechaStr, horaStr) {
     const diaDestinoNombre = nuevaFechaObj.toLocaleDateString('es-ES', { weekday: 'long', timeZone: 'UTC' }).replace(/^\w/, c => c.toUpperCase());
 
     const step2 = document.getElementById('reprog-step-2');
+    const textoOrigen = sourceSession.sin_fecha
+        ? `Asignar <strong>Sesión sin fecha</strong> al <strong>${diaDestinoNombre} ${targetFechaStr} a las ${horaStr}</strong>.`
+        : `Mover del <strong>${sourceSession.diaStr} ${sourceSession.fechaStr} (${sourceSession.horaStr.split(' - ')[0]})</strong> al <strong>${diaDestinoNombre} ${targetFechaStr} a las ${horaStr}</strong>.`;
+
     let menuHTML = `<div style="background:#fffbeb; border:1px solid #fcd34d; padding:15px; border-radius:8px; margin-bottom:20px;">
         <h4 style="color:#d97706; margin:0 0 6px 0;">Opciones de Planificación</h4>
         <p style="margin:0 0 6px 0; font-size:0.9rem; color:#92400e;">
-            Mover del <strong>${sourceSession.diaStr} ${sourceSession.fechaStr} (${sourceSession.horaStr.split(' - ')[0]})</strong>
-            al <strong>${diaDestinoNombre} ${targetFechaStr} a las ${horaStr}</strong>.
+            ${textoOrigen}
         </p>
         <p style="margin:0; font-size:0.85rem; color:#92400e;">¿Cómo deseas organizar las rutinas de la línea temporal?</p>
     </div>`;
@@ -1245,6 +1364,8 @@ export async function ejecutarSustitucion() {
             const newTargetData = {
                 ejercicios: sourceSession.ejercicios || [],
                 fecha_hora_inicio: nuevaFechaObj,
+                sin_fecha: false,
+                estado: "Pendiente",
                 ultimo_modificado_por: autor, fecha_modificacion: new Date(),
                 utc_migrado: true
             };
@@ -1255,7 +1376,9 @@ export async function ejecutarSustitucion() {
             redoOps.push({ type: 'delete', collection: 'agenda_sesiones', id: sourceSession.id });
         } else {
             const newSourceData = {
-                fecha_hora_inicio: nuevaFechaObj, estado: "Pendiente",
+                fecha_hora_inicio: nuevaFechaObj,
+                sin_fecha: false,
+                estado: "Pendiente",
                 ultimo_modificado_por: autor, fecha_modificacion: new Date(),
                 utc_migrado: true
             };
@@ -1268,11 +1391,11 @@ export async function ejecutarSustitucion() {
 
         if (undoHistory) {
             undoHistory.pushAction({
-                label: `Reprogramar sesión (${sourceSession.fechaStr})`,
+                label: sourceSession.sin_fecha ? `Asignar fecha a sesión` : `Reprogramar sesión (${sourceSession.fechaStr})`,
                 undoOps,
                 redoOps,
                 showToast: true,
-                toastMessage: `📅 Sesión reprogramada`
+                toastMessage: sourceSession.sin_fecha ? `📅 Fecha asignada a la sesión` : `📅 Sesión reprogramada`
             });
         }
     } catch (err) {
@@ -1297,7 +1420,7 @@ export async function ejecutarDesplazamiento() {
 
         if (targetSession) {
             const futureAndTarget = allSessions
-                .filter(s => s.fechaObj >= targetSession.fechaObj && s.id !== sourceSession.id)
+                .filter(s => !s.sin_fecha && s.fechaObj && s.fechaObj >= targetSession.fechaObj && s.id !== sourceSession.id)
                 .sort((a, b) => a.fechaObj - b.fechaObj);
 
             for (let i = 0; i < futureAndTarget.length; i++) {
@@ -1308,7 +1431,7 @@ export async function ejecutarDesplazamiento() {
                     ejercicios: prevExercises,
                     ultimo_modificado_por: autor,
                     fecha_modificacion: new Date(),
-                    ...(s.id === targetSession.id ? { fecha_hora_inicio: nuevaFechaObj, utc_migrado: true } : {})
+                    ...(s.id === targetSession.id ? { fecha_hora_inicio: nuevaFechaObj, sin_fecha: false, estado: "Pendiente", utc_migrado: true } : {})
                 };
                 batch.update(doc(db, "agenda_sesiones", s.id), sUpdate);
                 redoOps.push({ type: 'set', collection: 'agenda_sesiones', id: s.id, data: sUpdate, merge: true });
@@ -1320,11 +1443,12 @@ export async function ejecutarDesplazamiento() {
             redoOps.push({ type: 'delete', collection: 'agenda_sesiones', id: sourceSession.id });
         } else {
             const futureSessions = allSessions
-                .filter(s => s.fechaObj > nuevaFechaObj && s.id !== sourceSession.id)
+                .filter(s => !s.sin_fecha && s.fechaObj && s.fechaObj > nuevaFechaObj && s.id !== sourceSession.id)
                 .sort((a, b) => a.fechaObj - b.fechaObj);
 
             const sourceUpdate = {
                 fecha_hora_inicio: nuevaFechaObj,
+                sin_fecha: false,
                 estado: "Pendiente",
                 ejercicios: futureSessions.length > 0 ? [] : prevExercises,
                 ultimo_modificado_por: autor,
@@ -1366,6 +1490,7 @@ export async function ejecutarDesplazamiento() {
                 alias: aliasCli,
                 nombre_cliente: sourceSession.docData?.nombre_cliente || aliasCli,
                 estado: "Pendiente",
+                sin_fecha: false,
                 tipo_sesion: lastAffectedSession.tipo_sesion || "Individual",
                 fecha_hora_inicio: nuevaFechaExtra,
                 ejercicios: prevExercises,
@@ -1423,7 +1548,9 @@ export async function ejecutarRecogidaCascada() {
         }
 
         const anchorUpdate = {
-            fecha_hora_inicio: nuevaFechaObj, estado: "Pendiente",
+            fecha_hora_inicio: nuevaFechaObj,
+            sin_fecha: false,
+            estado: "Pendiente",
             ultimo_modificado_por: autor, fecha_modificacion: new Date(),
             utc_migrado: true,
             ejercicios: sessionsToPull.length > 0 ? (sessionsToPull[0].ejercicios || []) : []
@@ -1489,7 +1616,13 @@ export function abrirMenuAccionesSesion(event, sesionData, {
     const idCliente = sesionData.idCliente || sFmt.id_cliente || '';
     const nombreCliente = sesionData.nombreCliente || sesionData.nombre || sFmt.alias || sFmt.nombre_cliente || 'Cliente';
     const horaInicio = sFmt.horaStr ? sFmt.horaStr.split(' - ')[0] : '';
-    const pillClass = acciones.estado === 'Completada' ? 'pill-completada' : acciones.estado === 'Vencida' ? 'pill-vencida' : 'pill-pendiente';
+    const pillClass = acciones.estado === 'Completada'
+        ? 'pill-completada'
+        : acciones.estado === 'Vencida'
+            ? 'pill-vencida'
+            : acciones.estado === 'Sin fecha'
+                ? 'pill-sin-fecha'
+                : 'pill-pendiente';
 
     const menu = document.createElement('div');
     menu.id = 'sessionActionMenuPopover';
@@ -1521,10 +1654,20 @@ export function abrirMenuAccionesSesion(event, sesionData, {
     }
 
     if (acciones.puedeReprogramar) {
+        const labelReprog = acciones.sin_fecha ? 'Asignar fecha/hora' : 'Reprogramar fecha/hora';
         itemsHtml += `
-            <button type="button" class="session-action-item" data-action="reprogramar" title="Reprogramar fecha/hora">
-                ${iconCalendar}
-                <span>Reprogramar fecha/hora</span>
+            <button type="button" class="session-action-item" data-action="reprogramar" title="${labelReprog}">
+                ${acciones.sin_fecha ? iconCalendarPlus : iconCalendar}
+                <span>${labelReprog}</span>
+            </button>
+        `;
+    }
+
+    if (acciones.puedeCancelarSinFecha) {
+        itemsHtml += `
+            <button type="button" class="session-action-item warn" data-action="cancelar-sin-fecha" title="Quitar de esta fecha y dejar en Sesiones programadas sin fecha">
+                ${iconCalendarOff}
+                <span>Cancelar sin fecha</span>
             </button>
         `;
     }
@@ -1554,7 +1697,7 @@ export function abrirMenuAccionesSesion(event, sesionData, {
                 <span class="pill ${pillClass}" style="font-size:0.68rem; padding:2px 8px;">${acciones.estado}</span>
             </div>
             <div class="session-action-menu-meta">
-                <span>📅 ${sFmt.fechaStr} · ${horaInicio}</span>
+                <span>${sFmt.sin_fecha ? '📌 Sin fecha asignada' : `📅 ${sFmt.fechaStr} · ${horaInicio}`}</span>
                 <span>${acciones.ejercicios.length} ej.</span>
             </div>
         </div>
@@ -1595,6 +1738,16 @@ export function abrirMenuAccionesSesion(event, sesionData, {
         });
     });
 
+    menu.querySelector('[data-action="cancelar-sin-fecha"]')?.addEventListener('click', async () => {
+        cerrarMenuAccionesSesion();
+        await cancelarSesionSinFechaConDeshacer({
+            idSesion: sFmt.id,
+            sesionObj: sFmt,
+            undoHistory: undoHistoryFinal,
+            onSuccess: onAfterChangeFinal
+        });
+    });
+
     menu.querySelector('[data-action="enviar"]')?.addEventListener('click', async () => {
         cerrarMenuAccionesSesion();
         await abrirModalEnviarSesion({
@@ -1616,6 +1769,430 @@ export function abrirMenuAccionesSesion(event, sesionData, {
         });
     });
 
+}
+
+// =========================================================================
+// 7. MODAL CENTRALIZADO DE ASIGNAR SESIÓN EXISTENTE (SIN FECHA O PENDIENTE)
+// =========================================================================
+
+let __asigContext = {
+    selectedSessionId: null,
+    sessionsLoaded: [],
+    idSesionDestinoPreseleccionada: null,
+    undoHistory: null,
+    onSuccess: null
+};
+
+function __asegurarModalAsignarExistenteDOM() {
+    if (document.getElementById('modalAsignarExistente')) return;
+
+    const modal = document.createElement('div');
+    modal.id = 'modalAsignarExistente';
+    modal.className = 'modal-overlay';
+    modal.style.zIndex = '2250';
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 680px;">
+            <div class="modal-header">
+                <div>
+                    <h2 id="asig_modal_title" style="margin:0; font-size:1.25rem; color:var(--primary);">📌 Asignar Sesión Existente</h2>
+                    <p id="asig_modal_subtitle" style="margin:4px 0 0 0; font-size:0.84rem; color:var(--text-muted);">Selecciona un cliente y elige una de sus sesiones sin fecha (o pendientes) para asignarla al hueco seleccionado.</p>
+                </div>
+                <button type="button" class="btn-close" onclick="window.cerrarModalAsignarExistente()">×</button>
+            </div>
+            <form id="formAsignarExistente">
+                <div class="form-grid" style="margin-bottom: 14px;">
+                    <div class="form-group full" id="asig_cliente_group">
+                        <label>1. Cliente</label>
+                        <input type="hidden" id="asig_cliente" onchange="window.cargarSesionesClienteAsignar(this.value)">
+                        <div class="custom-dropdown" id="dropdownAsigCliente">
+                            <div class="dropdown-trigger" tabindex="0" onclick="window.toggleDropdown('dropdownAsigCliente')">
+                                <span class="label-text" id="label_dropdownAsigCliente">-- Selecciona un cliente --</span>
+                                <span>▼</span>
+                            </div>
+                            <div class="dropdown-panel">
+                                <input type="text" class="dropdown-search" placeholder="🔍 Buscar cliente..." onkeyup="window.filterDropdown('dropdownAsigCliente', this.value)" onclick="event.stopPropagation()">
+                                <div class="dropdown-options" id="options_dropdownAsigCliente">
+                                    <div style="padding:10px; color:#64748b;">Cargando clientes...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>2. Fecha Destino *</label>
+                        <input type="date" id="asig_fecha" required>
+                    </div>
+                    <div class="form-group">
+                        <label>3. Hora Destino *</label>
+                        <select id="asig_hora" required>
+                            <option value="">Cargando horarios...</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:10px; flex-wrap:wrap;">
+                    <label style="font-size:0.78rem; font-weight:800; color:#475569; text-transform:uppercase; margin:0;">4. Elige la sesión a asignar *</label>
+                    <label style="display:inline-flex; align-items:center; gap:6px; font-size:0.8rem; color:#475569; cursor:pointer; font-weight:600; text-transform:none; margin:0;">
+                        <input type="checkbox" id="asig_mostrar_con_fecha" onchange="window.renderizarTarjetasSesionesAsignar()" style="width:auto;">
+                        Mostrar también sesiones que ya tienen fecha
+                    </label>
+                </div>
+
+                <div id="asig_lista_sesiones" style="max-height: 300px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px; background: #f8fafc; margin-bottom: 16px;">
+                    <div style="padding: 20px; text-align: center; color: #64748b; font-size: 0.9rem;">Selecciona primero un cliente para ver sus sesiones disponibles.</div>
+                </div>
+
+                <div style="display:flex; gap:10px; justify-content:flex-end;">
+                    <button type="button" class="btn-secondary" onclick="window.cerrarModalAsignarExistente()">Cancelar</button>
+                    <button type="submit" class="btn-primary" id="btnSubmitAsignarExistente" style="background: var(--accent);">📌 Asignar Sesión al Hueco</button>
+                </div>
+            </form>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    document.getElementById('formAsignarExistente').addEventListener('submit', manejarSubmitAsignarExistente);
+}
+
+export function cerrarModalAsignarExistente() {
+    const modal = document.getElementById('modalAsignarExistente');
+    if (modal) modal.style.display = 'none';
+}
+
+export function seleccionarTarjetaSesionAsignar(idSesion) {
+    __asigContext.selectedSessionId = idSesion;
+    document.querySelectorAll('.asig-session-card').forEach(card => {
+        if (card.dataset.sessionId === idSesion) {
+            card.classList.add('selected');
+        } else {
+            card.classList.remove('selected');
+        }
+    });
+}
+
+export function renderizarTarjetasSesionesAsignar() {
+    const container = document.getElementById('asig_lista_sesiones');
+    if (!container) return;
+
+    const mostrarConFecha = document.getElementById('asig_mostrar_con_fecha')?.checked || false;
+    const all = __asigContext.sessionsLoaded || [];
+    const sinFechaList = all.filter(s => s.sin_fecha);
+    const conFechaList = all.filter(s => !s.sin_fecha && s.estado !== 'Completada' && s.id !== __asigContext.idSesionDestinoPreseleccionada);
+
+    const listToRender = mostrarConFecha ? [...sinFechaList, ...conFechaList] : sinFechaList;
+
+    if (listToRender.length === 0) {
+        if (sinFechaList.length === 0 && conFechaList.length > 0 && !mostrarConFecha) {
+            container.innerHTML = `
+                <div style="padding: 18px; text-align: center; color: #64748b; font-size: 0.88rem;">
+                    Este cliente no tiene sesiones programadas sin fecha.<br>
+                    <button type="button" class="btn-secondary" style="margin-top:8px; padding:6px 12px; font-size:0.8rem;" onclick="document.getElementById('asig_mostrar_con_fecha').checked = true; window.renderizarTarjetasSesionesAsignar();">
+                        Ver sus ${conFechaList.length} sesiones con fecha (${conFechaList.length})
+                    </button>
+                </div>
+            `;
+        } else {
+            container.innerHTML = `
+                <div style="padding: 18px; text-align: center; color: #ef4444; font-size: 0.88rem; font-weight: 600;">
+                    Este cliente no tiene sesiones disponibles para asignar.
+                </div>
+            `;
+        }
+        __asigContext.selectedSessionId = null;
+        return;
+    }
+
+    if (!__asigContext.selectedSessionId || !listToRender.some(s => s.id === __asigContext.selectedSessionId)) {
+        __asigContext.selectedSessionId = listToRender[0].id;
+    }
+
+    container.innerHTML = listToRender.map(s => {
+        const isSelected = s.id === __asigContext.selectedSessionId;
+        const numEj = s.ejercicios ? s.ejercicios.length : 0;
+        const intensidad = s.docData?.intensidad || s.docData?.Intensidad || '';
+        const nombresEj = (s.ejercicios || []).slice(0, 4).map(e => e.nombre || e.Ejercicio || 'Ejercicio').join(', ');
+        const extraEj = numEj > 4 ? ` (+${numEj - 4} más)` : '';
+        const resumenEj = numEj > 0 ? `${nombresEj}${extraEj}` : 'Sesión sin ejercicios programados aún';
+
+        const badgeEstado = s.sin_fecha
+            ? `<span class="pill pill-sin-fecha" style="font-size:0.7rem; padding:2px 8px;">📌 Sin fecha</span>`
+            : `<span class="pill ${s.estado === 'Vencida' ? 'pill-vencida' : 'pill-pendiente'}" style="font-size:0.7rem; padding:2px 8px;">📅 ${s.diaStr} ${s.fechaStr} · ${s.horaStr.split(' - ')[0]}</span>`;
+
+        return `
+            <div class="asig-session-card ${isSelected ? 'selected' : ''}" data-session-id="${s.id}" onclick="window.seleccionarTarjetaSesionAsignar('${s.id}')">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px;">
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        ${badgeEstado}
+                        <span style="font-weight:800; color:#0f172a; font-size:0.85rem;">${numEj} ejercicio${numEj === 1 ? '' : 's'}</span>
+                        ${intensidad ? `<span style="font-size:0.72rem; font-weight:700; color:#475569; background:#e2e8f0; padding:1px 6px; border-radius:4px;">Int: ${intensidad}</span>` : ''}
+                    </div>
+                    <span style="font-size:0.74rem; color:#64748b; font-weight:600;">${s.tipo_sesion || 'Individual'}</span>
+                </div>
+                <div style="font-size:0.8rem; color:#475569; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                    🏋️ ${resumenEj}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+export async function cargarSesionesClienteAsignar(idCli) {
+    const container = document.getElementById('asig_lista_sesiones');
+    if (!container) return;
+
+    if (!idCli) {
+        __asigContext.sessionsLoaded = [];
+        __asigContext.selectedSessionId = null;
+        container.innerHTML = `<div style="padding: 20px; text-align: center; color: #64748b; font-size: 0.9rem;">Selecciona primero un cliente para ver sus sesiones disponibles.</div>`;
+        return;
+    }
+
+    container.innerHTML = `<div style="padding: 20px; text-align: center; color: #64748b; font-size: 0.9rem;">⏳ Buscando sesiones del cliente...</div>`;
+
+    try {
+        const q = query(collection(db, "agenda_sesiones"), where("id_cliente", "==", idCli));
+        const snap = await getDocs(q);
+        const sessions = [];
+        snap.forEach(docSnap => {
+            sessions.push(formatearSesionAgenda(docSnap.id, docSnap.data()));
+        });
+
+        sessions.sort((a, b) => {
+            if (a.sin_fecha && !b.sin_fecha) return -1;
+            if (!a.sin_fecha && b.sin_fecha) return 1;
+            if (!a.fechaObj && !b.fechaObj) return 0;
+            return (b.fechaObj || 0) - (a.fechaObj || 0);
+        });
+
+        __asigContext.sessionsLoaded = sessions;
+        __asigContext.selectedSessionId = null;
+        renderizarTarjetasSesionesAsignar();
+    } catch (error) {
+        console.error("Error cargando sesiones para asignar:", error);
+        container.innerHTML = `<div style="padding: 18px; text-align: center; color: #ef4444;">Error al cargar sesiones.</div>`;
+    }
+}
+
+export async function abrirModalAsignarSesionExistente({
+    fechaPreseleccionada = '',
+    horaPreseleccionada = '',
+    idClientePreseleccionado = '',
+    nombreClientePreseleccionado = '',
+    idSesionDestinoPreseleccionada = null,
+    undoHistory = null,
+    onSuccess = null
+} = {}) {
+    __asegurarModalAsignarExistenteDOM();
+    await __asegurarMaestrosCalendarioReprog();
+
+    __asigContext = {
+        selectedSessionId: null,
+        sessionsLoaded: [],
+        idSesionDestinoPreseleccionada: idSesionDestinoPreseleccionada || null,
+        undoHistory,
+        onSuccess
+    };
+
+    const chkMostrarConFecha = document.getElementById('asig_mostrar_con_fecha');
+    if (chkMostrarConFecha) chkMostrarConFecha.checked = false;
+
+    // Rellenar selector de horas desde el maestro de Agenda
+    const selectHora = document.getElementById('asig_hora');
+    if (selectHora) {
+        const horasDisp = (__reprogHorasExito && __reprogHorasExito.length > 0)
+            ? __reprogHorasExito
+            : ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "16:00", "17:00", "18:00", "19:00", "20:00"];
+        selectHora.innerHTML = `<option value="">-- Selecciona hora --</option>` +
+            horasDisp.map(h => `<option value="${h}">${h}</option>`).join('');
+        if (horaPreseleccionada && horasDisp.includes(horaPreseleccionada)) {
+            selectHora.value = horaPreseleccionada;
+        } else if (horaPreseleccionada) {
+            selectHora.innerHTML += `<option value="${horaPreseleccionada}">${horaPreseleccionada}</option>`;
+            selectHora.value = horaPreseleccionada;
+        }
+    }
+
+    const inputFecha = document.getElementById('asig_fecha');
+    if (inputFecha) {
+        if (fechaPreseleccionada) {
+            inputFecha.value = fechaPreseleccionada;
+        } else {
+            const now = new Date();
+            const yyyy = now.getFullYear();
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const dd = String(now.getDate()).padStart(2, '0');
+            inputFecha.value = `${yyyy}-${mm}-${dd}`;
+        }
+    }
+
+    // Cargar clientes y contar cuántas sesiones sin fecha tiene cada uno para facilitar la selección
+    if (!__enviarCacheClientes) {
+        const snapCli = await getDocs(collection(db, "clientes"));
+        const tempCli = [];
+        snapCli.forEach(d => {
+            const data = d.data();
+            const code = data.id_cliente || data.ID_Cliente || d.id;
+            const alias = data.alias || data.Alias || data.nombre_completo || data.Nombre_Completo || code;
+            const estado = (data.estado || data.Estado || '').toLowerCase();
+            if (estado !== 'baja' && estado !== 'inactivo') {
+                tempCli.push({ id: code, label: alias });
+            }
+        });
+        tempCli.sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }));
+        __enviarCacheClientes = tempCli;
+    }
+
+    // Consultar sesiones sin_fecha globales para mostrar badge junto al cliente
+    const conteoSinFechaPorCliente = {};
+    try {
+        const qSinFecha = query(collection(db, "agenda_sesiones"), where("sin_fecha", "==", true));
+        const snapSinFecha = await getDocs(qSinFecha);
+        snapSinFecha.forEach(d => {
+            const data = d.data();
+            const cId = data.id_cliente || data.ID_Cliente;
+            if (cId) conteoSinFechaPorCliente[cId] = (conteoSinFechaPorCliente[cId] || 0) + 1;
+        });
+    } catch (e) {
+        console.warn("No se pudo pre-contar sesiones sin fecha:", e);
+    }
+
+    const opcionesClientes = __enviarCacheClientes.map(c => {
+        const count = conteoSinFechaPorCliente[c.id] || 0;
+        return {
+            id: c.id,
+            label: count > 0 ? `📌 ${c.label} (${count} sin fecha)` : c.label,
+            _count: count,
+            _rawLabel: c.label
+        };
+    }).sort((a, b) => {
+        if (b._count !== a._count) return b._count - a._count;
+        return a._rawLabel.localeCompare(b._rawLabel, 'es', { sensitivity: 'base' });
+    });
+
+    renderizarOpcionesDropdown('dropdownAsigCliente', opcionesClientes, 'asig_cliente', false);
+
+    if (idClientePreseleccionado) {
+        const foundCli = opcionesClientes.find(c => c.id === idClientePreseleccionado);
+        const labelMostrar = foundCli ? foundCli.label : (nombreClientePreseleccionado || idClientePreseleccionado);
+        selectSingleOption('dropdownAsigCliente', idClientePreseleccionado, labelMostrar, 'asig_cliente');
+    } else {
+        document.getElementById('asig_cliente').value = '';
+        const lbl = document.getElementById('label_dropdownAsigCliente');
+        if (lbl) lbl.innerText = '-- Selecciona un cliente --';
+        await cargarSesionesClienteAsignar('');
+    }
+
+    document.getElementById('modalAsignarExistente').style.display = 'flex';
+}
+
+async function manejarSubmitAsignarExistente(e) {
+    e.preventDefault();
+    const idCliente = document.getElementById('asig_cliente')?.value;
+    const fechaStr = document.getElementById('asig_fecha')?.value;
+    const horaStr = document.getElementById('asig_hora')?.value;
+    const idSesionOrigen = __asigContext.selectedSessionId;
+
+    if (!idCliente) {
+        alert("Por favor, selecciona un cliente.");
+        return;
+    }
+    if (!fechaStr || !horaStr) {
+        alert("Por favor, indica la fecha y hora de destino.");
+        return;
+    }
+    if (!idSesionOrigen) {
+        alert("Por favor, selecciona una sesión de la lista para asignarla.");
+        return;
+    }
+
+    const sesionElegida = (__asigContext.sessionsLoaded || []).find(s => s.id === idSesionOrigen);
+    if (!sesionElegida) {
+        alert("No se encontró la sesión seleccionada.");
+        return;
+    }
+
+    const [y, m, d] = fechaStr.split('-');
+    const [h, min] = horaStr.split(':');
+    const nuevaFechaObj = new Date(Date.UTC(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10), parseInt(h, 10), parseInt(min, 10), 0));
+    const autor = localStorage.getItem('gym_user_name') || "Usuario desconocido";
+
+    const btn = document.getElementById('btnSubmitAsignarExistente');
+    const originalText = btn ? btn.innerText : '📌 Asignar Sesión al Hueco';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerText = '⏳ Asignando...';
+    }
+
+    try {
+        const undoOps = [];
+        const redoOps = [];
+
+        // Comprobar si hay una sesión destino preseleccionada (ej. al clicar "Asignar sesión existente" sobre una fila de la ficha)
+        const idDestino = __asigContext.idSesionDestinoPreseleccionada;
+        const sesionDestino = idDestino
+            ? (__asigContext.sessionsLoaded || []).find(s => s.id === idDestino && s.id !== sesionElegida.id)
+            : null;
+
+        if (sesionDestino) {
+            undoOps.push({ type: 'set', collection: 'agenda_sesiones', id: sesionDestino.id, data: sesionDestino.docData, merge: false });
+            undoOps.push({ type: 'set', collection: 'agenda_sesiones', id: sesionElegida.id, data: sesionElegida.docData, merge: false });
+
+            const updatedTargetData = {
+                fecha_hora_inicio: nuevaFechaObj,
+                sin_fecha: false,
+                estado: "Pendiente",
+                ejercicios: sesionElegida.ejercicios || [],
+                intensidad: sesionElegida.docData?.intensidad || sesionElegida.docData?.Intensidad || sesionDestino.docData?.intensidad || 'MED',
+                ultimo_modificado_por: autor,
+                fecha_modificacion: new Date(),
+                utc_migrado: true
+            };
+
+            await setDoc(doc(db, "agenda_sesiones", sesionDestino.id), updatedTargetData, { merge: true });
+            await deleteDoc(doc(db, "agenda_sesiones", sesionElegida.id));
+
+            redoOps.push({ type: 'set', collection: 'agenda_sesiones', id: sesionDestino.id, data: updatedTargetData, merge: true });
+            redoOps.push({ type: 'delete', collection: 'agenda_sesiones', id: sesionElegida.id });
+        } else {
+            undoOps.push({ type: 'set', collection: 'agenda_sesiones', id: sesionElegida.id, data: sesionElegida.docData, merge: false });
+
+            const updatedSourceData = {
+                fecha_hora_inicio: nuevaFechaObj,
+                sin_fecha: false,
+                estado: "Pendiente",
+                ultimo_modificado_por: autor,
+                fecha_modificacion: new Date(),
+                utc_migrado: true
+            };
+
+            await setDoc(doc(db, "agenda_sesiones", sesionElegida.id), updatedSourceData, { merge: true });
+            redoOps.push({ type: 'set', collection: 'agenda_sesiones', id: sesionElegida.id, data: updatedSourceData, merge: true });
+        }
+
+        cerrarModalAsignarExistente();
+        if (typeof __asigContext.onSuccess === 'function') {
+            await __asigContext.onSuccess();
+        }
+
+        if (__asigContext.undoHistory) {
+            __asigContext.undoHistory.pushAction({
+                label: `Asignar sesión existente (${d}/${m}/${y} ${horaStr})`,
+                undoOps,
+                redoOps,
+                showToast: true,
+                toastMessage: `📌 Sesión asignada al ${d}/${m}/${y} a las ${horaStr}`
+            });
+        } else {
+            alert(`✅ Sesión asignada correctamente al ${d}/${m}/${y} a las ${horaStr}.`);
+        }
+    } catch (error) {
+        console.error("Error asignando sesión existente:", error);
+        alert("Hubo un error al asignar la sesión.");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = originalText;
+        }
+    }
 }
 
 // Exponer funciones en window para atributos onclick/oninput/onkeyup del HTML y cerrar al hacer clic fuera
@@ -1646,6 +2223,12 @@ if (typeof window !== 'undefined') {
     window.abrirMenuAccionesSesion = abrirMenuAccionesSesion;
     window.cerrarMenuAccionesSesion = cerrarMenuAccionesSesion;
     window.eliminarSesionConDeshacer = eliminarSesionConDeshacer;
+    window.cancelarSesionSinFechaConDeshacer = cancelarSesionSinFechaConDeshacer;
+    window.abrirModalAsignarSesionExistente = abrirModalAsignarSesionExistente;
+    window.cerrarModalAsignarExistente = cerrarModalAsignarExistente;
+    window.cargarSesionesClienteAsignar = cargarSesionesClienteAsignar;
+    window.seleccionarTarjetaSesionAsignar = seleccionarTarjetaSesionAsignar;
+    window.renderizarTarjetasSesionesAsignar = renderizarTarjetasSesionesAsignar;
 
     // Alias de compatibilidad para selectores de clientes
     window.toggleClienteDropdown = toggleDropdown;

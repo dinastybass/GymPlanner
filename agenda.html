@@ -593,12 +593,46 @@
         </div>
     </div>
 
+    <!-- MODAL SELECTOR: CREAR NUEVA SESIÓN O ASIGNAR SESIÓN EXISTENTE -->
+    <div class="modal-overlay" id="modalTipoGenerarSesion" style="zIndex: 2100;">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header">
+                <div>
+                    <h2 style="margin:0; font-size:1.25rem; color:var(--primary);">📅 Generar / Ubicación de Sesión</h2>
+                    <p id="subtituloEleccionSesion" style="margin:4px 0 0 0; font-size:0.85rem; color:var(--text-muted);">¿Qué acción deseas realizar en la agenda?</p>
+                </div>
+                <button type="button" class="btn-close" onclick="window.cerrarModalTipoGenerarSesion()">×</button>
+            </div>
+            <div style="padding-top: 6px;">
+                <button type="button" class="choice-action-card" onclick="window.confirmarCrearNuevaSesion()">
+                    <div class="choice-icon" style="background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe;">➕</div>
+                    <div>
+                        <div style="font-weight: 800; font-size: 0.98rem; color: var(--primary); margin-bottom: 3px;">Crear nueva sesión</div>
+                        <div style="font-size: 0.83rem; color: var(--text-muted); line-height: 1.4;">Abre el planificador habitual para generar nuevas citas individuales o de Small Group.</div>
+                    </div>
+                </button>
+
+                <button type="button" class="choice-action-card" onclick="window.confirmarAsignarSesionExistente()">
+                    <div class="choice-icon" style="background: #fffbeb; color: #d97706; border: 1px solid #fde68a;">📌</div>
+                    <div>
+                        <div style="font-weight: 800; font-size: 0.98rem; color: var(--primary); margin-bottom: 3px;">Asignar sesión existente</div>
+                        <div style="font-size: 0.83rem; color: var(--text-muted); line-height: 1.4;">Selecciona un cliente y asigna una de sus sesiones programadas sin fecha (o pendientes) a este hueco.</div>
+                    </div>
+                </button>
+
+                <div style="display:flex; justify-content:flex-end; margin-top: 8px;">
+                    <button type="button" class="btn-secondary" onclick="window.cerrarModalTipoGenerarSesion()">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script type="module">
         import { auth, db } from './firebase-config.js';
         import { collection, query, where, getDocs, doc, setDoc, addDoc, writeBatch } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
         import { getValoresMaestro } from './js/maestros-service.js';
-        import { normalizarTexto, getChevronSVG as getChevronSVGUtil, renderizarOpcionesDropdown, clearDropdown, abrirMenuAccionesSesion, formatearSesionAgenda } from './js/utils.js';
+        import { normalizarTexto, getChevronSVG as getChevronSVGUtil, renderizarOpcionesDropdown, clearDropdown, abrirMenuAccionesSesion, formatearSesionAgenda, abrirModalAsignarSesionExistente } from './js/utils.js';
         import { crearHistorialUndo } from './js/undo-service.js';
 
         window.actualizarCalculo = () => { };
@@ -1108,7 +1142,14 @@
             pendingCreationData = null;
         };
 
-        window.abrirModalPlanificar = () => {
+        let __contextoEleccionSlot = null;
+
+        window.cerrarModalTipoGenerarSesion = () => {
+            const m = document.getElementById('modalTipoGenerarSesion');
+            if (m) m.style.display = 'none';
+        };
+
+        window.abrirModalPlanificarDirecto = () => {
             inicializarSelectoresGlobales();
             if (timeSlots.includes('17:00')) document.getElementById('plan_hora_inicio').value = '17:00';
             window.actualizarHoraFin();
@@ -1125,7 +1166,7 @@
             document.getElementById('modalPlanificar').style.display = 'flex';
         };
 
-        window.prepararModalAgendar = (dateStrID, timeKey, tipoPlan = 'Individual') => {
+        window.prepararModalAgendarDirecto = (dateStrID, timeKey, tipoPlan = 'Individual') => {
             inicializarSelectoresGlobales();
             const [y, m, d] = dateStrID.split('-');
             const dateObj = new Date(Date.UTC(parseInt(y), parseInt(m) - 1, parseInt(d)));
@@ -1161,6 +1202,46 @@
 
             window.actualizarCalculo();
             document.getElementById('modalPlanificar').style.display = 'flex';
+        };
+
+        window.abrirModalPlanificar = () => {
+            __contextoEleccionSlot = { modo: 'general', dateStrID: '', timeKey: '', tipoPlan: 'Individual' };
+            const sub = document.getElementById('subtituloEleccionSesion');
+            if (sub) sub.innerText = '¿Deseas crear una nueva planificación o asignar una sesión existente a una fecha?';
+            document.getElementById('modalTipoGenerarSesion').style.display = 'flex';
+        };
+
+        window.prepararModalAgendar = (dateStrID, timeKey, tipoPlan = 'Individual') => {
+            __contextoEleccionSlot = { modo: 'slot', dateStrID, timeKey, tipoPlan };
+            const [y, m, d] = dateStrID.split('-');
+            const sub = document.getElementById('subtituloEleccionSesion');
+            if (sub) sub.innerText = `Hueco seleccionado: ${d}/${m}/${y} a las ${timeKey} (${tipoPlan})`;
+            document.getElementById('modalTipoGenerarSesion').style.display = 'flex';
+        };
+
+        window.confirmarCrearNuevaSesion = () => {
+            window.cerrarModalTipoGenerarSesion();
+            if (__contextoEleccionSlot && __contextoEleccionSlot.modo === 'slot') {
+                window.prepararModalAgendarDirecto(
+                    __contextoEleccionSlot.dateStrID,
+                    __contextoEleccionSlot.timeKey,
+                    __contextoEleccionSlot.tipoPlan
+                );
+            } else {
+                window.abrirModalPlanificarDirecto();
+            }
+        };
+
+        window.confirmarAsignarSesionExistente = async () => {
+            window.cerrarModalTipoGenerarSesion();
+            await abrirModalAsignarSesionExistente({
+                fechaPreseleccionada: __contextoEleccionSlot?.dateStrID || '',
+                horaPreseleccionada: __contextoEleccionSlot?.timeKey || '',
+                undoHistory,
+                onSuccess: async () => {
+                    await loadAgenda();
+                }
+            });
         };
 
         window.cerrarModalPlanificar = () => {

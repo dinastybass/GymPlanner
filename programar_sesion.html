@@ -496,9 +496,10 @@
                     await setDoc(doc(db, "agenda_sesiones", sessionId), { orden_customizado: true, ejercicios: ejerciciosSesion }, { merge: true });
                 }
 
-                const d = sessionData.fecha_hora_inicio.toDate();
-                const dStr = d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
-                const hStr = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+                const isSinFecha = Boolean(sessionData.sin_fecha || sessionData.estado === 'Sin fecha' || !sessionData.fecha_hora_inicio || !sessionData.fecha_hora_inicio.toDate);
+                const d = isSinFecha ? null : sessionData.fecha_hora_inicio.toDate();
+                const dStr = d ? d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }) : 'Sin fecha asignada';
+                const hStr = d ? d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) : '';
 
                 const isSG = (sessionData.tipo_sesion === 'Small Group' || sessionData.Tipo === 'SG');
                 const tituloHeader = isSG ? "Small Group" : (sessionData.alias || sessionData.nombre_cliente || 'Desconocido');
@@ -520,8 +521,8 @@
                 } else {
                     document.getElementById('ui-client-name').innerText = `Programar: ${tituloHeader}`;
                 }
-                document.getElementById('ui-session-meta').innerText = `Fecha: ${dStr} a las ${hStr}`;
-                document.getElementById('modal-meta-text').innerText = `Fecha: ${dStr}`;
+                document.getElementById('ui-session-meta').innerText = isSinFecha ? `📌 Sesión programada sin fecha asignada` : `Fecha: ${dStr} a las ${hStr}`;
+                document.getElementById('modal-meta-text').innerText = isSinFecha ? `📌 Sin fecha asignada` : `Fecha: ${dStr}`;
                 document.getElementById('ui-programado-por').innerText = `Última edición por: ${sessionData.programado_por || 'Sin registrar'}`;
 
                 const elEntrenador = document.getElementById('ui-entrenador-asignado');
@@ -1212,6 +1213,7 @@
                 ejercicios: ejerciciosSesion,
                 tipoSesionDefecto: sessionData.tipo_sesion || null,
                 intensidadDefecto: intensidadSesionActual || sessionData.intensidad || sessionData.Intensidad || 'MED',
+
                 undoHistory,
                 onSuccess: ({ modo }) => {
                     if (modo === 'plantilla') {

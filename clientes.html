@@ -120,6 +120,110 @@
         .client-row:hover {
             background-color: var(--hover-bg);
         }
+
+        /* Estilos Ficha Profesional de Alta de Cliente */
+        .alta-modal-content {
+            max-width: 780px;
+            width: 94%;
+            padding: 28px 32px;
+        }
+
+        .alta-header-bar {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 15px;
+            padding-bottom: 18px;
+            margin-bottom: 22px;
+            border-bottom: 1px solid var(--border);
+            padding-right: 28px;
+            flex-wrap: wrap;
+        }
+
+        .alta-header-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .alta-header-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            background: #e0f2fe;
+            color: var(--accent-dark);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            flex-shrink: 0;
+        }
+
+        .alta-code-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #f1f5f9;
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 0.82rem;
+            font-weight: 700;
+            font-family: monospace;
+        }
+
+        .alta-section-card {
+            background: #f8fafc;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 18px 20px;
+            margin-bottom: 18px;
+        }
+
+        .alta-section-card.warning-section {
+            background: #fffbeb;
+            border-color: #fde68a;
+        }
+
+        .alta-section-title {
+            margin: 0 0 14px 0;
+            font-size: 0.92rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            color: var(--accent-dark);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 8px;
+        }
+
+        .alta-section-card.warning-section .alta-section-title {
+            color: #b45309;
+            border-bottom-color: #fde68a;
+        }
+
+        textarea.warning-input {
+            background: #ffffff;
+            border: 1px solid #fcd34d;
+            color: #92400e;
+            font-size: 0.92rem;
+            font-family: inherit;
+            padding: 10px 12px;
+            border-radius: 8px;
+            min-height: 76px;
+            resize: vertical;
+            width: 100%;
+            box-sizing: border-box;
+            outline: none;
+        }
+
+        textarea.warning-input:focus {
+            border-color: #d97706;
+            box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.12);
+        }
     </style>
 </head>
 
@@ -156,37 +260,127 @@
         <div id="clientesContainer"></div>
     </div>
 
-    <!-- MODAL ALTA RÁPIDA DE CLIENTE -->
+    <!-- MODAL FICHA PROFESIONAL DE ALTA DE CLIENTE -->
     <div class="modal-overlay" id="modalAlta">
-        <div class="modal-content">
-            <button class="modal-close" onclick="cerrarModalAlta()">&times;</button>
-            <h2 style="margin:0 0 20px 0;">Alta rápida de Cliente</h2>
+        <div class="modal-content alta-modal-content">
+            <button class="modal-close" type="button" onclick="cerrarModalAlta()">&times;</button>
+
+            <div class="alta-header-bar">
+                <div class="alta-header-title">
+                    <div class="alta-header-icon">👤</div>
+                    <div>
+                        <h2 style="margin: 0 0 4px 0; font-size: 1.45rem;">Ficha de Alta de Cliente</h2>
+                        <p style="margin: 0; color: var(--text-muted); font-size: 0.88rem;">Completa la información personal, deportiva y de salud del nuevo cliente.</p>
+                    </div>
+                </div>
+                <div>
+                    <span class="alta-code-badge" title="Código identificativo único generado automáticamente">
+                        <span>🆔</span> <span id="alta_codigo_badge">CLI-000000</span>
+                    </span>
+                    <input type="hidden" id="alta_codigo">
+                </div>
+            </div>
+
             <form id="formAltaCliente">
-                <div class="form-group">
-                    <label>Nombre Completo *</label>
-                    <input type="text" id="alta_nombre" required>
+                <!-- 1. DATOS PERSONALES Y ASIGNACIÓN -->
+                <div class="alta-section-card">
+                    <h4 class="alta-section-title"><span>📋</span> Datos Personales y Asignación</h4>
+                    <div class="form-grid" style="margin-bottom: 0;">
+                        <div class="form-group">
+                            <label for="alta_nombre">Nombre Completo *</label>
+                            <input type="text" id="alta_nombre" class="form-control" placeholder="Ej. Ana Pérez Gómez" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="alta_alias">Alias (Nombre en Agenda / Sala)</label>
+                            <input type="text" id="alta_alias" class="form-control" placeholder="Ej. Ana P. (si se omite usa el nombre)">
+                        </div>
+                        <div class="form-group">
+                            <label for="alta_estado">Estado Inicial</label>
+                            <select id="alta_estado" class="form-control">
+                                <option value="Activo">Activo</option>
+                                <option value="En pausa">En pausa</option>
+                                <option value="De baja">De baja</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="alta_tipo">Tipo de Cliente / Modalidad</label>
+                            <select id="alta_tipo" class="form-control">
+                                <option value="">Sin asignar</option>
+                            </select>
+                        </div>
+                        <div class="form-group full">
+                            <label for="alta_programador">Programador / Entrenador Asignado</label>
+                            <select id="alta_programador" class="form-control">
+                                <option value="">Sin asignar</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>Alias (Opcional)</label>
-                    <input type="text" id="alta_alias" placeholder="Ej. Ana P.">
+
+                <!-- 2. SERVICIO GO & KIDS -->
+                <div class="alta-section-card">
+                    <h4 class="alta-section-title"><span>🧒</span> Servicio Go &amp; Kids</h4>
+                    <div class="form-grid" style="margin-bottom: 0;">
+                        <div class="form-group">
+                            <label for="alta_usa_kids">Usa Go &amp; Kids (SI/NO)</label>
+                            <select id="alta_usa_kids" class="form-control" onchange="window.toggleAltaKidsFields()">
+                                <option value="NO">NO</option>
+                                <option value="SI">SI</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="alta_num_kids">Nº Niños Contratados</label>
+                            <input type="number" id="alta_num_kids" class="form-control" min="0" value="0">
+                        </div>
+                        <div class="form-group full">
+                            <label for="alta_nom_kids">Nombres de los Niños Registrados</label>
+                            <input type="text" id="alta_nom_kids" class="form-control" placeholder="Ej. Lucas (6 años), Martina (9 años)...">
+                        </div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>Tipo de Cliente</label>
-                    <select id="alta_tipo" class="form-control">
-                        <option value="">Sin asignar</option>
-                    </select>
+
+                <!-- 3. OBJETIVOS Y SEGUIMIENTO -->
+                <div class="alta-section-card">
+                    <h4 class="alta-section-title"><span>🎯</span> Objetivos y Seguimiento</h4>
+                    <div class="form-grid" style="margin-bottom: 0;">
+                        <div class="form-group full">
+                            <label for="alta_obj_global">Objetivo Global</label>
+                            <textarea id="alta_obj_global" class="form-control" placeholder="Ej. Pérdida de grasa, ganancia de fuerza general, readaptación..."></textarea>
+                        </div>
+                        <div class="form-group full">
+                            <label for="alta_obj_esp">Objetivo Específico</label>
+                            <textarea id="alta_obj_esp" class="form-control" placeholder="Ej. Mejorar control lumbopélvico, preparar carrera 10K, fortalecer tren inferior..."></textarea>
+                        </div>
+                        <div class="form-group full">
+                            <label for="alta_obs_post">Observaciones Posteriores / Preferencias</label>
+                            <textarea id="alta_obs_post" class="form-control" placeholder="Anotaciones de seguimiento, disponibilidad horaria, preferencias de entrenamiento..."></textarea>
+                        </div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>Programador / Entrenador asignado</label>
-                    <select id="alta_programador" class="form-control">
-                        <option value="">Sin asignar</option>
-                    </select>
+
+                <!-- 4. SALUD, PATOLOGÍAS Y VALORACIÓN FÍSICA (VAF) -->
+                <div class="alta-section-card warning-section">
+                    <h4 class="alta-section-title">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.2">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                            <line x1="12" y1="9" x2="12" y2="13"></line>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                        Salud, Precauciones y Valoración Física (VAF)
+                    </h4>
+                    <div class="form-grid" style="margin-bottom: 0;">
+                        <div class="form-group full">
+                            <label for="alta_lesiones" style="color: #b45309; font-weight: 700;">Patología / Lesiones Previas y Precauciones</label>
+                            <textarea id="alta_lesiones" class="warning-input" placeholder="Describe patologías, cirugías previas, molestias articulares o ejercicios contraindicados..."></textarea>
+                        </div>
+                        <div class="form-group full">
+                            <label for="alta_vaf">Observaciones VAF / Valoración Física Inicial</label>
+                            <textarea id="alta_vaf" class="form-control" style="background: #ffffff;" placeholder="Resultados de movilidad, asimetrías, test de fuerza inicial o comentarios de la valoración..."></textarea>
+                        </div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>ID Cliente (Código automático)</label>
-                    <input type="text" id="alta_codigo" readonly style="background:#e5e7eb; cursor:not-allowed;">
-                </div>
-                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 25px;">
+
+                <div class="modal-footer" style="margin-top: 22px; flex-wrap: wrap;">
                     <button type="button" class="btn-secondary" onclick="cerrarModalAlta()">Cancelar</button>
                     <button type="submit" class="btn-primary" id="btnGuardarAlta">Guardar Cliente</button>
                 </div>
@@ -246,8 +440,9 @@
                     '<option value="Sin asignar">Sin asignar</option>';
             }
 
-            // Poblar select del modal de alta rápida
+            // Poblar selects del modal de alta profesional
             await Promise.all([
+                poblarSelect('alta_estado', 'Clientes', 'Estado', null, 'Activo'),
                 poblarSelect('alta_tipo', 'Clientes', 'Tipo de Cliente', 'Sin asignar'),
                 poblarSelectProgramadores('alta_programador', 'Sin asignar', 'Maite')
             ]);
@@ -447,24 +642,61 @@
             renderUI();
         };
 
+        window.toggleAltaKidsFields = () => {
+            const usaKids = document.getElementById('alta_usa_kids')?.value === 'SI';
+            const numInp = document.getElementById('alta_num_kids');
+            const nomInp = document.getElementById('alta_nom_kids');
+            if (numInp) {
+                numInp.disabled = !usaKids;
+                if (!usaKids) numInp.value = '0';
+                else if (!numInp.value || numInp.value === '0') numInp.value = '1';
+            }
+            if (nomInp) {
+                nomInp.disabled = !usaKids;
+                if (!usaKids) nomInp.value = '';
+            }
+        };
+
         window.abrirModalAlta = () => {
             document.getElementById('formAltaCliente').reset();
+            const selEstado = document.getElementById('alta_estado');
+            if (selEstado && selEstado.querySelector('option[value="Activo"]')) selEstado.value = 'Activo';
             const selProg = document.getElementById('alta_programador');
             if (selProg && selProg.querySelector('option[value="Maite"]')) selProg.value = 'Maite';
-            document.getElementById('alta_codigo').value = `CLI-${Date.now().toString().slice(-6)}`;
+            const selKids = document.getElementById('alta_usa_kids');
+            if (selKids) selKids.value = 'NO';
+            window.toggleAltaKidsFields();
+
+            const nuevoCodigo = `CLI-${Date.now().toString().slice(-6)}`;
+            document.getElementById('alta_codigo').value = nuevoCodigo;
+            const badge = document.getElementById('alta_codigo_badge');
+            if (badge) badge.innerText = nuevoCodigo;
+
             document.getElementById('modalAlta').style.display = 'flex';
-        }
-        window.cerrarModalAlta = () => { document.getElementById('modalAlta').style.display = 'none'; }
+            setTimeout(() => document.getElementById('alta_nombre')?.focus(), 50);
+        };
+        window.cerrarModalAlta = () => { document.getElementById('modalAlta').style.display = 'none'; };
 
         document.getElementById('formAltaCliente').addEventListener('submit', async (e) => {
             e.preventDefault();
-            document.getElementById('btnGuardarAlta').innerText = "Guardando...";
+            const btnGuardar = document.getElementById('btnGuardarAlta');
+            if (btnGuardar) { btnGuardar.disabled = true; btnGuardar.innerText = "Guardando..."; }
 
-            const idGenerado = document.getElementById('alta_codigo').value;
-            const nombre = document.getElementById('alta_nombre').value;
-            const alias = document.getElementById('alta_alias').value || nombre.split(' ')[0];
+            const idGenerado = document.getElementById('alta_codigo').value || `CLI-${Date.now().toString().slice(-6)}`;
+            const nombre = document.getElementById('alta_nombre').value.trim();
+            const aliasRaw = document.getElementById('alta_alias').value.trim();
+            const alias = aliasRaw || nombre.split(' ')[0];
+            const estadoCliente = document.getElementById('alta_estado')?.value || "Activo";
             const tipoCliente = document.getElementById('alta_tipo') ? document.getElementById('alta_tipo').value : "";
             const programadorCliente = document.getElementById('alta_programador') ? document.getElementById('alta_programador').value : "Maite";
+            const usaKids = document.getElementById('alta_usa_kids')?.value || "NO";
+            const numKids = usaKids === 'SI' ? (document.getElementById('alta_num_kids')?.value || "0") : "0";
+            const nomKids = usaKids === 'SI' ? (document.getElementById('alta_nom_kids')?.value.trim() || "") : "";
+            const objGlobal = document.getElementById('alta_obj_global')?.value.trim() || "Sin registrar";
+            const objEsp = document.getElementById('alta_obj_esp')?.value.trim() || "Sin registrar";
+            const obsPost = document.getElementById('alta_obs_post')?.value.trim() || "";
+            const lesiones = document.getElementById('alta_lesiones')?.value.trim() || "Sin patologías registradas";
+            const obsVaf = document.getElementById('alta_vaf')?.value.trim() || "";
 
             const activeUser = auth.currentUser;
             const autor = activeUser ? activeUser.email : "Usuario desconocido";
@@ -473,28 +705,28 @@
                 ID_Cliente: idGenerado,
                 Nombre_Cliente: nombre,
                 Alias: alias,
-                Estado_Cliente: "Activo",
+                Estado_Cliente: estadoCliente,
                 Tipo_Cliente: tipoCliente,
                 Programador: programadorCliente,
-                Usa_Kids: "NO",
-                Objetivo_Global: "Sin registrar",
-                Objetivo_Especifico: "Sin registrar",
-                Observaciones_Posteriores: "",
-                Lesiones_Historial: "Sin patologías registradas",
-                Observaciones_VAF: "",
+                Usa_Kids: usaKids,
+                Nº_Niños_Kids: numKids,
+                Nombres_Niños_Kids: nomKids,
+                Objetivo_Global: objGlobal,
+                Objetivo_Especifico: objEsp,
+                Observaciones_Posteriores: obsPost,
+                Lesiones_Historial: lesiones,
+                Observaciones_VAF: obsVaf,
                 creado_por: autor,
                 fecha_creacion: new Date()
             };
 
             try {
                 await setDoc(doc(db, "clientes", idGenerado), nuevoCliente);
-                cerrarModalAlta();
-                loadClientes();
-                document.getElementById('btnGuardarAlta').innerText = "Guardar Cliente";
+                window.location.href = `ficha_cliente.html?id=${encodeURIComponent(idGenerado)}`;
             } catch (error) {
                 console.error("Error al crear cliente:", error);
                 alert("Hubo un error de conexión.");
-                document.getElementById('btnGuardarAlta').innerText = "Reintentar";
+                if (btnGuardar) { btnGuardar.disabled = false; btnGuardar.innerText = "Reintentar"; }
             }
         });
 
