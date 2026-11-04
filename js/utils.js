@@ -1078,7 +1078,7 @@ function __renderCalendarioReprog() {
     const tardeCount = __reprogTimeSlots.filter(t => parseInt(t.split(':')[0], 10) >= 14).length;
     const dynamicGridStyle = `grid-template-columns: 60px repeat(${numDias}, 1fr); grid-template-rows: auto repeat(${mananaCount}, 32px) 14px repeat(${tardeCount}, 32px);`;
 
-    let headersHTML = `<div class="reprog-day-header" style="grid-column: 1; grid-row: 1; border-right: 2px solid var(--border);">Hora</div>`;
+    let headersHTML = `<div class="reprog-day-header" style="grid-column: 1; grid-row: 1; border-right: 3px solid #64748b;">Hora</div>`;
     const now = new Date();
     const hoyISO = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())).toISOString().split('T')[0];
 

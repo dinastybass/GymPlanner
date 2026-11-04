@@ -7,7 +7,7 @@
     <title>Agenda - GO & train</title>
     <link rel="icon" type="image/png" href="assets/logo.png">
 
-    <link rel="stylesheet" href="styles.css?v=3">
+    <link rel="stylesheet" href="styles.css?v=4">
     <script src="nav-component.js" defer></script>
 
     <style>
@@ -148,7 +148,7 @@
         }
 
         .grid-bg-cell {
-            border-right: 1px solid var(--border);
+            border-right: 3px solid #94a3b8;
             border-bottom: 1px solid var(--border);
             cursor: pointer;
             transition: background 0.1s;
@@ -162,6 +162,7 @@
             padding: 10px;
             font-size: 0.85rem;
             border-bottom: 2px solid var(--text-main);
+            border-right: 3px solid #94a3b8;
             background: var(--surface);
             z-index: 2;
         }
@@ -183,7 +184,8 @@
             font-size: 0.75rem;
             font-weight: bold;
             color: var(--text-main);
-            border-right: 2px solid var(--border);
+            border-right: 3px solid #64748b;
+            background: #f8fafc;
             border-bottom: 1px solid var(--border);
             padding-right: 5px;
         }
@@ -199,7 +201,7 @@
         .event-card {
             border-radius: 4px;
             padding: 6px;
-            margin: 1px 2px;
+            margin: 1px 5px 1px 2px;
             font-size: 0.75rem;
             font-weight: 600;
             line-height: 1.2;
@@ -247,6 +249,8 @@
         .overlap-right {
             width: calc(50% - 2px);
             justify-self: end;
+            margin-right: 5px;
+            width: calc(50% - 5px);
             z-index: 7;
         }
 
@@ -758,7 +762,7 @@
 
             const dynamicGridStyle = `grid-template-columns: 60px repeat(${numDias}, 1fr); grid-template-rows: auto repeat(${mananaCount}, 40px) 20px repeat(${tardeCount}, 40px);`;
 
-            let headersHTML = `<div class="day-header" style="grid-column: 1; grid-row: 1; border-right: 2px solid var(--border);">Hora</div>`;
+            let headersHTML = `<div class="day-header" style="grid-column: 1; grid-row: 1; border-right: 3px solid #64748b;">Hora</div>`;
             let currentDay = new Date(mondayDate);
             let endDay = new Date(mondayDate);
             endDay.setUTCDate(endDay.getUTCDate() + (numDias - 1));

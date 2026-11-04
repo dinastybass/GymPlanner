@@ -1199,7 +1199,7 @@ textarea.form-control {
   padding: 8px 10px;
   font-size: 0.8rem;
   border-bottom: 2px solid var(--text-main);
-  border-right: 1px solid var(--border);
+  border-right: 3px solid #94a3b8;
   background: var(--surface);
   z-index: 2;
   text-align: center;
@@ -1222,14 +1222,14 @@ textarea.form-control {
   font-size: 0.72rem;
   font-weight: bold;
   color: var(--text-main);
-  border-right: 2px solid var(--border);
+  border-right: 3px solid #64748b;
   border-bottom: 1px solid var(--border);
   padding-right: 4px;
   background: #f8fafc;
 }
 
 .reprog-bg-cell {
-  border-right: 1px solid var(--border);
+  border-right: 3px solid #94a3b8;
   border-bottom: 1px solid var(--border);
   cursor: pointer;
   transition: background 0.12s;
@@ -1251,7 +1251,7 @@ textarea.form-control {
 .reprog-event-card {
   border-radius: 5px;
   padding: 4px 6px;
-  margin: 1px 2px;
+  margin: 1px 5px 1px 2px;
   font-size: 0.72rem;
   font-weight: 600;
   line-height: 1.2;

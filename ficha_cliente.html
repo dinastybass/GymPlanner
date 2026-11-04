@@ -7,7 +7,7 @@
     <title>Ficha de Cliente - GO & train</title>
     <link rel="icon" type="image/png" href="assets/logo.png">
 
-    <link rel="stylesheet" href="styles.css?v=3">
+    <link rel="stylesheet" href="styles.css?v=4">
     <script src="nav-component.js" defer></script>
 
     <style>
@@ -401,7 +401,7 @@
             padding: 8px 10px;
             font-size: 0.8rem;
             border-bottom: 2px solid var(--text-main);
-            border-right: 1px solid var(--border);
+            border-right: 3px solid #94a3b8;
             background: var(--surface);
             z-index: 2;
             text-align: center;
@@ -424,14 +424,14 @@
             font-size: 0.72rem;
             font-weight: bold;
             color: var(--text-main);
-            border-right: 2px solid var(--border);
+            border-right: 3px solid #64748b;
             border-bottom: 1px solid var(--border);
             padding-right: 4px;
             background: #f8fafc;
         }
 
         .reprog-bg-cell {
-            border-right: 1px solid var(--border);
+            border-right: 3px solid #94a3b8;
             border-bottom: 1px solid var(--border);
             cursor: pointer;
             transition: background 0.12s;
@@ -453,7 +453,7 @@
         .reprog-event-card {
             border-radius: 5px;
             padding: 4px 6px;
-            margin: 1px 2px;
+            margin: 1px 5px 1px 2px;
             font-size: 0.72rem;
             font-weight: 600;
             line-height: 1.2;
@@ -1466,7 +1466,7 @@
             const tardeCount = reprogTimeSlots.filter(t => parseInt(t.split(':')[0], 10) >= 14).length;
             const dynamicGridStyle = `grid-template-columns: 60px repeat(${numDias}, 1fr); grid-template-rows: auto repeat(${mananaCount}, 32px) 14px repeat(${tardeCount}, 32px);`;
 
-            let headersHTML = `<div class="reprog-day-header" style="grid-column: 1; grid-row: 1; border-right: 2px solid var(--border);">Hora</div>`;
+            let headersHTML = `<div class="reprog-day-header" style="grid-column: 1; grid-row: 1; border-right: 3px solid #64748b;">Hora</div>`;
             const now = new Date();
             const hoyISO = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())).toISOString().split('T')[0];
 
