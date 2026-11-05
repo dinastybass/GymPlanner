@@ -262,6 +262,8 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
   const [sendEjercicios, setSendEjercicios] = useState<any[]>([]);
   const [sendTipoSesion, setSendTipoSesion] = useState<string>('Individual');
   const [sendIntensidad, setSendIntensidad] = useState<'LOW' | 'MED' | 'HIGH'>('MED');
+  const [sendClientId, setSendClientId] = useState<string>('');
+  const [sendSessionId, setSendSessionId] = useState<string>('');
 
   // Compute timeToRowMap and separatorRow
   const mananaSlots = timeSlots.filter(t => parseInt(t.split(':')[0], 10) < 14);
@@ -2182,6 +2184,8 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                   setSendIntensidad(
                     activeMenu.sFmt.docData?.intensidad || activeMenu.sFmt.docData?.Intensidad || 'MED'
                   );
+                  setSendClientId(activeMenu.idCliente || '');
+                  setSendSessionId(activeMenu.idSesion || '');
                   setActiveMenu(null);
                   setSendModalOpen(true);
                 }}
@@ -3283,6 +3287,8 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
         ejercicios={sendEjercicios}
         defaultIntensity={sendIntensidad}
         defaultTipoSesion={sendTipoSesion}
+        defaultClientId={sendClientId}
+        excludeSessionId={sendSessionId}
         onSuccess={loadAgenda}
       />
     </div>
