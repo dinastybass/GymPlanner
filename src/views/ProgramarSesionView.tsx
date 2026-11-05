@@ -14,6 +14,7 @@ import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
 import { cargarCatalogoMaestros, extraerListaMaster } from '../services/maestrosService';
 import { normalizarIntensidad, renderIntensityBadge } from '../utils/helpers';
+import { SendRoutineModal } from '../components/SendRoutineModal';
 
 interface ProgramarSesionViewProps {
   sessionId: string;
@@ -103,22 +104,8 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
   const [selectedPlantillaId, setSelectedPlantillaId] = useState('');
   const [importing, setImporting] = useState(false);
 
-  // Modal Enviar Rutina
-  const [modalEnviar, setModalEnviar] = useState<{
-    open: boolean;
-    targetClientId: string;
-    targetSessionId: string;
-    targetSessionsList: any[];
-    loadingTarget: boolean;
-    saving: boolean;
-  }>({
-    open: false,
-    targetClientId: '',
-    targetSessionId: '',
-    targetSessionsList: [],
-    loadingTarget: false,
-    saving: false
-  });
+  // Modal Enviar Rutina Reutilizable
+  const [sendModalOpen, setSendModalOpen] = useState(false);
 
   const cargarTodo = useCallback(async () => {
     if (!sessionId) return;
@@ -737,130 +724,13 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
     }
   };
 
-  // --- Modal Enviar Rutina ---
+  // --- Modal Enviar Rutina Reutilizable ---
   const abrirModalEnviar = () => {
     if (!sesionActual?.ejercicios || sesionActual.ejercicios.length === 0) {
       alert('Añade al menos un ejercicio a la sesión antes de enviarla.');
       return;
     }
-    const defaultClient = !esSmallGroup && sesionActual.id_cliente ? sesionActual.id_cliente : '';
-    setModalEnviar({
-      open: true,
-      targetClientId: defaultClient,
-      targetSessionId: '',
-      targetSessionsList: [],
-      loadingTarget: Boolean(defaultClient),
-      saving: false
-    });
-    if (defaultClient) {
-      cargarSesionesDestino(defaultClient);
-    }
-  };
-
-  const cargarSesionesDestino = async (idCli: string) => {
-    if (!idCli) {
-      setModalEnviar(prev => ({
-        ...prev,
-        targetClientId: '',
-        targetSessionId: '',
-        targetSessionsList: [],
-        loadingTarget: false
-      }));
-      return;
-    }
-    setModalEnviar(prev => ({ ...prev, targetClientId: idCli, loadingTarget: true }));
-    try {
-      const q = query(collection(db, 'agenda_sesiones'), where('id_cliente', '==', idCli));
-      const snap = await getDocs(q);
-      const list: any[] = [];
-      snap.forEach(d => {
-        if (d.id === sessionId || idsGrupoActual.includes(d.id)) return;
-        const data = d.data();
-        if (data.estado_sesion === 'Cancelada') return;
-        const f = data.fecha_hora_inicio?.toDate
-          ? data.fecha_hora_inicio.toDate()
-          : data.fecha_hora_inicio
-          ? new Date(data.fecha_hora_inicio)
-          : null;
-        if (!f) return;
-        list.push({ id: d.id, ...data, fecha: f });
-      });
-      list.sort((a, b) => b.fecha.getTime() - a.fecha.getTime());
-      setModalEnviar(prev => ({
-        ...prev,
-        targetSessionsList: list,
-        targetSessionId: list[0]?.id || '',
-        loadingTarget: false
-      }));
-    } catch (e) {
-      console.error(e);
-      setModalEnviar(prev => ({ ...prev, loadingTarget: false }));
-    }
-  };
-
-  const confirmarEnvio = async () => {
-    if (!modalEnviar.targetSessionId || !sesionActual) return;
-    setModalEnviar(prev => ({ ...prev, saving: true }));
-    try {
-      const docDestSnap = await getDoc(doc(db, 'agenda_sesiones', modalEnviar.targetSessionId));
-      if (!docDestSnap.exists()) throw new Error('Sesión destino no existe');
-      const dataDest = docDestSnap.data();
-
-      if (dataDest.ejercicios && dataDest.ejercicios.length > 0) {
-        if (
-          !window.confirm(
-            '⚠️ La sesión de destino YA TIENE ejercicios programados. ¿Deseas fusionar y añadir estos ejercicios a los que ya existen?'
-          )
-        ) {
-          setModalEnviar(prev => ({ ...prev, saving: false }));
-          return;
-        }
-      }
-
-      const clonados = JSON.parse(JSON.stringify(sesionActual.ejercicios));
-      const finales = [...(dataDest.ejercicios || []), ...clonados];
-      const editorActual = userName || 'Entrenador';
-      const fechaEd = new Date();
-      const intClon = normalizarIntensidad(
-        sesionActual.intensidad_sesion || sesionActual.intensidad || 'MED'
-      );
-
-      const tipoDest = (dataDest.tipo_sesion || '').toLowerCase();
-      if (tipoDest.includes('small') || tipoDest.includes('group')) {
-        const qG = query(
-          collection(db, 'agenda_sesiones'),
-          where('fecha_hora_inicio', '==', dataDest.fecha_hora_inicio)
-        );
-        const snapG = await getDocs(qG);
-        const batch = writeBatch(db);
-        snapG.forEach(d => {
-          const t = (d.data().tipo_sesion || '').toLowerCase();
-          if (t.includes('small') || t.includes('group')) {
-            batch.update(doc(db, 'agenda_sesiones', d.id), {
-              ejercicios: finales,
-              intensidad_sesion: intClon,
-              ultimo_editor: editorActual,
-              fecha_ultima_edicion: fechaEd
-            });
-          }
-        });
-        await batch.commit();
-      } else {
-        await updateDoc(doc(db, 'agenda_sesiones', modalEnviar.targetSessionId), {
-          ejercicios: finales,
-          intensidad_sesion: intClon,
-          ultimo_editor: editorActual,
-          fecha_ultima_edicion: fechaEd
-        });
-      }
-
-      setModalEnviar(prev => ({ ...prev, open: false, saving: false }));
-      alert('¡Ejercicios enviados y copiados con éxito!');
-    } catch (e) {
-      console.error(e);
-      alert('Error al enviar ejercicios.');
-      setModalEnviar(prev => ({ ...prev, saving: false }));
-    }
+    setSendModalOpen(true);
   };
 
   if (loading) {
@@ -1805,94 +1675,17 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
         </div>
       )}
 
-      {/* Modal Enviar Rutina */}
-      {modalEnviar.open && (
-        <div className="modal-overlay" style={{ display: 'flex' }}>
-          <div className="modal-content" style={{ maxWidth: 480 }}>
-            <button
-              type="button"
-              className="modal-close"
-              onClick={() => setModalEnviar(prev => ({ ...prev, open: false }))}
-            >
-              ×
-            </button>
-            <div className="modal-header">
-              <h2>➡️ Enviar Ejercicios a otra Sesión</h2>
-              <p>Copia todos los ejercicios de esta sesión en la sesión de otro día o cliente</p>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
-              <div className="form-group">
-                <label>1. Selecciona el Cliente de destino</label>
-                <select
-                  value={modalEnviar.targetClientId}
-                  onChange={e => cargarSesionesDestino(e.target.value)}
-                >
-                  <option value="">-- Elige un cliente --</option>
-                  {todosLosClientes.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.nombre}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="form-group">
-                <label>2. Selecciona la Sesión de destino</label>
-                <select
-                  value={modalEnviar.targetSessionId}
-                  disabled={
-                    modalEnviar.loadingTarget || modalEnviar.targetSessionsList.length === 0
-                  }
-                  onChange={e =>
-                    setModalEnviar(prev => ({ ...prev, targetSessionId: e.target.value }))
-                  }
-                >
-                  {modalEnviar.loadingTarget ? (
-                    <option value="">Buscando sesiones del cliente...</option>
-                  ) : modalEnviar.targetSessionsList.length === 0 ? (
-                    <option value="">Este cliente no tiene más sesiones agendadas</option>
-                  ) : (
-                    modalEnviar.targetSessionsList.map(s => {
-                      const d = s.fecha.getUTCDate().toString().padStart(2, '0');
-                      const m = (s.fecha.getUTCMonth() + 1).toString().padStart(2, '0');
-                      const y = s.fecha.getUTCFullYear();
-                      const h = s.fecha.getUTCHours().toString().padStart(2, '0');
-                      const min = s.fecha.getUTCMinutes().toString().padStart(2, '0');
-                      const diaSem = diasSemanaCortos[s.fecha.getUTCDay()];
-                      const numEj = s.ejercicios ? s.ejercicios.length : 0;
-                      const infoEj = numEj > 0 ? `(${numEj} ej. ya programados)` : '(Vacía)';
-                      const tipo = (s.tipo_sesion || '').includes('Small') ? '[SG]' : '[Ind]';
-                      return (
-                        <option key={s.id} value={s.id}>
-                          {diaSem} {d}/{m}/{y} a las {h}:{min} {tipo} {infoEj}
-                        </option>
-                      );
-                    })
-                  )}
-                </select>
-              </div>
-            </div>
-
-            <div className="modal-footer">
-              <button
-                type="button"
-                className="btn-outline"
-                onClick={() => setModalEnviar(prev => ({ ...prev, open: false }))}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                disabled={modalEnviar.saving || !modalEnviar.targetSessionId}
-                onClick={confirmarEnvio}
-              >
-                {modalEnviar.saving ? 'Enviando...' : 'Confirmar y Enviar'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modal Enviar Rutina Reutilizable */}
+      <SendRoutineModal
+        isOpen={sendModalOpen}
+        onClose={() => setSendModalOpen(false)}
+        ejercicios={sesionActual?.ejercicios || []}
+        defaultIntensity={intSesActual}
+        defaultTipoSesion={sesionActual?.tipo_sesion || 'Individual'}
+        defaultClientId={!esSmallGroup && sesionActual?.id_cliente ? sesionActual.id_cliente : undefined}
+        excludeSessionId={sessionId}
+        onSuccess={() => {}}
+      />
     </div>
   );
 };

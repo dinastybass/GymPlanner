@@ -1,7 +1,6 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
-import { PWAInstallButton } from './PWAInstallButton';
 
 interface NavbarProps {
   activeTab: string;
@@ -95,7 +94,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={(e) => { e.preventDefault(); onNavigate('planificacion'); }}
             className={isPlanificacion ? 'active' : ''}
           >
-            Planificación
+            Hoy
           </a>
           <a
             href="#agenda"
@@ -130,12 +129,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={(e) => { e.preventDefault(); onNavigate('maestros'); }}
             className={isMaestros ? 'active' : ''}
           >
-            Maestros
+            Configuración
           </a>
         </div>
 
         <div className="nav-right-group">
-          <PWAInstallButton variant="navbar" />
           <div className="nav-user">
             <span className="nav-user-greeting">
               <span className="greeting-prefix">Hola, </span>{displayShortName}
@@ -181,7 +179,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <path d="m9 14 2 2 4-4" />
             </svg>
           </span>
-          <span className="bottom-tab-label">Planificación</span>
+          <span className="bottom-tab-label">Hoy</span>
         </a>
 
         <a
@@ -274,7 +272,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <line x1="17" y1="16" x2="23" y2="16" />
             </svg>
           </span>
-          <span className="bottom-tab-label">Maestros</span>
+          <span className="bottom-tab-label">Configuración</span>
         </a>
       </nav>
     </>
