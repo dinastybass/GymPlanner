@@ -1963,6 +1963,20 @@ textarea.form-control {
   background: #f0fdfa;
 }
 
+/* Helper responsive text */
+.mobile-text {
+  display: none !important;
+}
+
+.desktop-text {
+  display: inline !important;
+}
+
+.mobile-agenda-controls,
+.mobile-single-day-view {
+  display: none;
+}
+
 .day-header {
   padding: 10px;
   font-size: 0.85rem;
@@ -1970,6 +1984,7 @@ textarea.form-control {
   border-right: 3px solid #94a3b8;
   background: var(--surface);
   z-index: 2;
+  transition: background-color 0.15s ease;
 }
 
 .day-header strong {
@@ -1980,6 +1995,62 @@ textarea.form-control {
 .day-header span {
   color: var(--text-muted);
   font-size: 0.75rem;
+}
+
+/* Sombreado leve del día actual en la Agenda */
+.day-header.today {
+  background: #f0fdfa !important;
+  border-bottom: 3px solid var(--accent-dark) !important;
+}
+
+.day-header.today strong {
+  color: var(--accent-dark);
+}
+
+.today-badge {
+  display: inline-block;
+  background: var(--accent-dark);
+  color: #ffffff;
+  font-size: 0.62rem;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-top: 3px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.grid-bg-cell.today-col {
+  background-color: rgba(13, 116, 136, 0.04);
+}
+
+.grid-bg-cell.today-col:hover {
+  background-color: #ccfbf1;
+}
+
+.sg-day-column.today {
+  border-color: #99f6e4 !important;
+  background-color: rgba(13, 116, 136, 0.025);
+  box-shadow: 0 0 0 1px #99f6e4;
+}
+
+.sg-day-header.today {
+  background: #f0fdfa !important;
+  border-bottom: 2px solid var(--accent-dark) !important;
+}
+
+.sg-day-header.today span {
+  color: var(--accent-dark) !important;
+  font-weight: 700;
+}
+
+.reprog-day-header.today {
+  background: #f0fdfa !important;
+  border-bottom: 3px solid var(--accent-dark) !important;
+}
+
+.reprog-bg-cell.today-col {
+  background-color: rgba(13, 116, 136, 0.04);
 }
 
 .time-label {
@@ -3411,6 +3482,296 @@ textarea.form-control {
     grid-column: 2;
     grid-row: 1 / span 3;
     align-self: center;
+  }
+
+  /* Textos responsivos: ocultar innecesarios en móvil */
+  .mobile-text {
+    display: inline !important;
+  }
+  .desktop-text {
+    display: none !important;
+  }
+
+  /* Ocultar texto innecesario en la barra de navegación (solo logo y nombre corto) */
+  .nav-brand-title {
+    display: none !important;
+  }
+  .greeting-prefix {
+    display: none !important;
+  }
+
+  /* Ocultar descripciones secundarias en encabezados */
+  .header-meta {
+    display: none !important;
+  }
+
+  /* Optimización de Agenda en móvil */
+  .filters {
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .filter-btn {
+    padding: 7px 12px;
+    font-size: 0.82rem;
+  }
+  .filters-right-actions {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+    margin-left: 0 !important;
+    margin-top: 4px;
+  }
+  .filters-right-actions button {
+    flex: 1;
+    padding: 8px 10px;
+    font-size: 0.78rem;
+    justify-content: center;
+    white-space: nowrap;
+  }
+  .month-selector {
+    gap: 8px;
+    margin-bottom: 14px;
+    justify-content: flex-start;
+  }
+  .month-selector .nav-arrow {
+    width: 34px;
+    height: 34px;
+    font-size: 1rem;
+  }
+  .calendar-icon-btn {
+    padding: 7px 12px;
+    font-size: 0.82rem;
+  }
+  .calendar-grid {
+    min-width: 640px;
+  }
+  .week-content {
+    padding: 8px;
+  }
+
+  /* Barra de fecha en Planificación */
+  .date-bar {
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    gap: 10px;
+    box-sizing: border-box;
+    width: 100%;
+    overflow: hidden;
+  }
+  .date-selector {
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-width: 0;
+  }
+  .date-selector .nav-arrow {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .date-calendar-icon {
+    flex-shrink: 0;
+    font-size: 1.1rem;
+  }
+  .date-info {
+    min-width: 0 !important;
+    flex: 1 1 auto;
+    text-align: center;
+    overflow: hidden;
+  }
+  .date-info strong {
+    font-size: 0.84rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .date-info span {
+    font-size: 0.72rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .day-pills {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(36px, 1fr)) !important;
+    gap: 6px !important;
+    overflow-x: visible !important;
+    padding-bottom: 0 !important;
+  }
+  .plan-day-pill {
+    padding: 7px 0 !important;
+    font-size: 0.85rem !important;
+    font-weight: 700 !important;
+    text-align: center !important;
+    justify-content: center !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    border-radius: 8px !important;
+    white-space: normal;
+  }
+
+  /* Agenda en móvil: Selector de Modo (Día / Semana) y tira estilo Google Calendar */
+  .mobile-agenda-controls {
+    display: flex !important;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 12px;
+    width: 100%;
+  }
+
+  .mobile-mode-switcher {
+    display: flex;
+    background: var(--hover-bg);
+    padding: 3px;
+    border-radius: 10px;
+    gap: 4px;
+    width: 100%;
+  }
+
+  .mobile-mode-btn {
+    flex: 1;
+    padding: 7px 10px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .mobile-mode-btn.active {
+    background: var(--surface);
+    color: var(--accent-dark);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+
+  .mobile-day-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(36px, 1fr));
+    gap: 5px;
+    width: 100%;
+  }
+
+  .mobile-day-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 2px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-main);
+    cursor: pointer;
+    position: relative;
+    transition: all 0.15s ease;
+  }
+
+  .mobile-day-tab.is-today {
+    border-color: var(--accent);
+    background: #f0fdfa;
+  }
+
+  .mobile-day-tab.active {
+    background: var(--accent);
+    color: #ffffff;
+    border-color: var(--accent);
+    box-shadow: 0 2px 5px rgba(13, 148, 136, 0.25);
+  }
+
+  .mobile-day-letter {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .mobile-day-tab.active .mobile-day-letter {
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  .mobile-day-num {
+    font-size: 0.95rem;
+    font-weight: 800;
+    line-height: 1.1;
+  }
+
+  .mobile-day-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--accent);
+    margin-top: 2px;
+  }
+
+  .mobile-day-tab.active .mobile-day-dot {
+    background: #ffffff;
+  }
+
+  .mobile-single-day-view {
+    display: block !important;
+    width: 100%;
+  }
+
+  .calendar-grid.mobile-single-grid {
+    min-width: 0 !important;
+    width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  .mobile-sg-single-day {
+    width: 100%;
+  }
+
+  .hide-on-mobile-dia {
+    display: none !important;
+  }
+
+  /* Botón Pantalla Sala en móvil */
+  .btn-pantalla-sala {
+    padding: 6px 10px;
+    font-size: 0.78rem;
+  }
+
+  /* Catálogo de ejercicios y clientes en móvil */
+  .controls-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .controls-bar .search-box {
+    width: 100%;
+    max-width: 100%;
+  }
+  .controls-bar .filter-select {
+    flex: 1;
+    min-width: calc(50% - 4px);
+    font-size: 0.78rem;
+    height: 36px;
+  }
+  .total-count {
+    display: none !important;
+  }
+
+  /* Maestros en móvil */
+  .maestros-grid {
+    gap: 14px;
+  }
+  .sidebar-card {
+    padding: 10px;
+  }
+  .key-btn {
+    padding: 8px 10px;
+    font-size: 0.82rem;
   }
 }
 

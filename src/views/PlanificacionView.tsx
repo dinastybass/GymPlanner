@@ -541,14 +541,18 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
   return (
     <div className="container">
       <div className="page-header">
-        <h1>Entrenamientos · Visión de Día</h1>
+        <h1>
+          <span className="desktop-text">Entrenamientos · Visión de Día</span>
+          <span className="mobile-text">Entrenamientos</span>
+        </h1>
         <button
           type="button"
           className="btn-pantalla-sala"
           onClick={() => onNavigate('pantalla_sala')}
           title="Abrir vista optimizada para proyector de sala"
         >
-          📺 Pantalla Sala
+          📺 <span className="desktop-text">Pantalla Sala</span>
+          <span className="mobile-text">Sala</span>
         </button>
       </div>
 
@@ -559,13 +563,18 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
               <polyline points="15 18 9 12 15 6" />
             </svg>
           </button>
-          <span style={{ fontSize: '1.2rem' }}>📅</span>
+          <span className="date-calendar-icon" style={{ fontSize: '1.2rem' }}>📅</span>
           <div className="date-info">
             <strong>{`${diaNombre.toUpperCase()} · ${diaNum}/${mesNum}`}</strong>
             <span>
               {loading
                 ? 'Cargando...'
-                : `${totalSesiones} ${totalSesiones === 1 ? 'sesión programada' : 'sesiones programadas'}`}
+                : (
+                  <>
+                    <span className="desktop-text">{`${totalSesiones} ${totalSesiones === 1 ? 'sesión programada' : 'sesiones programadas'}`}</span>
+                    <span className="mobile-text">{`${totalSesiones} ${totalSesiones === 1 ? 'sesión' : 'sesiones'}`}</span>
+                  </>
+                )}
             </span>
           </div>
           <button type="button" className="nav-arrow" onClick={() => handleChangeDay(1)}>
@@ -579,14 +588,29 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
           {diasSemanaPills.map((dNom, idx) => {
             const dNum = idx + 1;
             const isActive = diaSemanaIndex === dNum;
+            const inicialesMap: Record<string, string> = {
+              lunes: 'L',
+              martes: 'M',
+              miércoles: 'X',
+              miercoles: 'X',
+              jueves: 'J',
+              viernes: 'V',
+              sábado: 'S',
+              sabado: 'S',
+              domingo: 'D'
+            };
+            const inicial = inicialesMap[dNom.trim().toLowerCase()] || dNom.charAt(0).toUpperCase();
+
             return (
               <button
                 key={dNom}
                 type="button"
                 className={`plan-day-pill ${isActive ? 'active' : ''}`}
                 onClick={() => handleSelectDayOfWeek(dNum)}
+                title={dNom}
               >
-                {dNom}
+                <span className="desktop-text">{dNom}</span>
+                <span className="mobile-text">{inicial}</span>
               </button>
             );
           })}
