@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface NavbarProps {
   activeTab: string;
@@ -54,7 +55,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="nav-brand"
           >
             <img src="/assets/logo.png" alt="GO & train" style={{ height: '28px' }} />
-            <span>GO&Train</span>
+            <span className="nav-brand-title">GO&Train</span>
           </a>
 
           <div className="undo-toolbar" title="Historial de cambios en la sesión actual">
@@ -134,8 +135,11 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         <div className="nav-right-group">
+          <PWAInstallButton variant="navbar" />
           <div className="nav-user">
-            <span className="nav-user-greeting">Hola, {displayShortName}</span>
+            <span className="nav-user-greeting">
+              <span className="greeting-prefix">Hola, </span>{displayShortName}
+            </span>
             <button
               type="button"
               className="btn-logout"

@@ -172,6 +172,14 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     return new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
   });
 
+  // Mobile calendar mode (Google Calendar style single-day view vs full week)
+  const [mobileCalendarMode, setMobileCalendarMode] = useState<'dia' | 'semana'>('dia');
+  const [mobileSelectedDayIdx, setMobileSelectedDayIdx] = useState<number>(() => {
+    const now = new Date();
+    const day = now.getDay(); // 0 Sun, 1 Mon, 2 Tue, 3 Wed, 4 Thu, 5 Fri, 6 Sat
+    return day >= 1 && day <= 5 ? day - 1 : 0;
+  });
+
   // Master data
   const [diasSemana, setDiasSemana] = useState<string[]>(['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes']);
   const [timeSlots, setTimeSlots] = useState<string[]>([
@@ -1472,30 +1480,34 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
           className={`filter-btn ${currentView === 'individuales' ? 'active' : 'inactive'}`}
           onClick={() => setCurrentView('individuales')}
         >
-          Sesiones individuales
+          <span className="desktop-text">Sesiones individuales</span>
+          <span className="mobile-text">Individuales</span>
         </button>
         <button
           type="button"
           className={`filter-btn ${currentView === 'sg' ? 'active' : 'inactive'}`}
           onClick={() => setCurrentView('sg')}
         >
-          Small Groups
+          <span className="desktop-text">Small Groups</span>
+          <span className="mobile-text">Small Groups</span>
         </button>
 
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: '10px' }}>
+        <div className="filters-right-actions">
           <button
             type="button"
-            className="btn-outline"
+            className="btn-outline btn-agenda-top"
             onClick={() => onNavigate('pendientes')}
           >
-            Programaciones pendientes
+            <span className="desktop-text">Programaciones pendientes</span>
+            <span className="mobile-text">Pendientes</span>
           </button>
           <button
             type="button"
-            className="btn-primary"
+            className="btn-primary btn-agenda-top"
             onClick={handleAbrirModalPlanificarGeneral}
           >
-            + Planificar Días de Cliente
+            <span className="desktop-text">+ Planificar Días de Cliente</span>
+            <span className="mobile-text">+ Planificar</span>
           </button>
         </div>
       </div>
@@ -1527,7 +1539,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
         >
           &gt;
         </button>
-        <span className="month-title">{mesStrFormatted}</span>
+        <span className="month-title desktop-text">{mesStrFormatted}</span>
       </div>
 
       {/* Calendar Container */}
@@ -1535,97 +1547,350 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
         {loading ? (
           <p style={{ color: 'var(--text-muted)' }}>Cargando agenda...</p>
         ) : (
-          weeksList.map(wInfo => {
-            const isExpanded = Boolean(expandedWeeks[wInfo.weekNum]);
-            const numDias = diasSemana.length;
-            const endDay = new Date(wInfo.mondayDate);
-            endDay.setUTCDate(endDay.getUTCDate() + (numDias - 1));
-            const dateRangeText = `${wInfo.mondayDate.getUTCDate()}${MES_NAMES[wInfo.mondayDate.getUTCMonth()]} - ${endDay.getUTCDate()}${MES_NAMES[endDay.getUTCMonth()]}`;
+          (() => {
+            const now = new Date();
+            const hoyISO = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
+              .toISOString()
+              .split('T')[0];
 
-            return (
-              <div key={wInfo.weekNum} className="week-accordion">
-                <div
-                  className="week-header"
-                  onClick={() =>
-                    setExpandedWeeks(prev => ({
-                      ...prev,
-                      [wInfo.weekNum]: !prev[wInfo.weekNum]
-                    }))
-                  }
-                >
-                  <h3>
-                    {renderChevron(isExpanded)} {wInfo.title}
-                  </h3>
-                  <span>{dateRangeText}</span>
-                </div>
+            return weeksList.map(wInfo => {
+              const isExpanded = Boolean(expandedWeeks[wInfo.weekNum]);
+              const numDias = diasSemana.length;
+              const endDay = new Date(wInfo.mondayDate);
+              endDay.setUTCDate(endDay.getUTCDate() + (numDias - 1));
+              const dateRangeText = `${wInfo.mondayDate.getUTCDate()}${MES_NAMES[wInfo.mondayDate.getUTCMonth()]} - ${endDay.getUTCDate()}${MES_NAMES[endDay.getUTCMonth()]}`;
 
-                {isExpanded && (
-                  <div className="week-content">
-                    {currentView === 'individuales' ? (
-                      <div
-                        className="calendar-grid"
-                        style={{
-                          gridTemplateColumns: `60px repeat(${numDias}, 1fr)`,
-                          gridTemplateRows: `auto repeat(${mananaSlots.length}, 40px) 20px repeat(${tardeSlots.length}, 40px)`
-                        }}
-                      >
-                        {/* Top-left Hora Header */}
-                        <div
-                          className="day-header"
-                          style={{ gridColumn: 1, gridRow: 1, borderRight: '3px solid #64748b' }}
-                        >
-                          Hora
+              return (
+                <div key={wInfo.weekNum} className="week-accordion">
+                  <div
+                    className="week-header"
+                    onClick={() =>
+                      setExpandedWeeks(prev => ({
+                        ...prev,
+                        [wInfo.weekNum]: !prev[wInfo.weekNum]
+                      }))
+                    }
+                  >
+                    <h3>
+                      {renderChevron(isExpanded)} {wInfo.title}
+                    </h3>
+                    <span>{dateRangeText}</span>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="week-content">
+                      {/* Mobile controls: Selector de modo (Día / Semana) y tira de días */}
+                      <div className="mobile-agenda-controls">
+                        <div className="mobile-mode-switcher">
+                          <button
+                            type="button"
+                            className={`mobile-mode-btn ${mobileCalendarMode === 'dia' ? 'active' : ''}`}
+                            onClick={() => setMobileCalendarMode('dia')}
+                          >
+                            📅 Vista Día
+                          </button>
+                          <button
+                            type="button"
+                            className={`mobile-mode-btn ${mobileCalendarMode === 'semana' ? 'active' : ''}`}
+                            onClick={() => setMobileCalendarMode('semana')}
+                          >
+                            🗓️ Vista Semana
+                          </button>
                         </div>
 
-                        {/* Day Headers */}
-                        {diasSemana.map((diaName, idx) => {
-                          const dTemp = new Date(wInfo.mondayDate);
-                          dTemp.setUTCDate(dTemp.getUTCDate() + idx);
-                          return (
-                            <div
-                              key={diaName}
-                              className="day-header"
-                              style={{ gridColumn: idx + 2, gridRow: 1 }}
-                            >
-                              <strong>{diaName}</strong>
-                              <span>
-                                {dTemp.getUTCDate()}
-                                {MES_NAMES[dTemp.getUTCMonth()]}
-                              </span>
-                            </div>
-                          );
-                        })}
+                        {mobileCalendarMode === 'dia' && (
+                          <div className="mobile-day-strip">
+                            {diasSemana.map((dNom, dIdx) => {
+                              const dTemp = new Date(wInfo.mondayDate);
+                              dTemp.setUTCDate(dTemp.getUTCDate() + dIdx);
+                              const dayNum = dTemp.getUTCDate();
+                              const dateStrID = dTemp.toISOString().split('T')[0];
+                              const isToday = dateStrID === hoyISO;
+                              const isSelected = mobileSelectedDayIdx === dIdx;
+                              const iniciales = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+                              const inicial = iniciales[dIdx] || dNom.charAt(0);
 
-                        {/* Time Labels and Background Cells */}
-                        {timeSlots.map(time => {
-                          const row = timeToRowMap[time];
-                          return (
-                            <React.Fragment key={time}>
+                              const col = dIdx + 2;
+                              const dayKey = `w${wInfo.weekNum}-c${col}`;
+                              const hasEvents = currentView === 'individuales'
+                                ? (dayEventsMap[dayKey] && dayEventsMap[dayKey].length > 0)
+                                : sgTimeSlotsRaw.some(t => t.toLowerCase().startsWith(dNom.toLowerCase()));
+
+                              return (
+                                <button
+                                  key={dNom}
+                                  type="button"
+                                  className={`mobile-day-tab ${isSelected ? 'active' : ''} ${isToday ? 'is-today' : ''}`}
+                                  onClick={() => setMobileSelectedDayIdx(dIdx)}
+                                >
+                                  <span className="mobile-day-letter">{inicial}</span>
+                                  <span className="mobile-day-num">{dayNum}</span>
+                                  {hasEvents && <span className="mobile-day-dot" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* VISTA MÓVIL DÍA ÚNICO (ESTILO GOOGLE CALENDAR) */}
+                      {mobileCalendarMode === 'dia' && (
+                        <div className="mobile-single-day-view">
+                          {(() => {
+                            const selIdx = mobileSelectedDayIdx < diasSemana.length ? mobileSelectedDayIdx : 0;
+                            const selDayName = diasSemana[selIdx] || 'Lunes';
+                            const selDate = new Date(wInfo.mondayDate);
+                            selDate.setUTCDate(selDate.getUTCDate() + selIdx);
+                            const selDateStrID = selDate.toISOString().split('T')[0];
+                            const selDayNum = selDate.getUTCDate();
+                            const selMonthName = MES_NAMES[selDate.getUTCMonth()];
+                            const isToday = selDateStrID === hoyISO;
+
+                            if (currentView === 'individuales') {
+                              const col = selIdx + 2;
+                              const dayKey = `w${wInfo.weekNum}-c${col}`;
+                              const events = dayEventsMap[dayKey] || [];
+
+                              return (
+                                <div
+                                  className="calendar-grid mobile-single-grid"
+                                  style={{
+                                    gridTemplateColumns: '55px 1fr',
+                                    gridTemplateRows: `auto repeat(${mananaSlots.length}, 42px) 20px repeat(${tardeSlots.length}, 42px)`
+                                  }}
+                                >
+                                  <div className="day-header" style={{ gridColumn: 1, gridRow: 1, borderRight: '2px solid #64748b' }}>
+                                    Hora
+                                  </div>
+                                  <div className={`day-header ${isToday ? 'today' : ''}`} style={{ gridColumn: 2, gridRow: 1 }}>
+                                    <strong>{selDayName}</strong>
+                                    <span>{selDayNum} {selMonthName}</span>
+                                  </div>
+
+                                  {timeSlots.map(time => {
+                                    const row = timeToRowMap[time];
+                                    return (
+                                      <React.Fragment key={time}>
+                                        <div className="time-label" style={{ gridColumn: 1, gridRow: row }}>
+                                          {time}
+                                        </div>
+                                        <div
+                                          className={`grid-bg-cell ${isToday ? 'today-col' : ''}`}
+                                          style={{ gridColumn: 2, gridRow: row }}
+                                          onDoubleClick={() => handlePrepararModalAgendarSlot(selDateStrID, time, 'Individual')}
+                                          title="Doble clic para agendar cita rápida"
+                                        />
+                                      </React.Fragment>
+                                    );
+                                  })}
+
+                                  <div className="noon-separator" style={{ gridRow: separatorRow }} />
+
+                                  {events.map((evt, eIdx) => {
+                                    const countH1 = aforoGlobalPorFila[`${evt.dateStrID}-${evt.row}`] || 0;
+                                    const countH2 = aforoGlobalPorFila[`${evt.dateStrID}-${evt.row + 1}`] || 0;
+
+                                    let extraClass = 'event-normal';
+                                    if (countH1 >= ocupacionMaxima && countH2 >= ocupacionMaxima) extraClass = 'event-full';
+                                    else if (countH1 >= ocupacionMaxima && countH2 < ocupacionMaxima) extraClass = 'event-warn-top';
+                                    else if (countH1 < ocupacionMaxima && countH2 >= ocupacionMaxima) extraClass = 'event-warn-bottom';
+
+                                    if (evt.isOverlapping) {
+                                      extraClass += evt.position === 'left' ? ' overlap-left' : ' overlap-right';
+                                    }
+
+                                    const timeKey = Object.keys(timeToRowMap).find(k => timeToRowMap[k] === evt.row) || '08:00';
+
+                                    return (
+                                      <div
+                                        key={`mobile-evt-${evt.row}-${eIdx}`}
+                                        className={`event-card ${extraClass}`}
+                                        style={{
+                                          gridColumn: 2,
+                                          gridRow: `${evt.row} / span 2`
+                                        }}
+                                        onDoubleClick={() => handlePrepararModalAgendarSlot(evt.dateStrID, timeKey, 'Individual')}
+                                        title="Doble clic para agendar otro cliente a esta hora"
+                                      >
+                                        {evt.clientes.map((c, cIdx) => (
+                                          <React.Fragment key={c.idSesion}>
+                                            {cIdx > 0 && ', '}
+                                            <span
+                                              data-session-menu-trigger="true"
+                                              style={{
+                                                color: c.isPending ? '#dc2626' : 'inherit',
+                                                cursor: 'pointer',
+                                                textDecoration: 'none',
+                                                transition: 'opacity 0.2s'
+                                              }}
+                                              onClick={(e) => handleOpenSessionMenu(e, c.idSesion)}
+                                              title={c.isPending ? 'Pendiente de programar · Clic para opciones' : 'Clic para opciones de sesión y ficha'}
+                                            >
+                                              {c.nombre}
+                                            </span>
+                                          </React.Fragment>
+                                        ))}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            } else {
+                              /* Small Groups single-day */
+                              const todaySlots = sgTimeSlotsRaw
+                                .filter(t => t.toLowerCase().startsWith(selDayName.toLowerCase()))
+                                .map(t => t.split(' ')[1]);
+
+                              return (
+                                <div className="mobile-sg-single-day">
+                                  <div className={`sg-day-header ${isToday ? 'today' : ''}`} style={{ marginBottom: 10, borderRadius: 8 }}>
+                                    <span>{selDayName}</span> <span>{selDayNum} {selMonthName}</span>
+                                  </div>
+
+                                  {todaySlots.length === 0 ? (
+                                    <div className="sg-slot" style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>
+                                      Sin grupos configurados para este día
+                                    </div>
+                                  ) : (
+                                    todaySlots.map(t => {
+                                      const [h, m] = t.split(':');
+                                      const nextH = String(parseInt(h, 10) + 1).padStart(2, '0');
+                                      const keyHora = t.replace(':', '');
+                                      const slotKey = `${selDateStrID}-${keyHora}`;
+                                      const sgInfo = sgSlotsMap[slotKey];
+
+                                      return (
+                                        <div
+                                          key={slotKey}
+                                          className="sg-slot"
+                                          style={{ marginBottom: 10 }}
+                                          onDoubleClick={() => handlePrepararModalAgendarSlot(selDateStrID, t, 'Small Group')}
+                                        >
+                                          <div className="sg-slot-time">
+                                            {t}–{nextH}:{m}
+                                          </div>
+                                          <div className="sg-slot-clients">
+                                            {sgInfo && sgInfo.clientes.length > 0 ? (
+                                              <>
+                                                {sgInfo.clientes.map((c, cIdx) => (
+                                                  <React.Fragment key={c.idSesion}>
+                                                    {cIdx > 0 && <br />}
+                                                    <span
+                                                      data-session-menu-trigger="true"
+                                                      style={{ color: 'var(--text-main)', fontWeight: 500, cursor: 'pointer' }}
+                                                      onClick={(e) => handleOpenSessionMenu(e, c.idSesion)}
+                                                    >
+                                                      {c.nombre}
+                                                    </span>
+                                                  </React.Fragment>
+                                                ))}
+                                                <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px dashed var(--border)' }}>
+                                                  <a
+                                                    href="#programar"
+                                                    onClick={(e) => {
+                                                      e.preventDefault();
+                                                      e.stopPropagation();
+                                                      onNavigate('programar_sesion', sgInfo.firstId);
+                                                    }}
+                                                    style={{
+                                                      display: 'block',
+                                                      textAlign: 'center',
+                                                      fontSize: '0.78rem',
+                                                      fontWeight: 'bold',
+                                                      color: 'white',
+                                                      background: sgInfo.isPending ? '#dc2626' : 'var(--accent-dark)',
+                                                      padding: '6px 0',
+                                                      borderRadius: 6,
+                                                      textDecoration: 'none'
+                                                    }}
+                                                  >
+                                                    {sgInfo.isPending ? '📋 Programar SG' : '✅ Rutina SG'}
+                                                  </a>
+                                                </div>
+                                              </>
+                                            ) : (
+                                              <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Sin clientes</span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      );
+                                    })
+                                  )}
+                                </div>
+                              );
+                            }
+                          })()}
+                        </div>
+                      )}
+
+                      {currentView === 'individuales' ? (
+                        <div
+                          className={`calendar-grid ${mobileCalendarMode === 'dia' ? 'hide-on-mobile-dia' : ''}`}
+                          style={{
+                            gridTemplateColumns: `60px repeat(${numDias}, 1fr)`,
+                            gridTemplateRows: `auto repeat(${mananaSlots.length}, 40px) 20px repeat(${tardeSlots.length}, 40px)`
+                          }}
+                        >
+                          {/* Top-left Hora Header */}
+                          <div
+                            className="day-header"
+                            style={{ gridColumn: 1, gridRow: 1, borderRight: '3px solid #64748b' }}
+                          >
+                            Hora
+                          </div>
+
+                          {/* Day Headers */}
+                          {diasSemana.map((diaName, idx) => {
+                            const dTemp = new Date(wInfo.mondayDate);
+                            dTemp.setUTCDate(dTemp.getUTCDate() + idx);
+                            const dateStrID = dTemp.toISOString().split('T')[0];
+                            const isToday = dateStrID === hoyISO;
+                            return (
                               <div
-                                className="time-label"
-                                style={{ gridColumn: 1, gridRow: row }}
+                                key={diaName}
+                                className={`day-header ${isToday ? 'today' : ''}`}
+                                style={{ gridColumn: idx + 2, gridRow: 1 }}
                               >
-                                {time}
+                                <strong>{diaName}</strong>
+                                <span>
+                                  {dTemp.getUTCDate()}
+                                  {MES_NAMES[dTemp.getUTCMonth()]}
+                                </span>
                               </div>
-                              {diasSemana.map((_, colIdx) => {
-                                const col = colIdx + 2;
-                                const dTemp = new Date(wInfo.mondayDate);
-                                dTemp.setUTCDate(dTemp.getUTCDate() + colIdx);
-                                const dateStrID = dTemp.toISOString().split('T')[0];
+                            );
+                          })}
 
-                                return (
-                                  <div
-                                    key={`${dateStrID}-${time}`}
-                                    className="grid-bg-cell"
-                                    style={{ gridColumn: col, gridRow: row }}
-                                    onDoubleClick={() => handlePrepararModalAgendarSlot(dateStrID, time, 'Individual')}
-                                    title="Doble clic para agendar cita rápida"
-                                  />
-                                );
-                              })}
-                            </React.Fragment>
-                          );
-                        })}
+                          {/* Time Labels and Background Cells */}
+                          {timeSlots.map(time => {
+                            const row = timeToRowMap[time];
+                            return (
+                              <React.Fragment key={time}>
+                                <div
+                                  className="time-label"
+                                  style={{ gridColumn: 1, gridRow: row }}
+                                >
+                                  {time}
+                                </div>
+                                {diasSemana.map((_, colIdx) => {
+                                  const col = colIdx + 2;
+                                  const dTemp = new Date(wInfo.mondayDate);
+                                  dTemp.setUTCDate(dTemp.getUTCDate() + colIdx);
+                                  const dateStrID = dTemp.toISOString().split('T')[0];
+                                  const isToday = dateStrID === hoyISO;
+
+                                  return (
+                                    <div
+                                      key={`${dateStrID}-${time}`}
+                                      className={`grid-bg-cell ${isToday ? 'today-col' : ''}`}
+                                      style={{ gridColumn: col, gridRow: row }}
+                                      onDoubleClick={() => handlePrepararModalAgendarSlot(dateStrID, time, 'Individual')}
+                                      title="Doble clic para agendar cita rápida"
+                                    />
+                                  );
+                                })}
+                              </React.Fragment>
+                            );
+                          })}
 
                         {/* Noon Separator */}
                         <div
@@ -1699,7 +1964,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                     ) : (
                       /* Small Groups View */
                       <div
-                        className="sg-week-grid"
+                        className={`sg-week-grid ${mobileCalendarMode === 'dia' ? 'hide-on-mobile-dia' : ''}`}
                         style={{ gridTemplateColumns: `repeat(${numDias}, 1fr)` }}
                       >
                         {diasSemana.map((dayNameString, idx) => {
@@ -1708,15 +1973,16 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                           const dayNum = dayTemp.getUTCDate();
                           const monthName = MES_NAMES[dayTemp.getUTCMonth()];
                           const dateStrID = dayTemp.toISOString().split('T')[0];
+                          const isToday = dateStrID === hoyISO;
 
                           const todaySlots = sgTimeSlotsRaw
                             .filter(t => t.toLowerCase().startsWith(dayNameString.toLowerCase()))
                             .map(t => t.split(' ')[1]);
 
                           return (
-                            <div key={dateStrID} className="sg-day-column">
-                              <div className="sg-day-header">
-                                {dayNameString} <span>{dayNum}{monthName}</span>
+                            <div key={dateStrID} className={`sg-day-column ${isToday ? 'today' : ''}`}>
+                              <div className={`sg-day-header ${isToday ? 'today' : ''}`}>
+                                <span>{dayNameString}</span> <span>{dayNum}{monthName}</span>
                               </div>
 
                               {todaySlots.length === 0 ? (
@@ -1804,8 +2070,9 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                 )}
               </div>
             );
-          })
-        )}
+          });
+        })()
+      )}
       </div>
 
       {/* FLOATING SESSION ACTION MENU POPOVER */}
