@@ -21,9 +21,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const displayShortName = (userAlias || userName || 'Usuario').trim().split(/\s+/)[0] || 'Usuario';
 
   const handleLogout = async () => {
-    if (window.confirm("¿Seguro que quieres cerrar sesión?")) {
-      await logout();
-    }
+    await logout();
   };
 
   const isPlanificacion = activeTab === 'planificacion';

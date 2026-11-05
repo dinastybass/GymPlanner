@@ -138,7 +138,7 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 6px 8px;
+  padding: 5px 7px;
   cursor: pointer;
   color: var(--text-main);
   display: inline-flex;
@@ -254,11 +254,11 @@ table {
 
 th,
 td {
-  padding: 12px 15px;
+  padding: 9px 14px;
   text-align: left;
   border-bottom: 1px solid var(--border);
   font-size: 0.85rem;
-  line-height: 1.4;
+  line-height: 1.15;
   vertical-align: middle;
 }
 
@@ -716,10 +716,10 @@ textarea.form-control {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px;
+  padding: 9px 12px;
   background: var(--hover-bg);
   border-radius: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   cursor: pointer;
   transition: background 0.2s, box-shadow 0.2s;
   border: 1px solid transparent;
@@ -731,7 +731,7 @@ textarea.form-control {
   border: 1px solid #e2e8f0;
   border-left: 4px solid #0891b2;
   margin-left: 10px;
-  margin-bottom: 6px;
+  margin-bottom: 5px;
 }
 
 .ex-item:hover {
@@ -2581,7 +2581,7 @@ textarea.form-control {
 .status-accordion {
   border: 1px solid var(--border);
   border-radius: 12px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   background: var(--surface);
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
@@ -2591,7 +2591,7 @@ textarea.form-control {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 15px 20px;
+  padding: 12px 18px;
   cursor: pointer;
   user-select: none;
   font-weight: bold;
@@ -2631,12 +2631,12 @@ textarea.form-control {
 
 .acc-content {
   display: block;
-  padding: 0 20px 20px 20px;
+  padding: 0 18px 14px 18px;
   border-top: 1px solid var(--border);
 }
 
 .type-section {
-  margin-top: 20px;
+  margin-top: 14px;
 }
 
 .type-header {
@@ -2645,11 +2645,11 @@ textarea.form-control {
   color: var(--accent-dark);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  padding: 8px 12px;
+  padding: 6px 12px;
   background: #f0fdfa;
   border-left: 4px solid var(--accent-dark);
   border-radius: 4px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -2928,13 +2928,13 @@ textarea.form-control {
 .month-accordion {
   border: 1px solid var(--border);
   border-radius: 8px;
-  margin-bottom: 15px;
+  margin-bottom: 12px;
   overflow: hidden;
 }
 
 .month-header {
   background: var(--hover-bg);
-  padding: 12px 20px;
+  padding: 10px 18px;
   font-weight: bold;
   font-size: 0.9rem;
   display: flex;
@@ -2953,7 +2953,7 @@ textarea.form-control {
 
 .month-content {
   display: block;
-  padding: 0 14px 10px 14px;
+  padding: 0 14px 8px 14px;
   background: var(--surface);
   overflow-x: auto;
 }
@@ -2966,8 +2966,9 @@ textarea.form-control {
 
 .client-sessions-table th,
 .client-sessions-table td {
-  padding: 10px 8px;
+  padding: 8px 8px;
   font-size: 0.82rem;
+  line-height: 1.15;
   vertical-align: middle;
   white-space: nowrap;
 }
@@ -3365,8 +3366,8 @@ textarea.form-control {
   .clientes-list-table tr.client-row {
     display: grid;
     grid-template-columns: 1fr auto;
-    gap: 4px 10px;
-    padding: 12px 14px;
+    gap: 3px 10px;
+    padding: 9px 12px;
     border-bottom: 1px solid var(--border);
     align-items: center;
   }
@@ -3514,7 +3515,7 @@ textarea.form-control {
 .level-accordion {
   border: 1px solid var(--border);
   border-radius: 12px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   background: var(--surface);
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
@@ -3524,7 +3525,7 @@ textarea.form-control {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 15px 20px;
+  padding: 12px 18px;
   background: var(--hover-bg);
   cursor: pointer;
   user-select: none;
@@ -3556,12 +3557,12 @@ textarea.form-control {
 
 .level-content {
   display: block;
-  padding: 0 20px 20px 20px;
+  padding: 0 18px 14px 18px;
   border-top: 1px solid var(--border);
 }
 
 .block-section {
-  margin-top: 20px;
+  margin-top: 14px;
 }
 
 .block-header {
@@ -3570,11 +3571,11 @@ textarea.form-control {
   color: var(--accent-dark);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  padding: 8px 12px;
+  padding: 6px 12px;
   background: #f0fdfa;
   border-left: 4px solid var(--accent-dark);
   border-radius: 4px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -3749,14 +3750,14 @@ textarea.form-control {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   overflow: hidden;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
 }
 
 .tipo-header {
   background: var(--hover-bg);
-  padding: 15px 20px;
+  padding: 12px 18px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -3772,7 +3773,7 @@ textarea.form-control {
 
 .tipo-header h2 {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -3790,7 +3791,7 @@ textarea.form-control {
 
 .tipo-content {
   display: block;
-  padding: 0 20px 10px 20px;
+  padding: 0 18px 8px 18px;
   border-top: 1px solid var(--border);
 }
 

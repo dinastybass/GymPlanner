@@ -199,9 +199,7 @@ export const PantallaSalaView: React.FC<PantallaSalaViewProps> = ({ onBack }) =>
 
   const handleCloseOrLogout = async () => {
     if (isProyector) {
-      if (window.confirm('¿Deseas cerrar la sesión del Proyector de Sala?')) {
-        await logout();
-      }
+      await logout();
     } else {
       onBack();
     }
