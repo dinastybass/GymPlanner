@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface NavbarProps {
   activeTab: string;
@@ -134,6 +135,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         <div className="nav-right-group">
+          <PWAInstallButton variant="navbar" />
           <div className="nav-user">
             <span className="nav-user-greeting">
               <span className="greeting-prefix">Hola, </span>{displayShortName}
