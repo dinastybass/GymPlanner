@@ -600,9 +600,9 @@ export const MaestrosView: React.FC = () => {
     <div className="container">
       <div className="page-header">
         <div>
-          <h1>Gestión de Maestros</h1>
+          <h1>Configuración</h1>
           <div className="header-meta">
-            Configura las listas desplegables y el orden de aparición en toda la aplicación
+            Configura las listas desplegables, maestros y el orden de aparición en toda la aplicación
           </div>
         </div>
       </div>

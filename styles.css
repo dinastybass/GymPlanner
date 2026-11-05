@@ -1577,38 +1577,6 @@ textarea.form-control {
   flex-shrink: 0;
 }
 
-.pwa-install-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: #f0fdfa;
-  border: 1.5px solid var(--accent);
-  color: var(--accent-dark);
-  padding: 5px 12px;
-  border-radius: 8px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-}
-
-.pwa-install-btn:hover {
-  background: var(--accent);
-  color: #ffffff;
-}
-
-.pwa-install-icon {
-  font-size: 0.95rem;
-}
-
-@media (max-width: 640px) {
-  .pwa-install-btn {
-    padding: 5px 8px;
-    gap: 4px;
-    font-size: 0.75rem;
-  }
-}
 
 .nav-user {
   display: flex;
