@@ -13,6 +13,17 @@ jobs:
       - name: Descargar código del repositorio
         uses: actions/checkout@v4
 
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependencias
+        run: npm install
+
+      - name: Compilar aplicación (Vite)
+        run: npm run build
+
       - name: Deploy a Firebase Hosting (DEV)
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
