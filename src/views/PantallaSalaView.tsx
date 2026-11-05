@@ -387,8 +387,10 @@ export const PantallaSalaView: React.FC<PantallaSalaViewProps> = ({ onBack }) =>
       >
         {sesionesActivas.map(s => renderTarjetaSala(s))}
         {Array.from({ length: emptyCount }).map((_, idx) => (
-          <div key={`empty-${idx}`} className="sala-card empty-slot">
-            <span className="empty-slot-label">LIBRE</span>
+          <div key={`empty-${idx}`} className="sala-card empty-slot" title="Puesto disponible">
+            <div className="empty-slot-watermark">
+              <img src="/assets/logo.png" alt="GO & train" className="empty-slot-logo" />
+            </div>
           </div>
         ))}
       </main>
