@@ -19,7 +19,7 @@ import {
   extraerListaMaster,
   getListaProgramadores
 } from '../services/maestrosService';
-import { normalizarIntensidad, renderIntensityBadge } from '../utils/helpers';
+import { normalizarIntensidad, renderIntensityBadge, esSesionCompletada, esSesionCancelada } from '../utils/helpers';
 import { SendRoutineModal } from '../components/SendRoutineModal';
 
 interface FichaClienteViewProps {
@@ -210,10 +210,31 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
         getDocs(collection(db, 'clientes'))
       ]);
 
+      let cliData: any = null;
+      let altClientId = '';
       if (docSnap.exists()) {
-        setClienteActual(docSnap.data());
+        cliData = docSnap.data();
+        if (cliData.ID_Cliente && String(cliData.ID_Cliente).trim() !== '' && cliData.ID_Cliente !== clientId) {
+          altClientId = String(cliData.ID_Cliente).trim();
+        }
       } else {
-        setClienteActual(null);
+        allCliSnap.forEach(d => {
+          const c = d.data();
+          if (c.ID_Cliente === clientId) {
+            cliData = c;
+            altClientId = d.id;
+          }
+        });
+      }
+      setClienteActual(cliData);
+
+      const sesDocsMap = new Map<string, any>();
+      sesSnap.forEach(d => sesDocsMap.set(d.id, d));
+      if (altClientId) {
+        const altSesSnap = await getDocs(
+          query(collection(db, 'agenda_sesiones'), where('id_cliente', '==', altClientId))
+        );
+        altSesSnap.forEach(d => sesDocsMap.set(d.id, d));
       }
 
       const nowLocal = new Date();
@@ -228,7 +249,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
       );
 
       const sesList: any[] = [];
-      sesSnap.forEach(d => {
+      sesDocsMap.forEach(d => {
         const data = d.data();
         const esSinFecha = Boolean(data.sin_fecha === true || !data.fecha_hora_inicio);
 
@@ -258,8 +279,18 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
           ? data.fecha_hora_inicio.toDate()
           : new Date(data.fecha_hora_inicio);
 
+        const isComp = esSesionCompletada(data);
+        if (isComp && (data.estado !== 'Completada' || data.estado_sesion !== 'Completada')) {
+          data.estado = 'Completada';
+          data.estado_sesion = 'Completada';
+          updateDoc(doc(db, 'agenda_sesiones', d.id), {
+            estado: 'Completada',
+            estado_sesion: 'Completada'
+          }).catch(() => {});
+        }
+
         let estadoCalc = 'Pendiente';
-        if (data.estado_sesion === 'Completada') {
+        if (isComp) {
           estadoCalc = 'Completada';
         } else if (fechaObj < nowNominalUTC) {
           estadoCalc = 'Vencida';
@@ -437,6 +468,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
         sin_fecha: true,
         fecha_hora_inicio: null,
         fecha_creacion_sin_fecha: ahora,
+        estado: 'Pendiente',
         estado_sesion: 'Pendiente',
         ejercicios: [],
         intensidad_sesion: 'MED',
@@ -480,6 +512,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
         sin_fecha: true,
         fecha_hora_inicio: null,
         fecha_creacion_sin_fecha: ahora,
+        estado: 'Pendiente',
         estado_sesion: 'Pendiente'
       };
       await updateDoc(doc(db, 'agenda_sesiones', idSesion), updatePayload);
@@ -497,6 +530,77 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
     } catch (e) {
       console.error('Error al cancelar sin fecha:', e);
       alert('Error al pasar la sesión a sin fecha.');
+    }
+  };
+
+  const toggleEstadoCompletada = async (sesion: any) => {
+    if (!sesion || sesion.sin_fecha) return;
+    const isCompleted = esSesionCompletada(sesion) || sesion.estadoCalculado === 'Completada';
+    const nextStatus = isCompleted ? 'Pendiente' : 'Completada';
+    const prevStatus = isCompleted ? 'Completada' : 'Pendiente';
+
+    try {
+      await updateDoc(doc(db, 'agenda_sesiones', sesion.id), {
+        estado: nextStatus,
+        estado_sesion: nextStatus
+      });
+
+      const nowLocal = new Date();
+      const nowNominalUTC = new Date(
+        Date.UTC(
+          nowLocal.getFullYear(),
+          nowLocal.getMonth(),
+          nowLocal.getDate(),
+          nowLocal.getHours(),
+          nowLocal.getMinutes()
+        )
+      );
+
+      setSesionesCliente(prev =>
+        prev.map(s => {
+          if (s.id !== sesion.id) return s;
+          let nuevoCalc = 'Pendiente';
+          if (nextStatus === 'Completada') {
+            nuevoCalc = 'Completada';
+          } else if (s.fechaObj && s.fechaObj < nowNominalUTC) {
+            nuevoCalc = 'Vencida';
+          }
+          return {
+            ...s,
+            estado: nextStatus,
+            estado_sesion: nextStatus,
+            estadoCalculado: nuevoCalc
+          };
+        })
+      );
+
+      pushAction({
+        label: `Marcar sesión como ${nextStatus}`,
+        undoOps: [
+          {
+            type: 'update',
+            collection: 'agenda_sesiones',
+            id: sesion.id,
+            data: { estado: prevStatus, estado_sesion: prevStatus }
+          }
+        ],
+        redoOps: [
+          {
+            type: 'update',
+            collection: 'agenda_sesiones',
+            id: sesion.id,
+            data: { estado: nextStatus, estado_sesion: nextStatus }
+          }
+        ],
+        showToast: true,
+        toastMessage:
+          nextStatus === 'Completada'
+            ? '🟢 Sesión marcada como Completada'
+            : '⚪ Sesión marcada como Pendiente'
+      });
+    } catch (e) {
+      console.error('Error cambiando estado de sesión:', e);
+      alert('No se pudo actualizar el estado de la sesión.');
     }
   };
 
@@ -585,7 +689,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
       return;
     }
     const huecosFuturos = sesionesCliente
-      .filter(s => !s.sin_fecha && s.estado_sesion !== 'Completada' && s.estado_sesion !== 'Cancelada')
+      .filter(s => !s.sin_fecha && !esSesionCompletada(s) && !esSesionCancelada(s))
       .sort((a, b) => a.fechaObj.getTime() - b.fechaObj.getTime());
 
     setModalAsignar({
@@ -722,7 +826,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
       const list: any[] = [];
       snap.forEach(d => {
         const data = d.data();
-        if (!data.fecha_hora_inicio || data.estado_sesion === 'Cancelada') return;
+        if (!data.fecha_hora_inicio || esSesionCancelada(data)) return;
         const f = data.fecha_hora_inicio.toDate
           ? data.fecha_hora_inicio.toDate()
           : new Date(data.fecha_hora_inicio);
@@ -862,7 +966,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
       const sesionesFuturas = sesionesCliente
         .filter(s => {
           if (s.sin_fecha || !s.fechaObj) return false;
-          if (s.estado_sesion === 'Completada' || s.estado_sesion === 'Cancelada') return false;
+          if (esSesionCompletada(s) || esSesionCancelada(s)) return false;
           const t = (s.tipo_sesion || '').toLowerCase();
           const esSG = t.includes('small') || t.includes('group');
           return esSG === esSGOrig && s.fechaObj >= fechaAntiguaUTC;
@@ -1850,11 +1954,47 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                                     <span className="pill pill-si">Individual</span>
                                   );
 
-                                  let estPill = <span className="pill pill-pendiente">Pendiente</span>;
+                                  let estPill = (
+                                    <span
+                                      className="pill pill-pendiente"
+                                      style={{ cursor: 'pointer' }}
+                                      title="Haz clic para marcar como Completada"
+                                      onClick={e => {
+                                        e.stopPropagation();
+                                        toggleEstadoCompletada(s);
+                                      }}
+                                    >
+                                      Pendiente
+                                    </span>
+                                  );
                                   if (s.estadoCalculado === 'Completada') {
-                                    estPill = <span className="pill pill-completada">✓ Completada</span>;
+                                    estPill = (
+                                      <span
+                                        className="pill pill-completada"
+                                        style={{ cursor: 'pointer' }}
+                                        title="Haz clic para volver a Pendiente"
+                                        onClick={e => {
+                                          e.stopPropagation();
+                                          toggleEstadoCompletada(s);
+                                        }}
+                                      >
+                                        ✓ Completada
+                                      </span>
+                                    );
                                   } else if (s.estadoCalculado === 'Vencida') {
-                                    estPill = <span className="pill pill-vencida">Vencida</span>;
+                                    estPill = (
+                                      <span
+                                        className="pill pill-vencida"
+                                        style={{ cursor: 'pointer' }}
+                                        title="Haz clic para marcar como Completada"
+                                        onClick={e => {
+                                          e.stopPropagation();
+                                          toggleEstadoCompletada(s);
+                                        }}
+                                      >
+                                        Vencida
+                                      </span>
+                                    );
                                   }
 
                                   const tieneEjercicios =
@@ -2528,8 +2668,8 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                     .filter(
                       s =>
                         !s.sin_fecha &&
-                        s.estado_sesion !== 'Completada' &&
-                        s.estado_sesion !== 'Cancelada'
+                        !esSesionCompletada(s) &&
+                        !esSesionCancelada(s)
                     )
                     .map(s => {
                       const f = s.fechaObj;
@@ -2931,7 +3071,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                             if (row === -1) return null;
 
                             const esOrigen = s.id === modalReprog.idSesion;
-                            const esComp = s.estado_sesion === 'Completada';
+                            const esComp = esSesionCompletada(s);
                             const tieneEj = Array.isArray(s.ejercicios) && s.ejercicios.length > 0;
                             const cardClass = esOrigen
                               ? 'reprog-event-origin'

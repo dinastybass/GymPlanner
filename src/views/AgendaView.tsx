@@ -16,6 +16,7 @@ import { CustomDropdown } from '../components/CustomDropdown';
 import { SendRoutineModal } from '../components/SendRoutineModal';
 import { useUndo } from '../context/UndoContext';
 import { FirestoreOp } from '../services/undoService';
+import { esSesionCompletada } from '../utils/helpers';
 
 interface AgendaViewProps {
   onNavigate: (tab: string, param?: string) => void;
@@ -101,7 +102,7 @@ function obtenerAccionesDisponiblesSesion(sesionRaw: any = {}) {
   let estado = 'Pendiente';
   if (isSinFecha) {
     estado = 'Sin fecha';
-  } else if (sesionRaw.estado === 'Completada') {
+  } else if (esSesionCompletada(sesionRaw)) {
     estado = 'Completada';
   } else if ((d && d < nowNominalUTC) || sesionRaw.estado === 'Vencida') {
     estado = 'Vencida';
@@ -399,6 +400,14 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
           );
           if (found) idCliente = found.id;
         }
+        if (esSesionCompletada(data) && (data.estado !== 'Completada' || data.estado_sesion !== 'Completada')) {
+          data.estado = 'Completada';
+          data.estado_sesion = 'Completada';
+          setDoc(doc(db, "agenda_sesiones", docSnap.id), {
+            estado: 'Completada',
+            estado_sesion: 'Completada'
+          }, { merge: true }).catch(() => {});
+        }
         mapSes[docSnap.id] = {
           id: docSnap.id,
           docData: data,
@@ -606,6 +615,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
         fecha_hora_inicio: null,
         fecha_hora_anterior: backupData.fecha_hora_inicio || backupData.fecha_hora_anterior || null,
         estado: 'Sin fecha',
+        estado_sesion: 'Pendiente',
         ultimo_modificado_por: autor,
         fecha_modificacion: new Date()
       };
@@ -623,6 +633,36 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     } catch (err) {
       console.error("Error al cancelar sesión sin fecha:", err);
       alert("No se pudo cancelar la sesión sin fecha.");
+    }
+  };
+
+  const handleToggleCompletadaAgenda = async (idSesion: string, sFmt: any) => {
+    setActiveMenu(null);
+    try {
+      const backupData = sFmt.docData || {};
+      const isComp = esSesionCompletada(backupData);
+      const nextStatus = isComp ? 'Pendiente' : 'Completada';
+      const prevStatus = isComp ? 'Completada' : 'Pendiente';
+      const nombreCli = sFmt.alias || sFmt.nombre_cliente || 'Cliente';
+
+      const updateData = {
+        estado: nextStatus,
+        estado_sesion: nextStatus
+      };
+
+      await setDoc(doc(db, "agenda_sesiones", idSesion), updateData, { merge: true });
+      await loadAgenda();
+
+      pushAction({
+        label: `Marcar sesión de ${nombreCli} como ${nextStatus}`,
+        undoOps: [{ type: 'set', collection: 'agenda_sesiones', id: idSesion, data: { estado: prevStatus, estado_sesion: prevStatus }, merge: true }],
+        redoOps: [{ type: 'set', collection: 'agenda_sesiones', id: idSesion, data: updateData, merge: true }],
+        showToast: true,
+        toastMessage: nextStatus === 'Completada' ? `🟢 Sesión de ${nombreCli} marcada como Completada` : `⚪ Sesión de ${nombreCli} marcada como Pendiente`
+      });
+    } catch (err) {
+      console.error("Error al cambiar estado de sesión:", err);
+      alert("No se pudo cambiar el estado de la sesión.");
     }
   };
 
@@ -760,6 +800,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
           fecha_hora_inicio: nuevaFechaObj,
           sin_fecha: false,
           estado: "Pendiente",
+          estado_sesion: "Pendiente",
           ultimo_modificado_por: autor,
           fecha_modificacion: new Date(),
           utc_migrado: true
@@ -774,6 +815,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
           fecha_hora_inicio: nuevaFechaObj,
           sin_fecha: false,
           estado: "Pendiente",
+          estado_sesion: "Pendiente",
           ultimo_modificado_por: autor,
           fecha_modificacion: new Date(),
           utc_migrado: true
@@ -823,7 +865,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
             ejercicios: prevExercises,
             ultimo_modificado_por: autor,
             fecha_modificacion: new Date(),
-            ...(s.id === targetSession.id ? { fecha_hora_inicio: nuevaFechaObj, sin_fecha: false, estado: "Pendiente", utc_migrado: true } : {})
+            ...(s.id === targetSession.id ? { fecha_hora_inicio: nuevaFechaObj, sin_fecha: false, estado: "Pendiente", estado_sesion: "Pendiente", utc_migrado: true } : {})
           };
           batch.update(doc(db, "agenda_sesiones", s.id), sUpdate);
           redoOps.push({ type: 'set', collection: 'agenda_sesiones', id: s.id, data: sUpdate, merge: true });
@@ -842,6 +884,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
           fecha_hora_inicio: nuevaFechaObj,
           sin_fecha: false,
           estado: "Pendiente",
+          estado_sesion: "Pendiente",
           ejercicios: futureSessions.length > 0 ? [] : prevExercises,
           ultimo_modificado_por: autor,
           fecha_modificacion: new Date(),
@@ -882,6 +925,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
           alias: aliasCli,
           nombre_cliente: sourceSession.docData?.nombre_cliente || aliasCli,
           estado: "Pendiente",
+          estado_sesion: "Pendiente",
           sin_fecha: false,
           tipo_sesion: lastAffectedSession.tipo_sesion || "Individual",
           fecha_hora_inicio: nuevaFechaExtra,
@@ -939,6 +983,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
         fecha_hora_inicio: nuevaFechaObj,
         sin_fecha: false,
         estado: "Pendiente",
+        estado_sesion: "Pendiente",
         ultimo_modificado_por: autor,
         fecha_modificacion: new Date(),
         utc_migrado: true,
@@ -1131,6 +1176,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
         fecha_hora_inicio: nuevaFechaObj,
         sin_fecha: false,
         estado: "Pendiente",
+        estado_sesion: "Pendiente",
         ultimo_modificado_por: autor,
         fecha_modificacion: new Date(),
         utc_migrado: true
@@ -1239,6 +1285,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
         alias: nombreCli,
         nombre_cliente: nombreCli,
         estado: "Pendiente",
+        estado_sesion: "Pendiente",
         tipo_sesion: isSG ? "Small Group" : "Individual",
         fecha_hora_inicio: fechaGuardar,
         ejercicios: [],
@@ -1368,6 +1415,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
         alias: nombreCli,
         nombre_cliente: nombreCli,
         estado: "Pendiente",
+        estado_sesion: "Pendiente",
         tipo_sesion: "Individual",
         fecha_hora_inicio: f,
         ejercicios: futureSessions.length > 0 ? (futureSessions[0].data.ejercicios || []) : [],
@@ -2127,6 +2175,21 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
           </div>
 
           <div className="session-action-menu-list">
+            {!activeMenu.acciones.sin_fecha && (
+              <button
+                type="button"
+                className="session-action-item"
+                onClick={() => handleToggleCompletadaAgenda(activeMenu.idSesion, activeMenu.sFmt)}
+              >
+                <span>{activeMenu.acciones.estado === 'Completada' ? '⚪' : '🟢'}</span>
+                <span>
+                  {activeMenu.acciones.estado === 'Completada'
+                    ? 'Marcar como Pendiente'
+                    : 'Marcar como Completada'}
+                </span>
+              </button>
+            )}
+
             {(activeMenu.acciones.puedeProgramar || activeMenu.acciones.ejercicios.length > 0) && (
               <button
                 type="button"

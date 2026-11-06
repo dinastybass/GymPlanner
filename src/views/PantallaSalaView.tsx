@@ -6,6 +6,7 @@ import {
   cargarCatalogoMaestros,
   extraerListaMaster
 } from '../services/maestrosService';
+import { esSesionCompletada, esSesionCancelada } from '../utils/helpers';
 
 interface PantallaSalaViewProps {
   onBack: () => void;
@@ -132,7 +133,7 @@ export const PantallaSalaView: React.FC<PantallaSalaViewProps> = ({ onBack }) =>
       snapSesiones.forEach(docSnap => {
         const data = docSnap.data();
         if (!data.fecha_hora_inicio) return;
-        if (data.estado_sesion === 'Completada' || data.estado_sesion === 'Cancelada') return;
+        if (esSesionCompletada(data) || esSesionCancelada(data)) return;
 
         const tipo = (data.tipo_sesion || '').toLowerCase();
         if (tipo.includes('small') || tipo.includes('group')) return;

@@ -8,6 +8,7 @@ import {
   extraerListaMaster,
   getListaProgramadores
 } from '../services/maestrosService';
+import { coincideBusqueda, normalizarTextoBusqueda } from '../utils/helpers';
 
 interface ClientesViewProps {
   onNavigate: (tab: string, param?: string) => void;
@@ -247,10 +248,10 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
 
   const filtrados = clientesData.filter(c => {
     const matchText =
-      (c.nombre_completo || '').toLowerCase().includes(searchText.toLowerCase()) ||
-      (c.alias || '').toLowerCase().includes(searchText.toLowerCase()) ||
-      (c.objetivo_global || '').toLowerCase().includes(searchText.toLowerCase()) ||
-      (c.lesiones || '').toLowerCase().includes(searchText.toLowerCase());
+      coincideBusqueda(c.nombre_completo, searchText) ||
+      coincideBusqueda(c.alias, searchText) ||
+      coincideBusqueda(c.objetivo_global, searchText) ||
+      coincideBusqueda(c.lesiones, searchText);
 
     const matchStatus = statusFilter === 'Todos' || c.estado === statusFilter;
     const matchType = typeFilter === 'Todos' || c.tipo_cliente === typeFilter;
@@ -259,8 +260,8 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
   });
 
   filtrados.sort((a, b) => {
-    const valA = (a[sortCol] || '').toLowerCase();
-    const valB = (b[sortCol] || '').toLowerCase();
+    const valA = normalizarTextoBusqueda(a[sortCol]);
+    const valB = normalizarTextoBusqueda(b[sortCol]);
     if (valA < valB) return sortAsc ? -1 : 1;
     if (valA > valB) return sortAsc ? 1 : -1;
     return 0;

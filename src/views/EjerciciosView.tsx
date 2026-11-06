@@ -3,6 +3,7 @@ import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore'
 import { db } from '../firebase';
 import { useUndo } from '../context/UndoContext';
 import { cargarCatalogoMaestros, extraerListaMaster } from '../services/maestrosService';
+import { coincideBusqueda } from '../utils/helpers';
 
 interface EjerciciosViewProps {
   onNavigate?: (tab: string, param?: string) => void;
@@ -366,7 +367,7 @@ export const EjerciciosView: React.FC<EjerciciosViewProps> = () => {
     const isOpen = activeDropdown === field;
     const searchVal = dropdownSearch[field] || '';
     const filteredOpts = options.filter(o =>
-      o.toLowerCase().includes(searchVal.toLowerCase())
+      coincideBusqueda(o, searchVal)
     );
 
     let triggerText = 'Seleccionar...';
@@ -445,8 +446,8 @@ export const EjerciciosView: React.FC<EjerciciosViewProps> = () => {
   // Filtering
   const filtrados = ejerciciosData.filter(e => {
     const matchText =
-      (e.nombre || '').toLowerCase().includes(searchText.toLowerCase()) ||
-      (e.acronimo || '').toLowerCase().includes(searchText.toLowerCase());
+      coincideBusqueda(e.nombre, searchText) ||
+      coincideBusqueda(e.acronimo, searchText);
     const matchGrupo = filterGrupo === 'Todos' || e.musculos.includes(filterGrupo);
     const matchMat = filterMaterial === 'Todos' || e.materiales.includes(filterMaterial);
     const matchSub =

@@ -1,0 +1,6 @@
+{
+  "summary": "Plan de implementación para la lógica unificada de Cancelación de Sesiones (con cascada hacia delante y paso del sobrante a la bolsa Sin Fecha), Vencimiento Automático al día siguiente, Reprogramación desde Sin Fecha (cascada hacia atrás ubicando la rutina de Sin Fecha al final o en la primera sesión vacía), Reprogramación directa con orden cronológico automático y Registro de Actividad (Log profesional) en la Ficha del Cliente.",
+  "updatedAt": "2026-11-06T17:45:25.527190092Z",
+  "requestFeedback": true,
+  "userFacing": true
+}

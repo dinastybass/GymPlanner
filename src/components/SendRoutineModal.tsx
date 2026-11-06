@@ -45,7 +45,7 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
   const [mode, setMode] = useState<'cliente' | 'plantilla'>('cliente');
 
   // Mode cliente state
-  const [clientes, setClientes] = useState<{ id: string; name: string }[]>([]);
+  const [clientes, setClientes] = useState<{ id: string; name: string; search: string }[]>([]);
   const [selectedCliente, setSelectedCliente] = useState<string>('');
   const [sesiones, setSesiones] = useState<any[]>([]);
   const [selectedSesion, setSelectedSesion] = useState<string>('');
@@ -75,11 +75,13 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
     // Cargar clientes
     getDocs(collection(db, 'clientes'))
       .then(snap => {
-        const list: { id: string; name: string }[] = [];
+        const list: { id: string; name: string; search: string }[] = [];
         snap.forEach(d => {
           const data = d.data();
-          const name = data.Alias || data.Nombre_Cliente || data.Nombre || data.nombre || 'Sin nombre';
-          list.push({ id: d.id, name: String(name).trim() });
+          const alias = String(data.Alias || '').trim();
+          const fullName = String(data.Nombre_Cliente || data.Nombre || data.nombre || '').trim();
+          const name = alias || fullName || 'Sin nombre';
+          list.push({ id: d.id, name, search: `${alias} ${fullName}` });
         });
         list.sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
         setClientes(list);
@@ -361,7 +363,7 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
                   Cliente Destino *
                 </label>
                 <CustomDropdown
-                  options={clientes.map(c => ({ value: c.id, label: c.name }))}
+                  options={clientes.map(c => ({ value: c.id, label: c.name, search: c.search }))}
                   value={selectedCliente}
                   onChange={setSelectedCliente}
                   placeholder="Buscar o elegir un cliente..."
