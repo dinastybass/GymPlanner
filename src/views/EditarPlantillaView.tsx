@@ -3,7 +3,7 @@ import { doc, getDoc, updateDoc, collection, getDocs } from 'firebase/firestore'
 import { db } from '../firebase';
 import { useUndo } from '../context/UndoContext';
 import { cargarCatalogoMaestros, extraerListaMaster } from '../services/maestrosService';
-import { normalizarIntensidad, renderIntensityBadge } from '../utils/helpers';
+import { normalizarIntensidad, renderIntensityBadge, coincideBusqueda } from '../utils/helpers';
 
 interface EditarPlantillaViewProps {
   plantillaId: string;
@@ -43,6 +43,9 @@ export const EditarPlantillaView: React.FC<EditarPlantillaViewProps> = ({
   ]);
 
   const dragIndexRef = useRef<number | null>(null);
+  const dragOverIndexRef = useRef<number | null>(null);
+  const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
 
   // Modal Añadir / Editar Ejercicio
   const [modalAddOpen, setModalAddOpen] = useState(false);
@@ -242,20 +245,85 @@ export const EditarPlantillaView: React.FC<EditarPlantillaViewProps> = ({
     }
   };
 
-  const handleDragStart = (idx: number) => {
-    dragIndexRef.current = idx;
+  const getOrderedExercises = (): any[] => {
+    const raw: any[] = plantillaActual?.ejercicios || [];
+    const items = raw.map((ej, idx) => ({ ej, indexOriginal: idx }));
+    if (!plantillaActual?.orden_customizado) {
+      items.sort((a, b) => {
+        const bA = a.ej.Bloque || 'General';
+        const bB = b.ej.Bloque || 'General';
+        const idxA = ordenBloques.indexOf(bA);
+        const idxB = ordenBloques.indexOf(bB);
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+        if (idxA !== -1) return -1;
+        if (idxB !== -1) return 1;
+        return bA.localeCompare(bB);
+      });
+    }
+    return items.map(i => i.ej);
   };
 
-  const handleDropOnIndex = async (targetIdx: number) => {
-    const fromIdx = dragIndexRef.current;
-    dragIndexRef.current = null;
-    if (fromIdx === null || fromIdx === targetIdx || !plantillaActual) return;
+  const handleDragStart = (renderIdx: number) => {
+    dragIndexRef.current = renderIdx;
+    dragOverIndexRef.current = renderIdx;
+    setDraggingIdx(renderIdx);
+  };
 
-    const list = [...(plantillaActual.ejercicios || [])];
+  const handleDropOnIndex = async (targetRenderIdx: number, explicitFromIdx?: number) => {
+    const fromIdx = explicitFromIdx !== undefined ? explicitFromIdx : dragIndexRef.current;
+    dragIndexRef.current = null;
+    dragOverIndexRef.current = null;
+    setDraggingIdx(null);
+    setDragOverIdx(null);
+    if (fromIdx === null || fromIdx === targetRenderIdx || !plantillaActual) return;
+
+    const list = getOrderedExercises();
+    if (fromIdx < 0 || fromIdx >= list.length || targetRenderIdx < 0 || targetRenderIdx >= list.length) return;
     const [moved] = list.splice(fromIdx, 1);
-    list.splice(targetIdx, 0, moved);
+    list.splice(targetRenderIdx, 0, moved);
 
     await guardarEnFirestore(list, true, 'Reordenar ejercicios de la plantilla');
+  };
+
+  const handleTouchStartDrag = (e: React.TouchEvent, renderIdx: number) => {
+    e.stopPropagation();
+    dragIndexRef.current = renderIdx;
+    dragOverIndexRef.current = renderIdx;
+    setDraggingIdx(renderIdx);
+    setDragOverIdx(renderIdx);
+  };
+
+  const handleTouchMoveDrag = (e: React.TouchEvent) => {
+    if (dragIndexRef.current === null) return;
+    e.stopPropagation();
+    const touch = e.touches[0];
+    if (!touch) return;
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    const rowEl = el?.closest('[data-render-idx]');
+    if (rowEl) {
+      const idxAttr = rowEl.getAttribute('data-render-idx');
+      if (idxAttr !== null) {
+        const overIdx = parseInt(idxAttr, 10);
+        if (!isNaN(overIdx) && overIdx !== dragOverIndexRef.current) {
+          dragOverIndexRef.current = overIdx;
+          setDragOverIdx(overIdx);
+        }
+      }
+    }
+  };
+
+  const handleTouchEndDrag = (e: React.TouchEvent) => {
+    if (dragIndexRef.current === null) return;
+    e.stopPropagation();
+    const fromIdx = dragIndexRef.current;
+    const toIdx = dragOverIndexRef.current;
+    dragIndexRef.current = null;
+    dragOverIndexRef.current = null;
+    setDraggingIdx(null);
+    setDragOverIdx(null);
+    if (fromIdx !== null && toIdx !== null && fromIdx !== toIdx) {
+      handleDropOnIndex(toIdx, fromIdx);
+    }
   };
 
   const borrarEjercicio = async (e: React.MouseEvent, index: number) => {
@@ -530,8 +598,8 @@ export const EditarPlantillaView: React.FC<EditarPlantillaViewProps> = ({
 
   const filteredCatalog = catalogoEjercicios.filter(ej => {
     const matchText =
-      (ej.Nombre_Ejercicio || '').toLowerCase().includes(exSearchText.toLowerCase()) ||
-      (ej.Acrónimo || ej.Acronimo || '').toLowerCase().includes(exSearchText.toLowerCase());
+      coincideBusqueda(ej.Nombre_Ejercicio, exSearchText) ||
+      coincideBusqueda(ej.Acrónimo || ej.Acronimo, exSearchText);
 
     const checkArr = (campo: any, filtro: string) => {
       if (filtro === 'Todos') return true;
@@ -706,17 +774,34 @@ export const EditarPlantillaView: React.FC<EditarPlantillaViewProps> = ({
                     </div>
                   )}
                   <div
-                    className={`ex-item ${sub ? 'in-subgroup' : ''}`}
+                    className={`ex-item ${sub ? 'in-subgroup' : ''} ${draggingIdx === renderIdx ? 'dragging' : ''} ${dragOverIdx === renderIdx && draggingIdx !== renderIdx ? 'drag-over' : ''}`}
+                    data-render-idx={renderIdx}
                     draggable
-                    onDragStart={() => handleDragStart(idx)}
-                    onDragOver={e => e.preventDefault()}
-                    onDrop={() => handleDropOnIndex(idx)}
+                    onDragStart={() => handleDragStart(renderIdx)}
+                    onDragOver={e => {
+                      e.preventDefault();
+                      if (dragOverIdx !== renderIdx) {
+                        dragOverIndexRef.current = renderIdx;
+                        setDragOverIdx(renderIdx);
+                      }
+                    }}
+                    onDragEnd={() => {
+                      dragIndexRef.current = null;
+                      dragOverIndexRef.current = null;
+                      setDraggingIdx(null);
+                      setDragOverIdx(null);
+                    }}
+                    onDrop={() => handleDropOnIndex(renderIdx)}
                     onClick={() => abrirModalEditar(idx)}
                   >
                     <div
                       className="drag-handle"
                       title="Mantén pulsado y arrastra para reordenar"
                       onClick={e => e.stopPropagation()}
+                      onTouchStart={e => handleTouchStartDrag(e, renderIdx)}
+                      onTouchMove={handleTouchMoveDrag}
+                      onTouchEnd={handleTouchEndDrag}
+                      onTouchCancel={handleTouchEndDrag}
                     >
                       ⋮⋮
                     </div>
@@ -996,7 +1081,7 @@ export const EditarPlantillaView: React.FC<EditarPlantillaViewProps> = ({
                       </div>
                       <div className="dropdown-options">
                         {materialesMaster
-                          .filter(m => m.toLowerCase().includes(matSearch.toLowerCase()))
+                          .filter(m => coincideBusqueda(m, matSearch))
                           .map(m => {
                             const checked = formEx.materiales.includes(m);
                             return (

@@ -1,3 +1,19 @@
+export function normalizarTextoBusqueda(val: any): string {
+  if (!val) return '';
+  return String(val)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+export function coincideBusqueda(texto: any, terminoBusqueda: any): boolean {
+  const term = normalizarTextoBusqueda(terminoBusqueda);
+  if (!term) return true;
+  const target = normalizarTextoBusqueda(texto);
+  return target.includes(term);
+}
+
 export function normalizarIntensidad(val: any): 'LOW' | 'MED' | 'HIGH' {
   const s = String(val || 'MED').trim().toUpperCase();
   if (s === 'LOW' || s === 'BAJA') return 'LOW';
@@ -15,3 +31,26 @@ export function renderIntensityBadge(
   const styleExtra = opts?.compact ? 'style="font-size:0.68rem;padding:2px 7px;"' : '';
   return `<span class="intensity-badge ${cls}" ${styleExtra} title="Intensidad: ${val}">${prefix}${val}</span>`;
 }
+
+export function esSesionCompletada(data: any): boolean {
+  if (!data) return false;
+  const est1 = String(data.estado || '').trim().toLowerCase();
+  const est2 = String(data.estado_sesion || '').trim().toLowerCase();
+  const asist = String(data.asistencia || '').trim().toLowerCase();
+  return (
+    est1 === 'completada' ||
+    est2 === 'completada' ||
+    asist === 'completada' ||
+    asist === 'asistio' ||
+    asist === 'asistió' ||
+    data.completada === true
+  );
+}
+
+export function esSesionCancelada(data: any): boolean {
+  if (!data) return false;
+  const est1 = String(data.estado || '').trim().toLowerCase();
+  const est2 = String(data.estado_sesion || '').trim().toLowerCase();
+  return est1 === 'cancelada' || est2 === 'cancelada';
+}
+

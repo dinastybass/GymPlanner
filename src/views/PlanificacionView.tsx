@@ -3,7 +3,7 @@ import { collection, getDocs, query, where, doc, updateDoc, addDoc } from 'fireb
 import { db } from '../firebase';
 import { cargarCatalogoMaestros, extraerListaMaster } from '../services/maestrosService';
 import { useUndo } from '../context/UndoContext';
-import { normalizarIntensidad } from '../utils/helpers';
+import { normalizarIntensidad, esSesionCompletada } from '../utils/helpers';
 
 interface PlanificacionViewProps {
   onNavigate: (tab: string, param?: string) => void;
@@ -184,8 +184,8 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
 
   const handleToggleStatus = async (e: React.MouseEvent, sesion: any) => {
     e.stopPropagation();
-    const currentStatus = sesion.estado || sesion.estado_sesion || 'Pendiente';
-    const nextStatus = currentStatus === 'Completada' ? 'Pendiente' : 'Completada';
+    const isCompleted = esSesionCompletada(sesion);
+    const nextStatus = isCompleted ? 'Pendiente' : 'Completada';
     try {
       await updateDoc(doc(db, 'agenda_sesiones', sesion.id), {
         estado: nextStatus,
@@ -278,8 +278,7 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
   );
 
   const renderCard = (s: any) => {
-    const estado = s.estado || s.estado_sesion || 'Pendiente';
-    const isCompleted = estado === 'Completada';
+    const isCompleted = esSesionCompletada(s);
     const isOverdue = !isCompleted && s.fecha < nowNominalUTC;
 
     let statusClass = 'status';

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { collection, getDocs, query, where, doc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getListaProgramadores } from '../services/maestrosService';
+import { esSesionCompletada, esSesionCancelada } from '../utils/helpers';
 
 interface ProgramacionesPendientesViewProps {
   onNavigate: (tab: string, param?: string) => void;
@@ -106,7 +107,7 @@ export const ProgramacionesPendientesView: React.FC<ProgramacionesPendientesView
 
       const pendientes: any[] = [];
       todasLasSesiones.forEach(s => {
-        if (s.estado_sesion === 'Cancelada' || s.estado_sesion === 'Completada') return;
+        if (esSesionCancelada(s) || esSesionCompletada(s)) return;
         const tieneEjercicios = Array.isArray(s.ejercicios) && s.ejercicios.length > 0;
         if (!tieneEjercicios) {
           pendientes.push(s);
