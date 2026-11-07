@@ -30,11 +30,9 @@ import {
 } from '../utils/helpers';
 import { confirmarDialogo } from '../utils/confirmDialog';
 import { SendRoutineModal } from '../components/SendRoutineModal';
+import { ReprogramarSesionModal } from '../components/ReprogramarSesionModal';
 import {
   cancelarSesionConCascadaAdelante,
-  asignarFechaASesionSinFechaConCascadaAtras,
-  reprogramarSesionConFechaOrdenCronologico,
-  resolverColisionSesionMismoDia,
   revertirVencimientosAutomaticos,
   procesarCaducidadSesionesSinFechaPorMeses,
   obtenerFechaOrigenSesionSinFecha,
@@ -79,13 +77,6 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
     'Activo', 'Pausa', 'Baja'
   ]);
   const [programadoresList, setProgramadoresList] = useState<string[]>(['Javi', 'Carlos']);
-  const [reprogHorariosInd, setReprogHorariosInd] = useState<string[]>([
-    '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30',
-    '16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30'
-  ]);
-  const [reprogHorariosSG, setReprogHorariosSG] = useState<string[]>([
-    '08:00', '09:00', '10:00', '16:00', '18:00', '19:00'
-  ]);
   const [mesesMargenReprog, setMesesMargenReprog] = useState<number>(1);
 
   // Main view tabs (persisted per client across page refresh)
@@ -193,52 +184,13 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
     puedeEnviarSinFecha: true
   });
 
-  // Modal Reprogramar con Calendario Semanal
+  // Modal Reprogramar Unificado
   const [modalReprog, setModalReprog] = useState<{
     open: boolean;
     idSesion: string;
-    weekStart: Date;
-    step: 1 | 2;
-    selectedCell: { y: number; m: number; d: number; timeStr: string } | null;
-    weekSessions: any[];
-    loadingWeek: boolean;
-    saving: boolean;
   }>({
     open: false,
-    idSesion: '',
-    weekStart: new Date(),
-    step: 1,
-    selectedCell: null,
-    weekSessions: [],
-    loadingWeek: false,
-    saving: false
-  });
-
-  // Modal Colisión de Sesión en el Mismo Día (Machacar ejercicios vs. Cascada hacia delante)
-  const [modalColisionDia, setModalColisionDia] = useState<{
-    open: boolean;
-    idSesionOrigen: string;
-    idSesionExistenteDia: string;
-    nuevaFechaUTC: Date | null;
-    horaExistenteStr: string;
-    horaNuevaStr: string;
-    fechaLabelStr: string;
-    numEjExistente: number;
-    numEjEntrante: number;
-    esOrigenSinFecha: boolean;
-    saving: boolean;
-  }>({
-    open: false,
-    idSesionOrigen: '',
-    idSesionExistenteDia: '',
-    nuevaFechaUTC: null,
-    horaExistenteStr: '',
-    horaNuevaStr: '',
-    fechaLabelStr: '',
-    numEjExistente: 0,
-    numEjEntrante: 0,
-    esOrigenSinFecha: false,
-    saving: false
+    idSesion: ''
   });
 
   const cargarTodo = useCallback(async () => {
@@ -260,12 +212,6 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
 
       const progs = await getListaProgramadores();
       if (progs.length > 0) setProgramadoresList(progs);
-
-      const hInd = extraerListaMaster(maestros, 'Agenda', ['Horarios Sesiones Individuales']);
-      if (hInd.length > 0) setReprogHorariosInd(hInd);
-
-      const hSG = extraerListaMaster(maestros, 'Agenda', ['Horarios Small Group']);
-      if (hSG.length > 0) setReprogHorariosSG(hSG);
 
       const margenArr = extraerListaMaster(maestros, 'Agenda', ['Meses de margen para reprogramar']);
       if (margenArr.length > 0) {
@@ -570,7 +516,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
       '¿Cancelar esta sesión?\n\n' +
       '• Se liberará este hueco del calendario.\n' +
       '• Su programación se desplazará en cascada al siguiente día programado.\n' +
-      '• La programación de la última sesión pasará a la bolsa de "Sesiones programadas sin fecha".';
+      '• La última programación se ubicará en la primera sesión vacía del bloque final (o pasará a "Sesiones programadas sin fecha" si todas están programadas).';
 
     if (
       !(await confirmarDialogo(msg, {
@@ -757,205 +703,12 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
     });
   };
 
-  // --- Modal Reprogramar ---
-  const getMondayUTC = (d: Date) => {
-    const copy = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0));
-    const day = copy.getUTCDay();
-    const diff = day === 0 ? -6 : 1 - day;
-    copy.setUTCDate(copy.getUTCDate() + diff);
-    return copy;
-  };
-
-  const cargarSemanaReprog = async (monday: Date) => {
-    setModalReprog(prev => ({ ...prev, loadingWeek: true }));
-    try {
-      const startUTC = new Date(monday);
-      const endUTC = new Date(monday);
-      endUTC.setUTCDate(endUTC.getUTCDate() + 5);
-      endUTC.setUTCHours(23, 59, 59, 999);
-
-      const q = query(
-        collection(db, 'agenda_sesiones'),
-        where('fecha_hora_inicio', '>=', startUTC),
-        where('fecha_hora_inicio', '<=', endUTC)
-      );
-      const snap = await getDocs(q);
-      const list: any[] = [];
-      snap.forEach(d => {
-        const data = d.data();
-        if (!data.fecha_hora_inicio || esSesionCancelada(data)) return;
-        const f = parsearFechaFirestore(data.fecha_hora_inicio);
-        if (!f) return;
-        list.push({ id: d.id, ...data, fecha: f });
-      });
-      setModalReprog(prev => ({ ...prev, weekSessions: list, loadingWeek: false }));
-    } catch (e) {
-      console.error(e);
-      setModalReprog(prev => ({ ...prev, loadingWeek: false }));
-    }
-  };
-
+  // --- Modal Reprogramar Unificado ---
   const abrirModalReprogramar = (idSesion: string) => {
-    const sesion = sesionesCliente.find(s => s.id === idSesion);
-    if (!sesion) return;
-    let baseDate = sesion.fechaObj;
-    if (!baseDate || isNaN(baseDate.getTime())) {
-      const now = new Date();
-      baseDate = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0, 0));
-    }
-    const monday = getMondayUTC(baseDate);
     setModalReprog({
       open: true,
-      idSesion,
-      weekStart: monday,
-      step: 1,
-      selectedCell: null,
-      weekSessions: [],
-      loadingWeek: true,
-      saving: false
+      idSesion
     });
-    cargarSemanaReprog(monday);
-  };
-
-  const cambiarSemanaReprog = (deltaWeeks: number) => {
-    const nextMonday = new Date(modalReprog.weekStart);
-    nextMonday.setUTCDate(nextMonday.getUTCDate() + deltaWeeks * 7);
-    setModalReprog(prev => ({ ...prev, weekStart: nextMonday, step: 1, selectedCell: null }));
-    cargarSemanaReprog(nextMonday);
-  };
-
-  const seleccionarCeldaReprog = async (y: number, m: number, d: number, timeStr: string) => {
-    const sesion = sesionesCliente.find(s => s.id === modalReprog.idSesion);
-    if (!sesion || modalReprog.saving) return;
-
-    const [hh, mm] = timeStr.split(':').map(Number);
-    const nuevaFechaUTC = new Date(Date.UTC(y, m, d, hh, mm, 0));
-
-    const sesionExistenteMismoDia = sesionesCliente.find(s => {
-      if (s.sin_fecha || !s.fechaObj || s.id === sesion.id) return false;
-      return (
-        s.fechaObj.getUTCFullYear() === y &&
-        s.fechaObj.getUTCMonth() === m &&
-        s.fechaObj.getUTCDate() === d
-      );
-    });
-
-    if (sesionExistenteMismoDia && esSesionCompletada(sesionExistenteMismoDia)) {
-      alert('Operación bloqueada: No puedes reprogramar una sesión en un día que ya tiene una sesión completada.');
-      return;
-    }
-
-    // Si ya existe otra sesión pendiente/vencida en ese mismo día, avisar y permitir machacar o hacer cascada
-    if (sesionExistenteMismoDia) {
-      const fExist = sesionExistenteMismoDia.fechaObj as Date;
-      const horaExistStr = `${String(fExist.getUTCHours()).padStart(2, '0')}:${String(
-        fExist.getUTCMinutes()
-      ).padStart(2, '0')}`;
-      const fechaLabelStr = `${diasSemanaCortos[nuevaFechaUTC.getUTCDay()]} ${String(d).padStart(
-        2,
-        '0'
-      )}/${String(m + 1).padStart(2, '0')}/${y}`;
-
-      setModalColisionDia({
-        open: true,
-        idSesionOrigen: sesion.id,
-        idSesionExistenteDia: sesionExistenteMismoDia.id,
-        nuevaFechaUTC,
-        horaExistenteStr: horaExistStr,
-        horaNuevaStr: timeStr,
-        fechaLabelStr,
-        numEjExistente: Array.isArray(sesionExistenteMismoDia.ejercicios)
-          ? sesionExistenteMismoDia.ejercicios.length
-          : 0,
-        numEjEntrante: Array.isArray(sesion.ejercicios) ? sesion.ejercicios.length : 0,
-        esOrigenSinFecha: Boolean(sesion.sin_fecha),
-        saving: false
-      });
-      return;
-    }
-
-    setModalReprog(prev => ({ ...prev, saving: true }));
-    const editorActual = userName || 'Entrenador';
-
-    try {
-      if (sesion.sin_fecha) {
-        const res = await asignarFechaASesionSinFechaConCascadaAtras({
-          idSesionSinFecha: sesion.id,
-          nuevaFechaUTC,
-          usuario: editorActual
-        });
-
-        if (res) {
-          pushAction({
-            label: 'Asignar fecha a sesión sin fecha (cascada hacia atrás)',
-            undoOps: res.undoOps,
-            redoOps: res.redoOps,
-            showToast: true,
-            toastMessage: res.toastMessage
-          });
-        }
-      } else {
-        const res = await reprogramarSesionConFechaOrdenCronologico({
-          idSesion: sesion.id,
-          nuevaFechaUTC,
-          usuario: editorActual
-        });
-
-        if (res) {
-          pushAction({
-            label: 'Reprogramar sesión',
-            undoOps: res.undoOps,
-            redoOps: res.redoOps,
-            showToast: true,
-            toastMessage: res.toastMessage
-          });
-        }
-      }
-
-      setModalReprog(prev => ({ ...prev, open: false, saving: false }));
-      await cargarTodo();
-    } catch (e) {
-      console.error('Error al reprogramar sesión:', e);
-      alert('Hubo un error al reprogramar la sesión.');
-      setModalReprog(prev => ({ ...prev, saving: false }));
-    }
-  };
-
-  const ejecutarResolucionColisionMismoDia = async (modo: 'MACHACAR' | 'CASCADA_ADELANTE') => {
-    if (!modalColisionDia.nuevaFechaUTC || modalColisionDia.saving) return;
-    setModalColisionDia(prev => ({ ...prev, saving: true }));
-    const editorActual = userName || 'Entrenador';
-
-    try {
-      const res = await resolverColisionSesionMismoDia({
-        idSesionExistenteDia: modalColisionDia.idSesionExistenteDia,
-        nuevaFechaUTC: modalColisionDia.nuevaFechaUTC,
-        modo,
-        idSesionOrigen: modalColisionDia.idSesionOrigen,
-        usuario: editorActual
-      });
-
-      if (res) {
-        pushAction({
-          label:
-            modo === 'MACHACAR'
-              ? 'Machacar sesión del mismo día'
-              : 'Actualizar sesión del mismo día (cascada hacia delante)',
-          undoOps: res.undoOps,
-          redoOps: res.redoOps,
-          showToast: true,
-          toastMessage: res.toastMessage
-        });
-      }
-
-      setModalColisionDia(prev => ({ ...prev, open: false, saving: false }));
-      setModalReprog(prev => ({ ...prev, open: false, saving: false }));
-      await cargarTodo();
-    } catch (e) {
-      console.error('Error resolviendo colisión en el mismo día:', e);
-      alert('Hubo un error al sobrescribir la sesión de ese día.');
-      setModalColisionDia(prev => ({ ...prev, saving: false }));
-    }
   };
 
   // --- Progreso (PRs) ---
@@ -1379,22 +1132,6 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
 
           <div className={`ficha-extra-cards ${mobileDetailsOpen ? 'show-mobile' : ''}`}>
             <div className="ficha-card">
-              <h3>👶 Servicio Go&amp;Kids</h3>
-              <div className="info-row">
-                <span className="info-label">Activo este mes</span>
-                <span className="info-val">{kidsActivo}</span>
-              </div>
-              <div className="info-row">
-                <span className="info-label">Niños contratados</span>
-                <span className="info-val">{kidsNum}</span>
-              </div>
-              <div className="info-row">
-                <span className="info-label">Niños registrados</span>
-                <span className="info-val">{kidsNom}</span>
-              </div>
-            </div>
-
-            <div className="ficha-card">
               <h3>🎯 Objetivos y seguimiento</h3>
               <div className="text-block">
                 <span>Objetivo global</span>
@@ -1419,6 +1156,22 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
               <div className="vaf-text">
                 <span>OBSERVACIONES VAF / VALORACIÓN FÍSICA</span>
                 <p>{vaf}</p>
+              </div>
+            </div>
+
+            <div className="ficha-card">
+              <h3>👶 Servicio Go&amp;Kids</h3>
+              <div className="info-row">
+                <span className="info-label">Activo este mes</span>
+                <span className="info-val">{kidsActivo}</span>
+              </div>
+              <div className="info-row">
+                <span className="info-label">Niños contratados</span>
+                <span className="info-val">{kidsNum}</span>
+              </div>
+              <div className="info-row">
+                <span className="info-label">Niños registrados</span>
+                <span className="info-val">{kidsNom}</span>
               </div>
             </div>
           </div>
@@ -2462,36 +2215,6 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
               </div>
 
               <div className="form-group">
-                <label>Servicio Go&amp;Kids Activo</label>
-                <select
-                  value={editForm.kidsActivo}
-                  onChange={e => setEditForm(prev => ({ ...prev, kidsActivo: e.target.value }))}
-                >
-                  <option value="NO">No</option>
-                  <option value="SI">Sí</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Nº Niños Contratados</label>
-                <input
-                  type="number"
-                  min={0}
-                  disabled={editForm.kidsActivo !== 'SI'}
-                  value={editForm.kidsActivo === 'SI' ? editForm.kidsNum : '0'}
-                  onChange={e => setEditForm(prev => ({ ...prev, kidsNum: e.target.value }))}
-                />
-              </div>
-              <div className="form-group full">
-                <label>Nombres de los niños registrados</label>
-                <input
-                  type="text"
-                  disabled={editForm.kidsActivo !== 'SI'}
-                  value={editForm.kidsActivo === 'SI' ? editForm.kidsNombres : ''}
-                  onChange={e => setEditForm(prev => ({ ...prev, kidsNombres: e.target.value }))}
-                />
-              </div>
-
-              <div className="form-group">
                 <label>Objetivo Global</label>
                 <input
                   type="text"
@@ -2526,6 +2249,36 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                 <textarea
                   value={editForm.vaf}
                   onChange={e => setEditForm(prev => ({ ...prev, vaf: e.target.value }))}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Servicio Go&amp;Kids Activo</label>
+                <select
+                  value={editForm.kidsActivo}
+                  onChange={e => setEditForm(prev => ({ ...prev, kidsActivo: e.target.value }))}
+                >
+                  <option value="NO">No</option>
+                  <option value="SI">Sí</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Nº Niños Contratados</label>
+                <input
+                  type="number"
+                  min={0}
+                  disabled={editForm.kidsActivo !== 'SI'}
+                  value={editForm.kidsActivo === 'SI' ? editForm.kidsNum : '0'}
+                  onChange={e => setEditForm(prev => ({ ...prev, kidsNum: e.target.value }))}
+                />
+              </div>
+              <div className="form-group full">
+                <label>Nombres de los niños registrados</label>
+                <input
+                  type="text"
+                  disabled={editForm.kidsActivo !== 'SI'}
+                  value={editForm.kidsActivo === 'SI' ? editForm.kidsNombres : ''}
+                  onChange={e => setEditForm(prev => ({ ...prev, kidsNombres: e.target.value }))}
                 />
               </div>
             </div>
@@ -2726,7 +2479,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                       Enviar a sin fecha (Cancelar sesión)
                     </div>
                     <div style={{ fontSize: '0.78rem', color: '#78350f', fontWeight: 400, lineHeight: 1.35 }}>
-                      Libera el hueco en la agenda, desplaza las rutinas en cascada y envía la última a "Sesiones programadas sin fecha".
+                      Libera el hueco en la agenda, desplaza las rutinas en cascada y ubica la última en la primera sesión vacía del bloque final (o en "Sesiones programadas sin fecha").
                     </div>
                   </div>
                 </button>
@@ -2777,386 +2530,15 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
         </div>
       )}
 
-      {/* Modal Reprogramar con Calendario Semanal */}
-      {modalReprog.open && (() => {
-        const sesionOrig = sesionesCliente.find(s => s.id === modalReprog.idSesion);
-        const tipo = (sesionOrig?.tipo_sesion || '').toLowerCase();
-        const esSG = tipo.includes('small') || tipo.includes('group');
-        const slots = esSG ? reprogHorariosSG : reprogHorariosInd;
-
-        const morningSlots = slots.filter(h => parseInt(h.split(':')[0], 10) < 14);
-        const afternoonSlots = slots.filter(h => parseInt(h.split(':')[0], 10) >= 14);
-
-        const getRowForTime = (timeStr: string) => {
-          const idxM = morningSlots.indexOf(timeStr);
-          if (idxM !== -1) return idxM + 2;
-          const idxA = afternoonSlots.indexOf(timeStr);
-          if (idxA !== -1) return idxA + morningSlots.length + 3;
-          return -1;
-        };
-
-        const diasSemanaNombres = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES'];
-        const diasSemanaFechas: Date[] = [];
-        for (let i = 0; i < 5; i++) {
-          const d = new Date(modalReprog.weekStart);
-          d.setUTCDate(d.getUTCDate() + i);
-          diasSemanaFechas.push(d);
-        }
-
-        const viernes = diasSemanaFechas[4];
-        const weekLabel = `${diasSemanaFechas[0].getUTCDate()} ${mesesNombres[
-          diasSemanaFechas[0].getUTCMonth()
-        ].substring(0, 3)} - ${viernes.getUTCDate()} ${mesesNombres[
-          viernes.getUTCMonth()
-        ].substring(0, 3)} ${viernes.getUTCFullYear()}`;
-
-        const gridRowsTemplate = `auto repeat(${morningSlots.length}, 34px) 14px repeat(${afternoonSlots.length}, 34px)`;
-
-        return (
-          <div className="modal-overlay" style={{ display: 'flex' }}>
-            <div className="modal-content" style={{ maxWidth: 940, width: '95%' }}>
-              <button
-                type="button"
-                className="modal-close"
-                onClick={() => setModalReprog(prev => ({ ...prev, open: false }))}
-              >
-                ×
-              </button>
-              <div className="modal-header" style={{ marginBottom: 15 }}>
-                <h2>📅 Reprogramar Sesión en Calendario</h2>
-                <p>
-                  {sesionOrig
-                    ? `${alias || nom} · ${
-                        sesionOrig.sin_fecha
-                          ? '📌 Sesión sin fecha asignada'
-                          : `Actual: ${diasSemanaCortos[sesionOrig.fechaObj.getUTCDay()]} ${sesionOrig.fechaObj
-                              .getUTCDate()
-                              .toString()
-                              .padStart(2, '0')}/${(sesionOrig.fechaObj.getUTCMonth() + 1)
-                              .toString()
-                              .padStart(2, '0')}/${sesionOrig.fechaObj.getUTCFullYear()} a las ${sesionOrig.fechaObj
-                              .getUTCHours()
-                              .toString()
-                              .padStart(2, '0')}:${sesionOrig.fechaObj
-                              .getUTCMinutes()
-                              .toString()
-                              .padStart(2, '0')}`
-                      }`
-                    : 'Haz clic directamente sobre el día y hora de destino en el calendario semanal'}
-                </p>
-              </div>
-
-              {modalReprog.step === 1 ? (
-                <div>
-                  <div className="reprog-toolbar">
-                    <div className="reprog-nav-group">
-                      <button
-                        type="button"
-                        className="reprog-nav-arrow"
-                        onClick={() => cambiarSemanaReprog(-1)}
-                      >
-                        &lt;
-                      </button>
-                      <div className="reprog-week-title">{weekLabel}</div>
-                      <button
-                        type="button"
-                        className="reprog-nav-arrow"
-                        onClick={() => cambiarSemanaReprog(1)}
-                      >
-                        &gt;
-                      </button>
-                    </div>
-                    <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                      💡 Haz clic en cualquier hueco del calendario para elegir la nueva fecha y hora
-                    </div>
-                  </div>
-
-                  <div className="reprog-calendar-wrapper">
-                    {modalReprog.loadingWeek ? (
-                      <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-                        Cargando calendario semanal...
-                      </div>
-                    ) : (
-                      <div
-                        className="reprog-calendar-grid"
-                        style={{
-                          gridTemplateColumns: '60px repeat(5, 1fr)',
-                          gridTemplateRows: gridRowsTemplate
-                        }}
-                      >
-                        <div className="reprog-day-header" style={{ gridColumn: 1, gridRow: 1 }} />
-                        {diasSemanaFechas.map((dObj, i) => {
-                          const dd = dObj.getUTCDate().toString().padStart(2, '0');
-                          const mm = (dObj.getUTCMonth() + 1).toString().padStart(2, '0');
-                          return (
-                            <div
-                              key={i}
-                              className="reprog-day-header"
-                              style={{ gridColumn: i + 2, gridRow: 1 }}
-                            >
-                              <strong>{diasSemanaNombres[i]}</strong>
-                              <span>
-                                {dd}/{mm}
-                              </span>
-                            </div>
-                          );
-                        })}
-
-                        {morningSlots.map((t, idx) => {
-                          const r = idx + 2;
-                          return (
-                            <React.Fragment key={`m-${t}`}>
-                              <div className="reprog-time-label" style={{ gridColumn: 1, gridRow: r }}>
-                                {t}
-                              </div>
-                              {diasSemanaFechas.map((dObj, c) => (
-                                <div
-                                  key={`mc-${c}`}
-                                  className="reprog-bg-cell"
-                                  style={{ gridColumn: c + 2, gridRow: r }}
-                                  title={`Mover a ${diasSemanaNombres[c]} ${dObj.getUTCDate()}/${
-                                    dObj.getUTCMonth() + 1
-                                  } a las ${t}`}
-                                  onClick={() =>
-                                    seleccionarCeldaReprog(
-                                      dObj.getUTCFullYear(),
-                                      dObj.getUTCMonth(),
-                                      dObj.getUTCDate(),
-                                      t
-                                    )
-                                  }
-                                />
-                              ))}
-                            </React.Fragment>
-                          );
-                        })}
-
-                        <div
-                          className="reprog-noon-separator"
-                          style={{ gridRow: morningSlots.length + 2 }}
-                        />
-
-                        {afternoonSlots.map((t, idx) => {
-                          const r = idx + morningSlots.length + 3;
-                          return (
-                            <React.Fragment key={`a-${t}`}>
-                              <div className="reprog-time-label" style={{ gridColumn: 1, gridRow: r }}>
-                                {t}
-                              </div>
-                              {diasSemanaFechas.map((dObj, c) => (
-                                <div
-                                  key={`ac-${c}`}
-                                  className="reprog-bg-cell"
-                                  style={{ gridColumn: c + 2, gridRow: r }}
-                                  title={`Mover a ${diasSemanaNombres[c]} ${dObj.getUTCDate()}/${
-                                    dObj.getUTCMonth() + 1
-                                  } a las ${t}`}
-                                  onClick={() =>
-                                    seleccionarCeldaReprog(
-                                      dObj.getUTCFullYear(),
-                                      dObj.getUTCMonth(),
-                                      dObj.getUTCDate(),
-                                      t
-                                    )
-                                  }
-                                />
-                              ))}
-                            </React.Fragment>
-                          );
-                        })}
-
-                        {/* Existing client events */}
-                        {modalReprog.weekSessions
-                          .filter(s => s.id_cliente === clientId)
-                          .map(s => {
-                            const f = s.fecha;
-                            const dayOfWeek = f.getUTCDay();
-                            if (dayOfWeek < 1 || dayOfWeek > 5) return null;
-                            const col = dayOfWeek + 1;
-                            const hStr = `${f.getUTCHours().toString().padStart(2, '0')}:${f
-                              .getUTCMinutes()
-                              .toString()
-                              .padStart(2, '0')}`;
-                            const row = getRowForTime(hStr);
-                            if (row === -1) return null;
-
-                            const esOrigen = s.id === modalReprog.idSesion;
-                            const esComp = esSesionCompletada(s);
-                            const tieneEj = Array.isArray(s.ejercicios) && s.ejercicios.length > 0;
-                            const cardClass = esOrigen
-                              ? 'reprog-event-origin'
-                              : esComp
-                              ? 'reprog-event-completed'
-                              : 'reprog-event-other';
-                            const spanRows = esSG ? 1 : 2;
-                            const labelText = esOrigen
-                              ? `📍 Actual (${hStr})`
-                              : `${esComp ? '✓ ' : ''}${hStr} ${tieneEj ? '💪' : ''}`;
-
-                            return (
-                              <div
-                                key={s.id}
-                                className={`reprog-event-card ${cardClass}`}
-                                style={{
-                                  gridColumn: col,
-                                  gridRow: `${row} / span ${spanRows}`,
-                                  pointerEvents: 'none'
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap'
-                                  }}
-                                >
-                                  {labelText}
-                                </div>
-                              </div>
-                            );
-                          })}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="reprog-legend">
-                    <span className="reprog-legend-item">
-                      <span
-                        className="reprog-legend-box"
-                        style={{ background: '#fef3c7', border: '2px dashed #d97706' }}
-                      />{' '}
-                      Sesión a mover
-                    </span>
-                    <span className="reprog-legend-item">
-                      <span
-                        className="reprog-legend-box"
-                        style={{ background: '#e0f2fe', border: '1px solid #38bdf8' }}
-                      />{' '}
-                      Otras sesiones del cliente
-                    </span>
-                    <span className="reprog-legend-item">
-                      <span
-                        className="reprog-legend-box"
-                        style={{ background: '#dcfce7', border: '1px solid #86efac' }}
-                      />{' '}
-                      Sesión completada
-                    </span>
-                  </div>
-
-                  <div className="modal-footer" style={{ marginTop: 15 }}>
-                    <button
-                      type="button"
-                      className="btn-outline"
-                      onClick={() => setModalReprog(prev => ({ ...prev, open: false }))}
-                    >
-                      Cancelar
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* Modal Colisión de Sesión en el Mismo Día */}
-      {modalColisionDia.open && (
-        <div className="modal-overlay" style={{ display: 'flex', zIndex: 2200 }}>
-          <div className="modal-content" style={{ maxWidth: 520 }}>
-            <button
-              type="button"
-              className="modal-close"
-              disabled={modalColisionDia.saving}
-              onClick={() => setModalColisionDia(prev => ({ ...prev, open: false }))}
-            >
-              ×
-            </button>
-            <div className="modal-header" style={{ marginBottom: 14 }}>
-              <h2>⚠️ Ya existe una sesión ese día</h2>
-              <p>
-                <strong>{alias || nom}</strong> ya tiene una sesión programada el{' '}
-                <strong>{modalColisionDia.fechaLabelStr}</strong> a las{' '}
-                <strong>{modalColisionDia.horaExistenteStr}</strong> (
-                {modalColisionDia.numEjExistente} ejercicio
-                {modalColisionDia.numEjExistente === 1 ? '' : 's'}).
-              </p>
-              <p style={{ marginTop: 8, fontSize: '0.86rem', color: '#475569' }}>
-                No se pueden tener dos sesiones el mismo día. La sesión de ese día se actualizará a la nueva hora elegida (
-                <strong>{modalColisionDia.horaNuevaStr}</strong>). ¿Qué deseas hacer con los ejercicios?
-              </p>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <button
-                type="button"
-                className="btn-outline"
-                disabled={modalColisionDia.saving}
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 12,
-                  padding: '14px 16px',
-                  textAlign: 'left',
-                  borderColor: '#f59e0b',
-                  background: '#fffbeb',
-                  color: '#92400e',
-                  borderRadius: 10
-                }}
-                onClick={() => ejecutarResolucionColisionMismoDia('MACHACAR')}
-              >
-                <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>🔄</span>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 3 }}>
-                    Actualizar a las {modalColisionDia.horaNuevaStr} y machacar ejercicios
-                  </div>
-                  <div style={{ fontSize: '0.78rem', color: '#78350f', fontWeight: 400, lineHeight: 1.35 }}>
-                    Sustituye los ejercicios que había en ese día ({modalColisionDia.numEjExistente} ej.) por los de la sesión que estás moviendo ({modalColisionDia.numEjEntrante} ej.) sin desplazar el resto de sesiones.
-                  </div>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                className="btn-outline"
-                disabled={modalColisionDia.saving}
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 12,
-                  padding: '14px 16px',
-                  textAlign: 'left',
-                  borderColor: '#38bdf8',
-                  background: '#f0f9ff',
-                  color: '#0369a1',
-                  borderRadius: 10
-                }}
-                onClick={() => ejecutarResolucionColisionMismoDia('CASCADA_ADELANTE')}
-              >
-                <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>⏩</span>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 3 }}>
-                    Actualizar a las {modalColisionDia.horaNuevaStr} y realizar cascada hacia delante
-                  </div>
-                  <div style={{ fontSize: '0.78rem', color: '#0c4a6e', fontWeight: 400, lineHeight: 1.35 }}>
-                    Coloca aquí los ejercicios de la sesión entrante ({modalColisionDia.numEjEntrante} ej.) y desplaza la rutina que estaba ese día hacia las siguientes sesiones futuras (la última pasará a "Sin fecha").
-                  </div>
-                </div>
-              </button>
-            </div>
-
-            <div className="modal-footer" style={{ marginTop: 18 }}>
-              <button
-                type="button"
-                className="btn-outline"
-                disabled={modalColisionDia.saving}
-                onClick={() => setModalColisionDia(prev => ({ ...prev, open: false }))}
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modal Reprogramar Sesión Unificado */}
+      <ReprogramarSesionModal
+        isOpen={modalReprog.open}
+        sessionId={modalReprog.idSesion}
+        clientId={clientId}
+        clientName={alias || nom}
+        onClose={() => setModalReprog({ open: false, idSesion: '' })}
+        onSuccess={cargarTodo}
+      />
     </div>
   );
 };

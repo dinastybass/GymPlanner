@@ -236,6 +236,7 @@ export async function cancelarSesionConCascadaAdelante(params: {
 
   let huboCascada = false;
   let pasoASinFecha = false;
+  let fechaVaciaFinalUbicada: Date | null = null;
 
   if (!esSG && fechaCancelada) {
     // Sesiones individuales futuras (posteriores a la sesión cancelada, no completadas ni canceladas)
@@ -264,10 +265,9 @@ export async function cancelarSesionConCascadaAdelante(params: {
     }
 
     if (lastProgIdx >= 0) {
-      // El payload de la última sesión programada pasará a la bolsa de "Sin fecha"
-      const payloadParaSinFecha = extraerPayloadProgramacion(secuencia[lastProgIdx]);
+      const payloadUltimoProgramado = extraerPayloadProgramacion(secuencia[lastProgIdx]);
 
-      // Desplazar en cascada hacia delante desde 0 hasta lastProgIdx
+      // Desplazar en cascada hacia delante desde 1 hasta lastProgIdx
       for (let i = 1; i <= lastProgIdx; i++) {
         const sesionDestino = secuencia[i];
         const payloadAnterior = extraerPayloadProgramacion(secuencia[i - 1]);
@@ -298,55 +298,95 @@ export async function cancelarSesionConCascadaAdelante(params: {
         huboCascada = true;
       }
 
-      // Crear la sesión en la bolsa de "Sesiones programadas sin fecha" con la programación sobrante
-      const newSinFechaId = `SES-SF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      const sinFechaDocData = {
-        id_sesion_global: newSinFechaId,
-        id_cliente: clienteInfo.docId || idCliente,
-        alias: nombreCli,
-        nombre_cliente: nombreCli,
-        cliente_nombre: nombreCli,
-        tipo_sesion: sesionObjetivo.tipo_sesion || 'Individual',
-        sin_fecha: true,
-        fecha_hora_inicio: null,
-        fecha_hora_anterior: sesionObjetivo.raw?.fecha_hora_inicio || null,
-        fecha_creacion_sin_fecha: ahora,
-        estado: 'Sin fecha',
-        estado_sesion: 'Pendiente',
-        ejercicios: payloadParaSinFecha.ejercicios,
-        intensidad_sesion: payloadParaSinFecha.intensidad_sesion,
-        orden_customizado: payloadParaSinFecha.orden_customizado,
-        ultimo_editor: usuario,
-        fecha_ultima_edicion: ahora,
-        creado_por: usuario,
-        fecha_creacion: ahora,
-        utc_migrado: true
-      };
+      // Si hay un bloque de sesiones vacías al final (después de lastProgIdx),
+      // ubicamos la última sesión programada en la primera vacía de ese último lote de sesiones vacías
+      if (lastProgIdx < secuencia.length - 1) {
+        const primeraVaciaDelLoteFinal = secuencia[lastProgIdx + 1];
+        const updateVaciaFields = {
+          ejercicios: payloadUltimoProgramado.ejercicios,
+          intensidad_sesion: payloadUltimoProgramado.intensidad_sesion,
+          orden_customizado: payloadUltimoProgramado.orden_customizado,
+          ultimo_editor: usuario,
+          fecha_ultima_edicion: ahora,
+          ultimo_modificado_por: usuario,
+          fecha_modificacion: ahora
+        };
+        batch.update(doc(db, 'agenda_sesiones', primeraVaciaDelLoteFinal.id), updateVaciaFields);
+        undoOps.push({
+          type: 'set',
+          collection: 'agenda_sesiones',
+          id: primeraVaciaDelLoteFinal.id,
+          data: primeraVaciaDelLoteFinal.raw,
+          merge: false
+        });
+        redoOps.push({
+          type: 'set',
+          collection: 'agenda_sesiones',
+          id: primeraVaciaDelLoteFinal.id,
+          data: { ...primeraVaciaDelLoteFinal.raw, ...updateVaciaFields },
+          merge: false
+        });
+        huboCascada = true;
+        fechaVaciaFinalUbicada = primeraVaciaDelLoteFinal.fechaObj;
+      } else {
+        // No hay sesiones vacías al final: la última programación pasa a la bolsa de "Sesiones programadas sin fecha"
+        const newSinFechaId = `SES-SF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        const sinFechaDocData = {
+          id_sesion_global: newSinFechaId,
+          id_cliente: clienteInfo.docId || idCliente,
+          alias: nombreCli,
+          nombre_cliente: nombreCli,
+          cliente_nombre: nombreCli,
+          tipo_sesion: sesionObjetivo.tipo_sesion || 'Individual',
+          sin_fecha: true,
+          fecha_hora_inicio: null,
+          fecha_hora_anterior: sesionObjetivo.raw?.fecha_hora_inicio || null,
+          fecha_creacion_sin_fecha: ahora,
+          estado: 'Sin fecha',
+          estado_sesion: 'Pendiente',
+          ejercicios: payloadUltimoProgramado.ejercicios,
+          intensidad_sesion: payloadUltimoProgramado.intensidad_sesion,
+          orden_customizado: payloadUltimoProgramado.orden_customizado,
+          ultimo_editor: usuario,
+          fecha_ultima_edicion: ahora,
+          creado_por: usuario,
+          fecha_creacion: ahora,
+          utc_migrado: true
+        };
 
-      batch.set(doc(db, 'agenda_sesiones', newSinFechaId), sinFechaDocData);
-      undoOps.push({
-        type: 'delete',
-        collection: 'agenda_sesiones',
-        id: newSinFechaId
-      });
-      redoOps.push({
-        type: 'set',
-        collection: 'agenda_sesiones',
-        id: newSinFechaId,
-        data: sinFechaDocData,
-        merge: false
-      });
-      pasoASinFecha = true;
+        batch.set(doc(db, 'agenda_sesiones', newSinFechaId), sinFechaDocData);
+        undoOps.push({
+          type: 'delete',
+          collection: 'agenda_sesiones',
+          id: newSinFechaId
+        });
+        redoOps.push({
+          type: 'set',
+          collection: 'agenda_sesiones',
+          id: newSinFechaId,
+          data: sinFechaDocData,
+          merge: false
+        });
+        pasoASinFecha = true;
+      }
     }
   }
 
   const fechaTexto = formatearFechaHoraHumanaUTC(fechaCancelada);
+  const fechaVaciaTexto = fechaVaciaFinalUbicada
+    ? formatearFechaHoraHumanaUTC(fechaVaciaFinalUbicada)
+    : '';
+
   const detalleLog = esAutomatico
     ? pasoASinFecha
       ? `La sesión del ${fechaTexto} finalizó el día sin completarse. Se liberó el hueco, su programación se desplazó en cascada a las siguientes sesiones y la última rutina pasó a Sesiones sin fecha.`
+      : fechaVaciaFinalUbicada
+      ? `La sesión del ${fechaTexto} finalizó el día sin completarse. Se liberó el hueco y la programación se desplazó en cascada ubicando la última rutina en la sesión vacía del ${fechaVaciaTexto}.`
       : `La sesión del ${fechaTexto} finalizó el día sin completarse y se anuló automáticamente.`
     : pasoASinFecha
     ? `El cliente canceló la sesión del ${fechaTexto}. Se liberó el hueco en agenda, la programación avanzó en cascada a los siguientes días y la última rutina pasó a Sesiones sin fecha.`
+    : fechaVaciaFinalUbicada
+    ? `El cliente canceló la sesión del ${fechaTexto}. Se liberó el hueco en agenda y la programación avanzó en cascada ubicándose la última rutina en la primera sesión vacía del bloque final (${fechaVaciaTexto}).`
     : `El cliente canceló la sesión del ${fechaTexto}, liberando su hueco en la agenda.`;
 
   const logEntry: MovimientoLogCliente = {
@@ -367,6 +407,8 @@ export async function cancelarSesionConCascadaAdelante(params: {
     ? huboCascada
       ? `📅 Sesión cancelada: rutinas desplazadas en cascada y última pasada a "Sin fecha"`
       : `📌 Sesión cancelada y guardada en "Sesiones sin fecha"`
+    : fechaVaciaFinalUbicada
+    ? `📅 Sesión cancelada: rutinas desplazadas en cascada hasta el ${fechaVaciaTexto}`
     : `🗑️ Sesión del ${fechaTexto} cancelada`;
 
   return { ok: true, undoOps, redoOps, toastMessage, logEntry };
@@ -384,6 +426,7 @@ export async function asignarFechaASesionSinFechaConCascadaAtras(params: {
   idSesionSinFecha: string;
   nuevaFechaUTC: Date;
   idHuecoExistente?: string;
+  conCascada?: boolean;
   usuario?: string;
 }): Promise<{
   ok: boolean;
@@ -392,7 +435,13 @@ export async function asignarFechaASesionSinFechaConCascadaAtras(params: {
   toastMessage: string;
   logEntry?: MovimientoLogCliente;
 }> {
-  const { idSesionSinFecha, nuevaFechaUTC, idHuecoExistente, usuario = 'Entrenador' } = params;
+  const {
+    idSesionSinFecha,
+    nuevaFechaUTC,
+    idHuecoExistente,
+    conCascada = true,
+    usuario = 'Entrenador'
+  } = params;
 
   const sfSnap = await getDoc(doc(db, 'agenda_sesiones', idSesionSinFecha));
   if (!sfSnap.exists()) {
@@ -439,9 +488,109 @@ export async function asignarFechaASesionSinFechaConCascadaAtras(params: {
   const undoOps: FirestoreOp[] = [];
   const redoOps: FirestoreOp[] = [];
   const ahora = new Date();
+  const fechaTexto = formatearFechaHoraHumanaUTC(fechaDestinoEfectiva);
+
+  // Modo SIN CASCADA: ubicar directamente la sesión sin fecha en la fecha/hora elegida sin mover nada más
+  if (!conCascada) {
+    if (huecoExistente) {
+      batch.delete(doc(db, 'agenda_sesiones', idSesionSinFecha));
+      undoOps.push({
+        type: 'set',
+        collection: 'agenda_sesiones',
+        id: idSesionSinFecha,
+        data: sesionSinFechaObj.raw,
+        merge: false
+      });
+      redoOps.push({
+        type: 'delete',
+        collection: 'agenda_sesiones',
+        id: idSesionSinFecha
+      });
+
+      const updateHueco: any = {
+        sin_fecha: false,
+        fecha_hora_inicio: fechaDestinoEfectiva,
+        estado: 'Pendiente',
+        estado_sesion: 'Pendiente',
+        ejercicios: payloadSinFecha.ejercicios,
+        intensidad_sesion: payloadSinFecha.intensidad_sesion,
+        orden_customizado: payloadSinFecha.orden_customizado,
+        ultimo_editor: usuario,
+        fecha_ultima_edicion: ahora,
+        ultimo_modificado_por: usuario,
+        fecha_modificacion: ahora,
+        utc_migrado: true
+      };
+      batch.set(doc(db, 'agenda_sesiones', huecoExistente.id), updateHueco, { merge: true });
+      undoOps.push({
+        type: 'set',
+        collection: 'agenda_sesiones',
+        id: huecoExistente.id,
+        data: huecoExistente.raw,
+        merge: false
+      });
+      redoOps.push({
+        type: 'set',
+        collection: 'agenda_sesiones',
+        id: huecoExistente.id,
+        data: { ...huecoExistente.raw, ...updateHueco },
+        merge: false
+      });
+    } else {
+      const updateDirectData: any = {
+        sin_fecha: false,
+        fecha_hora_inicio: fechaDestinoEfectiva,
+        estado: 'Pendiente',
+        estado_sesion: 'Pendiente',
+        ejercicios: payloadSinFecha.ejercicios,
+        intensidad_sesion: payloadSinFecha.intensidad_sesion,
+        orden_customizado: payloadSinFecha.orden_customizado,
+        ultimo_editor: usuario,
+        fecha_ultima_edicion: ahora,
+        ultimo_modificado_por: usuario,
+        fecha_modificacion: ahora,
+        utc_migrado: true
+      };
+      batch.set(doc(db, 'agenda_sesiones', idSesionSinFecha), updateDirectData, { merge: true });
+      undoOps.push({
+        type: 'set',
+        collection: 'agenda_sesiones',
+        id: idSesionSinFecha,
+        data: sesionSinFechaObj.raw,
+        merge: false
+      });
+      redoOps.push({
+        type: 'set',
+        collection: 'agenda_sesiones',
+        id: idSesionSinFecha,
+        data: { ...sesionSinFechaObj.raw, ...updateDirectData },
+        merge: false
+      });
+    }
+
+    const logEntrySinCascada: MovimientoLogCliente = {
+      id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id_cliente: clienteInfo.docId || idCliente,
+      tipo: 'ASIGNACION_SIN_FECHA',
+      titulo: 'Sesión sin fecha ubicada directamente',
+      detalle: `Se ubicó una sesión de la bolsa Sin fecha en el ${fechaTexto} sin desplazar el resto de sesiones.`,
+      fecha_registro: ahora.toISOString(),
+      usuario
+    };
+
+    prepararOperacionLogCliente(batch, undoOps, redoOps, clienteInfo, logEntrySinCascada);
+    await batch.commit();
+
+    return {
+      ok: true,
+      undoOps,
+      redoOps,
+      toastMessage: `📍 Sesión sin fecha ubicada el ${fechaTexto} (sin cascada)`,
+      logEntry: logEntrySinCascada
+    };
+  }
 
   // Construir la lista cronológica de sesiones pendientes (no completadas) más el hueco de destino
-  // Nota: también mantenemos referencia a la última sesión completada para no retroceder antes de ella
   const pendientesConFecha = sesionesConFecha.filter(s => !esSesionCompletada(s));
 
   interface NodoFecha {
@@ -588,13 +737,12 @@ export async function asignarFechaASesionSinFechaConCascadaAtras(params: {
     });
   }
 
-  const fechaTexto = formatearFechaHoraHumanaUTC(fechaDestinoEfectiva);
   const logEntry: MovimientoLogCliente = {
     id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     id_cliente: clienteInfo.docId || idCliente,
     tipo: 'ASIGNACION_SIN_FECHA',
-    titulo: 'Sesión sin fecha asignada',
-    detalle: `Se asignó fecha a una sesión de la bolsa Sin fecha para el ${fechaTexto}, ajustando el orden de las programaciones.`,
+    titulo: 'Sesión sin fecha asignada (con cascada)',
+    detalle: `Se asignó fecha a una sesión de la bolsa Sin fecha para el ${fechaTexto}, ajustando el orden de las programaciones en cascada.`,
     fecha_registro: ahora.toISOString(),
     usuario
   };
@@ -607,7 +755,7 @@ export async function asignarFechaASesionSinFechaConCascadaAtras(params: {
     ok: true,
     undoOps,
     redoOps,
-    toastMessage: `📅 Sesión sin fecha asignada al ${fechaTexto}`,
+    toastMessage: `📅 Sesión sin fecha asignada al ${fechaTexto} (con cascada)`,
     logEntry
   };
 }
@@ -621,6 +769,7 @@ export async function asignarFechaASesionSinFechaConCascadaAtras(params: {
 export async function reprogramarSesionConFechaOrdenCronologico(params: {
   idSesion: string;
   nuevaFechaUTC: Date;
+  conCascada?: boolean;
   usuario?: string;
 }): Promise<{
   ok: boolean;
@@ -629,7 +778,7 @@ export async function reprogramarSesionConFechaOrdenCronologico(params: {
   toastMessage: string;
   logEntry?: MovimientoLogCliente;
 }> {
-  const { idSesion, nuevaFechaUTC, usuario = 'Entrenador' } = params;
+  const { idSesion, nuevaFechaUTC, conCascada = true, usuario = 'Entrenador' } = params;
 
   const sesSnap = await getDoc(doc(db, 'agenda_sesiones', idSesion));
   if (!sesSnap.exists()) {
@@ -641,6 +790,7 @@ export async function reprogramarSesionConFechaOrdenCronologico(params: {
     return asignarFechaASesionSinFechaConCascadaAtras({
       idSesionSinFecha: idSesion,
       nuevaFechaUTC,
+      conCascada,
       usuario
     });
   }
@@ -648,7 +798,81 @@ export async function reprogramarSesionConFechaOrdenCronologico(params: {
   const idCliente = sesData.id_cliente || sesData.ID_Cliente || '';
   const fechaOrigen: Date = parsearFechaFirestore(sesData.fecha_hora_inicio) || new Date();
 
+  const esMismoDiaOrigen =
+    fechaOrigen.getUTCFullYear() === nuevaFechaUTC.getUTCFullYear() &&
+    fechaOrigen.getUTCMonth() === nuevaFechaUTC.getUTCMonth() &&
+    fechaOrigen.getUTCDate() === nuevaFechaUTC.getUTCDate();
+
   const clienteInfo = await resolverDocumentoCliente(idCliente);
+  const batch = writeBatch(db);
+  const undoOps: FirestoreOp[] = [];
+  const redoOps: FirestoreOp[] = [];
+  const ahora = new Date();
+
+  // Si es en el mismo día (solo cambio de hora) o si el usuario eligió ubicar SIN cascada:
+  if (esMismoDiaOrigen || !conCascada) {
+    const rawOrig = clonarProfundo(sesData);
+    const updateData = {
+      sin_fecha: false,
+      fecha_hora_inicio: nuevaFechaUTC,
+      estado: 'Pendiente',
+      estado_sesion: 'Pendiente',
+      ultimo_editor: usuario,
+      fecha_ultima_edicion: ahora,
+      ultimo_modificado_por: usuario,
+      fecha_modificacion: ahora,
+      utc_migrado: true
+    };
+    batch.update(doc(db, 'agenda_sesiones', idSesion), updateData);
+    undoOps.push({
+      type: 'set',
+      collection: 'agenda_sesiones',
+      id: idSesion,
+      data: rawOrig,
+      merge: false
+    });
+    redoOps.push({
+      type: 'set',
+      collection: 'agenda_sesiones',
+      id: idSesion,
+      data: { ...rawOrig, ...updateData },
+      merge: false
+    });
+
+    const origenTxt = formatearFechaHoraHumanaUTC(fechaOrigen);
+    const destinoTxt = formatearFechaHoraHumanaUTC(nuevaFechaUTC);
+    const horaNuevaTxt = `${String(nuevaFechaUTC.getUTCHours()).padStart(2, '0')}:${String(
+      nuevaFechaUTC.getUTCMinutes()
+    ).padStart(2, '0')}`;
+
+    const logEntry: MovimientoLogCliente = {
+      id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id_cliente: clienteInfo.docId || idCliente,
+      tipo: 'REPROGRAMACION',
+      titulo: esMismoDiaOrigen
+        ? 'Hora de sesión actualizada'
+        : 'Sesión reprogramada (sin cascada)',
+      detalle: esMismoDiaOrigen
+        ? `La sesión del ${origenTxt} actualizó su hora a las ${horaNuevaTxt} en el mismo día.`
+        : `La sesión del ${origenTxt} fue ubicada directamente el ${destinoTxt} conservando su programación sin mover el resto de sesiones.`,
+      fecha_registro: ahora.toISOString(),
+      usuario
+    };
+
+    prepararOperacionLogCliente(batch, undoOps, redoOps, clienteInfo, logEntry);
+    await batch.commit();
+
+    return {
+      ok: true,
+      undoOps,
+      redoOps,
+      toastMessage: esMismoDiaOrigen
+        ? `🕒 Hora de la sesión actualizada a las ${horaNuevaTxt}`
+        : `📍 Sesión ubicada el ${destinoTxt} (sin cascada)`,
+      logEntry
+    };
+  }
+
   const todasSesiones = await cargarSesionesDeCliente(
     clienteInfo.allClientIds.length > 0 ? clienteInfo.allClientIds : [idCliente]
   );
@@ -665,11 +889,6 @@ export async function reprogramarSesionConFechaOrdenCronologico(params: {
       return s.fechaObj.getTime() >= fechaMinima.getTime() || s.id === idSesion;
     })
     .sort((a, b) => a.fechaObj.getTime() - b.fechaObj.getTime());
-
-  const batch = writeBatch(db);
-  const undoOps: FirestoreOp[] = [];
-  const redoOps: FirestoreOp[] = [];
-  const ahora = new Date();
 
   if (sesionesAfectadas.length <= 1) {
     const rawOrig = clonarProfundo(sesData);
@@ -752,8 +971,8 @@ export async function reprogramarSesionConFechaOrdenCronologico(params: {
     id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     id_cliente: clienteInfo.docId || idCliente,
     tipo: 'REPROGRAMACION',
-    titulo: 'Sesión reprogramada',
-    detalle: `La sesión del ${origenTxt} fue reprogramada al ${destinoTxt}, manteniendo el orden cronológico de la programación.`,
+    titulo: 'Sesión reprogramada (con cascada)',
+    detalle: `La sesión del ${origenTxt} fue reprogramada al ${destinoTxt}, manteniendo el orden cronológico de la programación en cascada.`,
     fecha_registro: ahora.toISOString(),
     usuario
   };
@@ -766,7 +985,7 @@ export async function reprogramarSesionConFechaOrdenCronologico(params: {
     ok: true,
     undoOps,
     redoOps,
-    toastMessage: `📅 Sesión reprogramada al ${destinoTxt}`,
+    toastMessage: `📅 Sesión reprogramada al ${destinoTxt} (con cascada)`,
     logEntry
   };
 }
@@ -957,10 +1176,7 @@ export async function resolverColisionSesionMismoDia(params: {
 
   if (modo === 'CASCADA_ADELANTE') {
     // Si la sesión que había ese día tenía ejercicios, desplazamos esa programación hacia las siguientes sesiones futuras
-    // Si la sesión del día estaba vacía pero la entrante no, o viceversa, desplazamos la que corresponda para no perder ninguna rutina
-    const payloadADesplazar = tieneEjercicios(payloadExistenteDia)
-      ? payloadExistenteDia
-      : payloadEntrante;
+    const payloadADesplazar = payloadExistenteDia;
 
     if (tieneEjercicios(payloadADesplazar)) {
       const futuras = todasSesiones
@@ -993,7 +1209,7 @@ export async function resolverColisionSesionMismoDia(params: {
       }
 
       if (lastProgIdx >= 0) {
-        const payloadParaSinFecha = extraerPayloadProgramacion(secuencia[lastProgIdx]);
+        const payloadUltimoProgramado = extraerPayloadProgramacion(secuencia[lastProgIdx]);
 
         for (let i = 1; i <= lastProgIdx; i++) {
           const sesionDestino = secuencia[i];
@@ -1024,44 +1240,74 @@ export async function resolverColisionSesionMismoDia(params: {
           });
         }
 
-        const newSinFechaId = `SES-SF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-        const sinFechaDocData = {
-          id_sesion_global: newSinFechaId,
-          id_cliente: clienteInfo.docId || idCliente,
-          alias: nombreCli,
-          nombre_cliente: nombreCli,
-          cliente_nombre: nombreCli,
-          tipo_sesion: destRaw.tipo_sesion || 'Individual',
-          sin_fecha: true,
-          fecha_hora_inicio: null,
-          fecha_hora_anterior: destRaw.fecha_hora_inicio || nuevaFechaUTC,
-          fecha_creacion_sin_fecha: ahora,
-          estado: 'Sin fecha',
-          estado_sesion: 'Pendiente',
-          ejercicios: payloadParaSinFecha.ejercicios,
-          intensidad_sesion: payloadParaSinFecha.intensidad_sesion,
-          orden_customizado: payloadParaSinFecha.orden_customizado,
-          ultimo_editor: usuario,
-          fecha_ultima_edicion: ahora,
-          creado_por: usuario,
-          fecha_creacion: ahora,
-          utc_migrado: true
-        };
+        // Si hay un bloque de sesiones vacías al final (después de lastProgIdx),
+        // ubicamos la última sesión programada en la primera vacía de ese último lote de sesiones vacías
+        if (lastProgIdx < secuencia.length - 1) {
+          const primeraVaciaDelLoteFinal = secuencia[lastProgIdx + 1];
+          const updateVaciaFields = {
+            ejercicios: payloadUltimoProgramado.ejercicios,
+            intensidad_sesion: payloadUltimoProgramado.intensidad_sesion,
+            orden_customizado: payloadUltimoProgramado.orden_customizado,
+            ultimo_editor: usuario,
+            fecha_ultima_edicion: ahora,
+            ultimo_modificado_por: usuario,
+            fecha_modificacion: ahora
+          };
+          batch.update(doc(db, 'agenda_sesiones', primeraVaciaDelLoteFinal.id), updateVaciaFields);
+          undoOps.push({
+            type: 'set',
+            collection: 'agenda_sesiones',
+            id: primeraVaciaDelLoteFinal.id,
+            data: primeraVaciaDelLoteFinal.raw,
+            merge: false
+          });
+          redoOps.push({
+            type: 'set',
+            collection: 'agenda_sesiones',
+            id: primeraVaciaDelLoteFinal.id,
+            data: { ...primeraVaciaDelLoteFinal.raw, ...updateVaciaFields },
+            merge: false
+          });
+        } else {
+          const newSinFechaId = `SES-SF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+          const sinFechaDocData = {
+            id_sesion_global: newSinFechaId,
+            id_cliente: clienteInfo.docId || idCliente,
+            alias: nombreCli,
+            nombre_cliente: nombreCli,
+            cliente_nombre: nombreCli,
+            tipo_sesion: destRaw.tipo_sesion || 'Individual',
+            sin_fecha: true,
+            fecha_hora_inicio: null,
+            fecha_hora_anterior: destRaw.fecha_hora_inicio || nuevaFechaUTC,
+            fecha_creacion_sin_fecha: ahora,
+            estado: 'Sin fecha',
+            estado_sesion: 'Pendiente',
+            ejercicios: payloadUltimoProgramado.ejercicios,
+            intensidad_sesion: payloadUltimoProgramado.intensidad_sesion,
+            orden_customizado: payloadUltimoProgramado.orden_customizado,
+            ultimo_editor: usuario,
+            fecha_ultima_edicion: ahora,
+            creado_por: usuario,
+            fecha_creacion: ahora,
+            utc_migrado: true
+          };
 
-        batch.set(doc(db, 'agenda_sesiones', newSinFechaId), sinFechaDocData);
-        undoOps.push({
-          type: 'delete',
-          collection: 'agenda_sesiones',
-          id: newSinFechaId
-        });
-        redoOps.push({
-          type: 'set',
-          collection: 'agenda_sesiones',
-          id: newSinFechaId,
-          data: sinFechaDocData,
-          merge: false
-        });
-        pasoASinFecha = true;
+          batch.set(doc(db, 'agenda_sesiones', newSinFechaId), sinFechaDocData);
+          undoOps.push({
+            type: 'delete',
+            collection: 'agenda_sesiones',
+            id: newSinFechaId
+          });
+          redoOps.push({
+            type: 'set',
+            collection: 'agenda_sesiones',
+            id: newSinFechaId,
+            data: sinFechaDocData,
+            merge: false
+          });
+          pasoASinFecha = true;
+        }
       }
     }
   }
