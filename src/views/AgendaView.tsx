@@ -14,6 +14,7 @@ import {
 import { getValoresMaestro, obtenerFechaLimiteReprogramacionUTC } from '../services/maestrosService';
 import { CustomDropdown } from '../components/CustomDropdown';
 import { SendRoutineModal } from '../components/SendRoutineModal';
+import { ReprogramarSesionModal } from '../components/ReprogramarSesionModal';
 import { useUndo } from '../context/UndoContext';
 import { FirestoreOp } from '../services/undoService';
 import { esSesionCompletada, parsearFechaFirestore } from '../utils/helpers';
@@ -286,16 +287,11 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
   const [conteoSinFechaMap, setConteoSinFechaMap] = useState<Record<string, number>>({});
   const [savingAsig, setSavingAsig] = useState(false);
 
-  // Reprogramar Modal (Interactive Weekly Calendar)
+  // Reprogramar Modal Unificado
   const [reprogModalOpen, setReprogModalOpen] = useState(false);
-  const [reprogStep, setReprogStep] = useState<1 | 2>(1);
-  const [reprogSourceSessionId, setReprogSourceSessionId] = useState<string | null>(null);
+  const [reprogSourceSessionId, setReprogSourceSessionId] = useState<string>('');
   const [reprogIdCliente, setReprogIdCliente] = useState<string>('');
   const [reprogNombreCliente, setReprogNombreCliente] = useState<string>('');
-  const [reprogAllSessions, setReprogAllSessions] = useState<any[]>([]);
-  const [reprogOriginMonday, setReprogOriginMonday] = useState<Date>(() => obtenerLunesUTC(new Date()));
-  const [reprogCurrentMonday, setReprogCurrentMonday] = useState<Date>(() => obtenerLunesUTC(new Date()));
-  const [reprogPendingData, setReprogPendingData] = useState<any>(null);
 
   // Send Routine Modal
   const [sendModalOpen, setSendModalOpen] = useState(false);
@@ -332,6 +328,46 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     numEjEntrante: 0,
     ejerciciosEntrantes: undefined,
     saving: false
+  });
+
+  // Modal Ubicar Sesión (Con cascada vs. Sin cascada)
+  const [ubicarSinFechaModal, setUbicarSinFechaModal] = useState<{
+    open: boolean;
+    idSesionSinFecha: string;
+    esSinFecha: boolean;
+    nombreCliente: string;
+    nuevaFechaUTC: Date | null;
+    fechaLabelStr: string;
+    horaStr: string;
+    numEjercicios: number;
+    saving: boolean;
+  }>({
+    open: false,
+    idSesionSinFecha: '',
+    esSinFecha: true,
+    nombreCliente: '',
+    nuevaFechaUTC: null,
+    fechaLabelStr: '',
+    horaStr: '',
+    numEjercicios: 0,
+    saving: false
+  });
+
+  // Modal Opciones Papelera (Eliminar definitivamente vs Enviar a sin fecha), idéntico a FichaClienteView
+  const [papeleraSesionModal, setPapeleraSesionModal] = useState<{
+    open: boolean;
+    idSesion: string;
+    sFmt: any;
+    fechaStr: string;
+    horaStr: string;
+    puedeEnviarSinFecha: boolean;
+  }>({
+    open: false,
+    idSesion: '',
+    sFmt: null,
+    fechaStr: '',
+    horaStr: '',
+    puedeEnviarSinFecha: true
   });
 
   // Compute timeToRowMap and separatorRow
@@ -692,7 +728,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
       `¿Cancelar esta sesión de ${nombreCli}?\n\n` +
       '• Se eliminará la cita del calendario para liberar el hueco.\n' +
       '• Su programación se desplazará en cascada al siguiente día programado.\n' +
-      '• La programación de la última sesión pasará a la bolsa de "Sesiones programadas sin fecha".';
+      '• La última programación se ubicará en la primera sesión vacía del bloque final (o pasará a "Sesiones programadas sin fecha" si todas están programadas).';
 
     if (
       !(await confirmarDialogo(msg, {
@@ -760,15 +796,36 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     }
   };
 
+  // Abrir modal de opciones de papelera (idéntico a Ficha de Cliente)
+  const handleAbrirModalPapeleraAgenda = (idSesion: string, sFmt: any, acciones: any) => {
+    setActiveMenu(null);
+    if (sFmt.sin_fecha) {
+      handleEliminarSesion(idSesion, sFmt);
+      return;
+    }
+    const horaStr = sFmt.horaStr ? sFmt.horaStr.split(' - ')[0] : '--:--';
+    setPapeleraSesionModal({
+      open: true,
+      idSesion,
+      sFmt,
+      fechaStr: sFmt.fechaStr || '',
+      horaStr,
+      puedeEnviarSinFecha: Boolean(acciones?.puedeCancelarSinFecha)
+    });
+  };
+
   // Eliminar sesión with Undo
   const handleEliminarSesion = async (idSesion: string, sFmt: any) => {
     setActiveMenu(null);
     if (
-      !(await confirmarDialogo('¿Estás seguro de que quieres eliminar esta sesión de la agenda?', {
-        titulo: 'Eliminar sesión',
-        textoConfirmar: 'Sí, eliminar',
-        danger: true
-      }))
+      !(await confirmarDialogo(
+        '¿Seguro que deseas eliminar esta sesión de la agenda?\n\nPodrás deshacer la acción con Ctrl+Z.',
+        {
+          titulo: 'Eliminar sesión',
+          textoConfirmar: 'Sí, eliminar',
+          danger: true
+        }
+      ))
     ) {
       return;
     }
@@ -793,141 +850,56 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     }
   };
 
-  // Open Interactive Weekly Reschedule Modal
-  const handleOpenReprogramar = async (idSesion: string, idCliente: string, nombreCliente: string) => {
+  // Open Unified Weekly Reschedule Modal
+  const handleOpenReprogramar = (idSesion: string, idCliente: string, nombreCliente: string) => {
     setActiveMenu(null);
-    try {
-      let idCliFinal = idCliente;
-      let nombreCliFinal = nombreCliente;
-
-      if (!idCliFinal) {
-        const snapSes = await getDoc(doc(db, "agenda_sesiones", idSesion));
-        if (snapSes.exists()) {
-          const dSes = snapSes.data();
-          idCliFinal = dSes.id_cliente || dSes.ID_Cliente || '';
-          nombreCliFinal = nombreCliFinal || dSes.alias || dSes.nombre_cliente || '';
-        }
-      }
-
-      const listaSesiones: any[] = [];
-      if (idCliFinal) {
-        const q = query(collection(db, "agenda_sesiones"), where("id_cliente", "==", idCliFinal));
-        const snap = await getDocs(q);
-        snap.forEach(d => {
-          listaSesiones.push(formatearSesionAgenda(d.id, d.data(), mesesMargenReprog));
-        });
-      }
-
-      const s = listaSesiones.find(x => x.id === idSesion) ||
-        (sesionesRaw[idSesion] ? formatearSesionAgenda(idSesion, sesionesRaw[idSesion].docData, mesesMargenReprog) : null);
-
-      if (!s) {
-        alert("No se encontró la sesión a reprogramar.");
-        return;
-      }
-
-      const now = new Date();
-      const hoyUTC = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
-      const refFechaLunes = (!s.sin_fecha && s.fechaObj) ? s.fechaObj : hoyUTC;
-      const monday = obtenerLunesUTC(refFechaLunes);
-
-      setReprogSourceSessionId(idSesion);
-      setReprogIdCliente(idCliFinal);
-      setReprogNombreCliente(nombreCliFinal || s.alias);
-      setReprogAllSessions(listaSesiones);
-      setReprogOriginMonday(new Date(monday));
-      setReprogCurrentMonday(new Date(monday));
-      setReprogPendingData(null);
-      setReprogStep(1);
-      setReprogModalOpen(true);
-    } catch (err) {
-      console.error("Error abriendo reprogramar:", err);
-    }
+    setReprogSourceSessionId(idSesion);
+    setReprogIdCliente(idCliente || '');
+    setReprogNombreCliente(nombreCliente || '');
+    setReprogModalOpen(true);
   };
 
-  const handleSeleccionarHuecoReprogramar = async (fechaStr: string, horaStr: string) => {
-    if (!reprogSourceSessionId) return;
-    const [y, m, d] = fechaStr.split('-');
-    const [h, min] = horaStr.split(':');
-    const targetFechaStr = `${d}/${m}/${y}`;
-    const nuevaFechaObj = new Date(Date.UTC(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10), parseInt(h, 10), parseInt(min, 10), 0));
-
-    const sourceSession = reprogAllSessions.find(x => x.id === reprogSourceSessionId);
-    if (!sourceSession) return;
-
-    const sesionesDestino = reprogAllSessions.filter(
-      s => !s.sin_fecha && s.fechaStr === targetFechaStr && s.id !== reprogSourceSessionId
-    );
-    if (sesionesDestino.some(s => s.estado === 'Completada')) {
-      alert("Operación bloqueada: No puedes reprogramar una sesión en un día que ya tiene una sesión completada.");
-      return;
-    }
-
-    const targetSession = sesionesDestino[0] || null;
-    if (targetSession) {
-      const horaExistStr = targetSession.horaStr ? targetSession.horaStr.split(' - ')[0] : '--:--';
-      setColisionMismoDiaModal({
-        open: true,
-        idSesionOrigen: sourceSession.id,
-        idSesionExistenteDia: targetSession.id,
-        nombreCliente: reprogNombreCliente || sourceSession.alias || 'Cliente',
-        nuevaFechaUTC: nuevaFechaObj,
-        horaExistenteStr: horaExistStr,
-        horaNuevaStr: horaStr,
-        fechaLabelStr: `${targetSession.diaStr || ''} ${targetFechaStr}`.trim(),
-        numEjExistente: Array.isArray(targetSession.ejercicios) ? targetSession.ejercicios.length : 0,
-        numEjEntrante: Array.isArray(sourceSession.ejercicios) ? sourceSession.ejercicios.length : 0,
-        ejerciciosEntrantes: undefined,
-        saving: false
-      });
-      return;
-    }
-
+  const handleEjecutarUbicacionSinFecha = async (conCascada: boolean) => {
+    if (!ubicarSinFechaModal.nuevaFechaUTC || ubicarSinFechaModal.saving) return;
+    setUbicarSinFechaModal(prev => ({ ...prev, saving: true }));
     const autor = localStorage.getItem('gym_user_name') || 'Entrenador';
 
     try {
-      if (sourceSession.sin_fecha) {
-        const res = await asignarFechaASesionSinFechaConCascadaAtras({
-          idSesionSinFecha: sourceSession.id,
-          nuevaFechaUTC: nuevaFechaObj,
-          usuario: autor
-        });
-
-        setReprogModalOpen(false);
-        await loadAgenda();
-
-        if (res) {
-          pushAction({
-            label: `Asignar sesión sin fecha (${reprogNombreCliente})`,
-            undoOps: res.undoOps,
-            redoOps: res.redoOps,
-            showToast: true,
-            toastMessage: res.toastMessage
+      const res = ubicarSinFechaModal.esSinFecha
+        ? await asignarFechaASesionSinFechaConCascadaAtras({
+            idSesionSinFecha: ubicarSinFechaModal.idSesionSinFecha,
+            nuevaFechaUTC: ubicarSinFechaModal.nuevaFechaUTC,
+            conCascada,
+            usuario: autor
+          })
+        : await reprogramarSesionConFechaOrdenCronologico({
+            idSesion: ubicarSinFechaModal.idSesionSinFecha,
+            nuevaFechaUTC: ubicarSinFechaModal.nuevaFechaUTC,
+            conCascada,
+            usuario: autor
           });
-        }
-      } else {
-        const res = await reprogramarSesionConFechaOrdenCronologico({
-          idSesion: sourceSession.id,
-          nuevaFechaUTC: nuevaFechaObj,
-          usuario: autor
+
+      setUbicarSinFechaModal(prev => ({ ...prev, open: false, saving: false }));
+      setReprogModalOpen(false);
+      setAsigModalOpen(false);
+      setSavingAsig(false);
+      await loadAgenda();
+
+      if (res) {
+        pushAction({
+          label: conCascada
+            ? `Reprogramar sesión con cascada (${ubicarSinFechaModal.nombreCliente})`
+            : `Ubicar sesión sin cascada (${ubicarSinFechaModal.nombreCliente})`,
+          undoOps: res.undoOps,
+          redoOps: res.redoOps,
+          showToast: true,
+          toastMessage: res.toastMessage
         });
-
-        setReprogModalOpen(false);
-        await loadAgenda();
-
-        if (res) {
-          pushAction({
-            label: `Reprogramar sesión (${reprogNombreCliente})`,
-            undoOps: res.undoOps,
-            redoOps: res.redoOps,
-            showToast: true,
-            toastMessage: res.toastMessage
-          });
-        }
       }
     } catch (err) {
-      console.error("Error al reprogramar sesión:", err);
-      alert("Error al reprogramar la sesión.");
+      console.error('Error al ubicar sesión:', err);
+      alert('No se pudo ubicar la sesión.');
+      setUbicarSinFechaModal(prev => ({ ...prev, saving: false }));
     }
   };
 
@@ -1155,10 +1127,18 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
         return;
       }
 
-      if (sesionElegida.sin_fecha) {
-        const res = await asignarFechaASesionSinFechaConCascadaAtras({
-          idSesionSinFecha: sesionElegida.id,
+      const esMismoDiaOrigen =
+        !sesionElegida.sin_fecha &&
+        Boolean(sesionElegida.fechaObj) &&
+        sesionElegida.fechaObj.getUTCFullYear() === nuevaFechaObj.getUTCFullYear() &&
+        sesionElegida.fechaObj.getUTCMonth() === nuevaFechaObj.getUTCMonth() &&
+        sesionElegida.fechaObj.getUTCDate() === nuevaFechaObj.getUTCDate();
+
+      if (esMismoDiaOrigen) {
+        const res = await reprogramarSesionConFechaOrdenCronologico({
+          idSesion: sesionElegida.id,
           nuevaFechaUTC: nuevaFechaObj,
+          conCascada: false,
           usuario: autor
         });
 
@@ -1167,7 +1147,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
 
         if (res) {
           pushAction({
-            label: `Asignar sesión sin fecha (${d}/${m}/${y} ${asigHora})`,
+            label: `Actualizar hora de sesión (${d}/${m}/${y} ${asigHora})`,
             undoOps: res.undoOps,
             redoOps: res.redoOps,
             showToast: true,
@@ -1175,24 +1155,21 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
           });
         }
       } else {
-        const res = await reprogramarSesionConFechaOrdenCronologico({
-          idSesion: sesionElegida.id,
+        const cliObj = globalClientes.find(c => c.id === asigClienteId);
+        const nombreCli = cliObj ? cliObj.alias : sesionElegida.alias || 'Cliente';
+        setSavingAsig(false);
+        setUbicarSinFechaModal({
+          open: true,
+          idSesionSinFecha: sesionElegida.id,
+          esSinFecha: Boolean(sesionElegida.sin_fecha),
+          nombreCliente: nombreCli,
           nuevaFechaUTC: nuevaFechaObj,
-          usuario: autor
+          fechaLabelStr: `${d}/${m}/${y}`,
+          horaStr: asigHora,
+          numEjercicios: Array.isArray(sesionElegida.ejercicios) ? sesionElegida.ejercicios.length : 0,
+          saving: false
         });
-
-        setAsigModalOpen(false);
-        await loadAgenda();
-
-        if (res) {
-          pushAction({
-            label: `Reprogramar sesión (${d}/${m}/${y} ${asigHora})`,
-            undoOps: res.undoOps,
-            redoOps: res.redoOps,
-            showToast: true,
-            toastMessage: res.toastMessage
-          });
-        }
+        return;
       }
     } catch (error) {
       console.error("Error asignando sesión existente:", error);
@@ -2308,17 +2285,6 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
               </button>
             )}
 
-            {activeMenu.acciones.puedeCancelarSinFecha && (
-              <button
-                type="button"
-                className="session-action-item warn"
-                onClick={() => handleCancelarSinFecha(activeMenu.idSesion, activeMenu.sFmt)}
-              >
-                <span>📌</span>
-                <span>Cancelar sesión</span>
-              </button>
-            )}
-
             {activeMenu.acciones.puedeEnviar && (
               <button
                 type="button"
@@ -2327,7 +2293,10 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                   setSendEjercicios(activeMenu.acciones.ejercicios);
                   setSendTipoSesion(activeMenu.acciones.tipo_sesion);
                   setSendIntensidad(
-                    activeMenu.sFmt.docData?.intensidad || activeMenu.sFmt.docData?.Intensidad || 'MED'
+                    activeMenu.sFmt.docData?.intensidad_sesion ||
+                      activeMenu.sFmt.docData?.intensidad ||
+                      activeMenu.sFmt.docData?.Intensidad ||
+                      'MED'
                   );
                   setSendClientId(activeMenu.idCliente || '');
                   setSendSessionId(activeMenu.idSesion || '');
@@ -2336,7 +2305,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                 }}
               >
                 <span>➡️</span>
-                <span>Enviar a...</span>
+                <span>Enviar ejercicios a...</span>
               </button>
             )}
 
@@ -2344,10 +2313,20 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
               <button
                 type="button"
                 className="session-action-item danger"
-                onClick={() => handleEliminarSesion(activeMenu.idSesion, activeMenu.sFmt)}
+                onClick={() =>
+                  handleAbrirModalPapeleraAgenda(
+                    activeMenu.idSesion,
+                    activeMenu.sFmt,
+                    activeMenu.acciones
+                  )
+                }
               >
                 <span>🗑️</span>
-                <span>Eliminar sesión</span>
+                <span>
+                  {activeMenu.acciones.puedeCancelarSinFecha
+                    ? 'Eliminar o enviar a sin fecha'
+                    : 'Eliminar sesión'}
+                </span>
               </button>
             )}
           </div>
@@ -3014,303 +2993,15 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
         </div>
       )}
 
-      {/* MODAL REPROGRAMAR SESIÓN (INTERACTIVE WEEKLY CALENDAR) */}
-      {reprogModalOpen && (
-        <div
-          className="modal-overlay"
-          style={{ display: 'flex' }}
-          onClick={() => setReprogModalOpen(false)}
-        >
-          <div
-            className="modal-content"
-            style={{ maxWidth: 940, width: '95%' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              className="modal-close"
-              type="button"
-              onClick={() => setReprogModalOpen(false)}
-            >
-              &times;
-            </button>
-            <h2 style={{ margin: '0 0 6px 0' }}>Reprogramar Sesión</h2>
-
-            {reprogStep === 1 ? (
-              <div>
-                {(() => {
-                  const s = reprogAllSessions.find(x => x.id === reprogSourceSessionId);
-                  const numEj = s?.ejercicios?.length || 0;
-                  const horaOrigen = s?.horaStr ? s.horaStr.split(' - ')[0] : '--:--';
-                  return (
-                    <div
-                      style={{
-                        background: '#fffbeb',
-                        border: '1px solid #fcd34d',
-                        color: '#92400e',
-                        padding: '10px 14px',
-                        borderRadius: 8,
-                        fontSize: '0.88rem',
-                        marginBottom: 12
-                      }}
-                    >
-                      {s?.sin_fecha ? (
-                        <>
-                          📌 <strong>Sesión sin fecha a ubicar:</strong> <strong>{reprogNombreCliente}</strong> ·{' '}
-                          <strong>Sin fecha asignada</strong> ({numEj} ejercicio{numEj === 1 ? '' : 's'}) &mdash; Haz clic en cualquier día y hora del calendario para asignarla.
-                        </>
-                      ) : (
-                        <>
-                          📍 <strong>Sesión a reprogramar:</strong> <strong>{reprogNombreCliente}</strong> ·{' '}
-                          {s?.diaStr} {s?.fechaStr} a las <strong>{horaOrigen}</strong> ({numEj} ejercicio{numEj === 1 ? '' : 's'}) &mdash; Haz clic en cualquier hora del calendario para ubicarla.
-                        </>
-                      )}
-                    </div>
-                  );
-                })()}
-
-                <div className="reprog-toolbar">
-                  <div className="reprog-nav-group">
-                    <button
-                      type="button"
-                      className="reprog-nav-arrow"
-                      onClick={() => {
-                        const next = new Date(reprogCurrentMonday);
-                        next.setUTCDate(next.getUTCDate() - 7);
-                        setReprogCurrentMonday(next);
-                      }}
-                      title="Semana anterior"
-                    >
-                      &lt;
-                    </button>
-                    <span className="reprog-week-title">
-                      {(() => {
-                        const startDay = new Date(reprogCurrentMonday);
-                        const endDay = new Date(reprogCurrentMonday);
-                        endDay.setUTCDate(endDay.getUTCDate() + (diasSemana.length - 1));
-                        return `📅 ${startDay.getUTCDate()} ${MES_NAMES_REPROG[startDay.getUTCMonth()]} - ${endDay.getUTCDate()} ${MES_NAMES_REPROG[endDay.getUTCMonth()]} ${endDay.getUTCFullYear()}`;
-                      })()}
-                    </span>
-                    <button
-                      type="button"
-                      className="reprog-nav-arrow"
-                      onClick={() => {
-                        const next = new Date(reprogCurrentMonday);
-                        next.setUTCDate(next.getUTCDate() + 7);
-                        setReprogCurrentMonday(next);
-                      }}
-                      title="Semana siguiente"
-                    >
-                      &gt;
-                    </button>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-                      onClick={() => {
-                        const now = new Date();
-                        const hoyUTC = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
-                        setReprogCurrentMonday(obtenerLunesUTC(hoyUTC));
-                      }}
-                    >
-                      Semana actual
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-                      onClick={() => setReprogCurrentMonday(new Date(reprogOriginMonday))}
-                    >
-                      Semana de la sesión
-                    </button>
-                  </div>
-                </div>
-
-                <div className="reprog-calendar-wrapper">
-                  {(() => {
-                    const numDias = diasSemana.length;
-                    const now = new Date();
-                    const hoyISO = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
-                      .toISOString()
-                      .split('T')[0];
-
-                    const weekStartUTC = new Date(reprogCurrentMonday);
-                    weekStartUTC.setUTCHours(0, 0, 0, 0);
-                    const weekEndUTC = new Date(reprogCurrentMonday);
-                    weekEndUTC.setUTCDate(weekEndUTC.getUTCDate() + numDias);
-                    weekEndUTC.setUTCHours(0, 0, 0, 0);
-
-                    const sesionesSemanaCliente = reprogAllSessions.filter(
-                      s => !s.sin_fecha && s.fechaObj && s.fechaObj >= weekStartUTC && s.fechaObj < weekEndUTC
-                    );
-
-                    return (
-                      <div
-                        className="reprog-calendar-grid"
-                        style={{
-                          gridTemplateColumns: `60px repeat(${numDias}, 1fr)`,
-                          gridTemplateRows: `auto repeat(${mananaSlots.length}, 32px) 14px repeat(${tardeSlots.length}, 32px)`
-                        }}
-                      >
-                        <div
-                          className="reprog-day-header"
-                          style={{ gridColumn: 1, gridRow: 1, borderRight: '3px solid #64748b' }}
-                        >
-                          Hora
-                        </div>
-
-                        {diasSemana.map((dName, i) => {
-                          const tempDay = new Date(reprogCurrentMonday);
-                          tempDay.setUTCDate(tempDay.getUTCDate() + i);
-                          const dateISO = tempDay.toISOString().split('T')[0];
-                          const isToday = dateISO === hoyISO;
-
-                          return (
-                            <div
-                              key={dName}
-                              className="reprog-day-header"
-                              style={{
-                                gridColumn: i + 2,
-                                gridRow: 1,
-                                background: isToday ? '#f0fdfa' : undefined
-                              }}
-                            >
-                              <strong>
-                                {dName}
-                                {isToday ? ' (Hoy)' : ''}
-                              </strong>
-                              <span>
-                                {tempDay.getUTCDate()} {MES_NAMES_REPROG[tempDay.getUTCMonth()]}
-                              </span>
-                            </div>
-                          );
-                        })}
-
-                        {timeSlots.map(time => {
-                          const row = timeToRowMap[time];
-                          return (
-                            <React.Fragment key={time}>
-                              <div
-                                className="reprog-time-label"
-                                style={{ gridColumn: 1, gridRow: row }}
-                              >
-                                {time}
-                              </div>
-                              {diasSemana.map((_, colIdx) => {
-                                const col = colIdx + 2;
-                                const dIter = new Date(reprogCurrentMonday);
-                                dIter.setUTCDate(dIter.getUTCDate() + colIdx);
-                                const dateStrID = dIter.toISOString().split('T')[0];
-
-                                return (
-                                  <div
-                                    key={`${dateStrID}-${time}`}
-                                    className="reprog-bg-cell"
-                                    style={{ gridColumn: col, gridRow: row }}
-                                    onClick={() => handleSeleccionarHuecoReprogramar(dateStrID, time)}
-                                    title={`Mover sesión al ${dateStrID} a las ${time}`}
-                                  />
-                                );
-                              })}
-                            </React.Fragment>
-                          );
-                        })}
-
-                        <div
-                          className="reprog-noon-separator"
-                          style={{ gridRow: separatorRow }}
-                        />
-
-                        {sesionesSemanaCliente.map(s => {
-                          const dayIndex = s.fechaObj.getUTCDay();
-                          if (dayIndex < 1 || dayIndex > numDias) return null;
-                          const col = dayIndex + 1;
-                          const timeStr = s.horaStr.split(' - ')[0];
-                          const row = timeToRowMap[timeStr];
-                          if (!row) return null;
-
-                          const dateStrID = s.fechaObj.toISOString().split('T')[0];
-                          const isOrigin = s.id === reprogSourceSessionId;
-                          const isCompleted = s.estado === 'Completada';
-                          const numEj = s.ejercicios ? s.ejercicios.length : 0;
-                          const ejLabel = numEj > 0 ? `${numEj} ej.` : 'Vacía';
-
-                          let cardClass = 'reprog-event-other';
-                          let titleBadge = `📅 ${timeStr} (${ejLabel})`;
-
-                          if (isOrigin) {
-                            cardClass = 'reprog-event-origin';
-                            titleBadge = `📍 Sesión a mover (${ejLabel})`;
-                          } else if (isCompleted) {
-                            cardClass = 'reprog-event-completed';
-                            titleBadge = `✅ Completada (${ejLabel})`;
-                          }
-
-                          return (
-                            <div
-                              key={s.id}
-                              className={`reprog-event-card ${cardClass}`}
-                              style={{ gridColumn: col, gridRow: `${row} / span 2` }}
-                              onClick={() => {
-                                if (isCompleted) {
-                                  alert('No puedes reprogramar sobre un día que ya tiene una sesión completada.');
-                                } else {
-                                  handleSeleccionarHuecoReprogramar(dateStrID, timeStr);
-                                }
-                              }}
-                              title={`Haz clic para elegir ${dateStrID} a las ${timeStr}`}
-                            >
-                              <div>{titleBadge}</div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                <div className="reprog-legend">
-                  <span className="reprog-legend-item">
-                    <span
-                      className="reprog-legend-box"
-                      style={{ background: '#fef3c7', border: '2px dashed #d97706' }}
-                    />{' '}
-                    Sesión a mover
-                  </span>
-                  <span className="reprog-legend-item">
-                    <span
-                      className="reprog-legend-box"
-                      style={{ background: '#e0f2fe', border: '1px solid #38bdf8' }}
-                    />{' '}
-                    Otras sesiones del cliente
-                  </span>
-                  <span className="reprog-legend-item">
-                    <span
-                      className="reprog-legend-box"
-                      style={{ background: '#dcfce7', border: '1px solid #86efac' }}
-                    />{' '}
-                    Completada (bloqueada)
-                  </span>
-                  <span style={{ marginLeft: 'auto', fontWeight: 600, color: 'var(--accent-dark)' }}>
-                    💡 Haz clic en una hora para elegir dónde moverla
-                  </span>
-                </div>
-
-                <div className="modal-footer" style={{ marginTop: 15 }}>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => setReprogModalOpen(false)}
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      )}
+      {/* MODAL REPROGRAMAR SESIÓN UNIFICADO */}
+      <ReprogramarSesionModal
+        isOpen={reprogModalOpen}
+        sessionId={reprogSourceSessionId}
+        clientId={reprogIdCliente}
+        clientName={reprogNombreCliente}
+        onClose={() => setReprogModalOpen(false)}
+        onSuccess={loadAgenda}
+      />
 
       {/* SEND ROUTINE MODAL */}
       <SendRoutineModal
@@ -3415,7 +3106,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                     Actualizar a las {colisionMismoDiaModal.horaNuevaStr} y realizar cascada hacia delante
                   </div>
                   <div style={{ fontSize: '0.78rem', color: '#0c4a6e', fontWeight: 400, lineHeight: 1.35 }}>
-                    Coloca aquí los ejercicios de la sesión entrante ({colisionMismoDiaModal.numEjEntrante} ej.) y desplaza la rutina que estaba ese día hacia las siguientes sesiones futuras (la última pasará a "Sin fecha").
+                    Coloca aquí los ejercicios de la sesión entrante ({colisionMismoDiaModal.numEjEntrante} ej.) y desplaza la rutina que estaba ese día hacia las siguientes sesiones futuras (ubicando la última en la primera vacía del bloque final o en "Sin fecha").
                   </div>
                 </div>
               </button>
@@ -3427,6 +3118,228 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                 className="btn-secondary"
                 disabled={colisionMismoDiaModal.saving}
                 onClick={() => setColisionMismoDiaModal(prev => ({ ...prev, open: false }))}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL UBICAR SESIÓN SIN FECHA (CON O SIN CASCADA) */}
+      {ubicarSinFechaModal.open && (
+        <div
+          className="modal-overlay"
+          style={{ display: 'flex', zIndex: 2350 }}
+          onClick={() => {
+            if (!ubicarSinFechaModal.saving) {
+              setUbicarSinFechaModal(prev => ({ ...prev, open: false }));
+            }
+          }}
+        >
+          <div
+            className="modal-content"
+            style={{ maxWidth: 520 }}
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="modal-close"
+              disabled={ubicarSinFechaModal.saving}
+              onClick={() => setUbicarSinFechaModal(prev => ({ ...prev, open: false }))}
+            >
+              &times;
+            </button>
+            <div className="modal-header" style={{ marginBottom: 14 }}>
+              <h2>
+                {ubicarSinFechaModal.esSinFecha
+                  ? '📌 Ubicar sesión sin fecha'
+                  : '📅 Reprogramar sesión a nueva fecha'}
+              </h2>
+              <p>
+                Vas a ubicar la sesión de <strong>{ubicarSinFechaModal.nombreCliente}</strong> (
+                {ubicarSinFechaModal.numEjercicios} ejercicio
+                {ubicarSinFechaModal.numEjercicios === 1 ? '' : 's'}) el{' '}
+                <strong>{ubicarSinFechaModal.fechaLabelStr}</strong> a las{' '}
+                <strong>{ubicarSinFechaModal.horaStr}</strong>.
+              </p>
+              <p style={{ marginTop: 8, fontSize: '0.86rem', color: '#475569' }}>
+                ¿Quieres ubicar esta programación directamente en esa fecha sin mover nada, o realizar cascada?
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                type="button"
+                className="btn-outline"
+                disabled={ubicarSinFechaModal.saving}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                  padding: '14px 16px',
+                  textAlign: 'left',
+                  borderColor: '#10b981',
+                  background: '#ecfdf5',
+                  color: '#065f46',
+                  borderRadius: 10
+                }}
+                onClick={() => handleEjecutarUbicacionSinFecha(false)}
+              >
+                <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>📍</span>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 3 }}>
+                    Ubicar directamente sin cascada (sin mover nada)
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: '#047857', fontWeight: 400, lineHeight: 1.35 }}>
+                    Coloca esta sesión y su programación ({ubicarSinFechaModal.numEjercicios} ej.) directamente el {ubicarSinFechaModal.fechaLabelStr} a las {ubicarSinFechaModal.horaStr} sin desplazar ninguna otra sesión.
+                  </div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                className="btn-outline"
+                disabled={ubicarSinFechaModal.saving}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                  padding: '14px 16px',
+                  textAlign: 'left',
+                  borderColor: '#38bdf8',
+                  background: '#f0f9ff',
+                  color: '#0369a1',
+                  borderRadius: 10
+                }}
+                onClick={() => handleEjecutarUbicacionSinFecha(true)}
+              >
+                <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>🔄</span>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 3 }}>
+                    Ubicar con cascada
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: '#0c4a6e', fontWeight: 400, lineHeight: 1.35 }}>
+                    {ubicarSinFechaModal.esSinFecha
+                      ? 'Inserta este hueco, adelanta las programaciones posteriores en cascada y ubica esta rutina al final (en la última sesión programada o primera vacía del bloque final).'
+                      : 'Mueve la sesión a la nueva fecha y reordena las rutinas en cascada manteniendo su orden cronológico.'}
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            <div className="modal-footer" style={{ marginTop: 18 }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={ubicarSinFechaModal.saving}
+                onClick={() => setUbicarSinFechaModal(prev => ({ ...prev, open: false }))}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL OPCIONES PAPELERA (ELIMINAR O ENVIAR A SIN FECHA - IDÉNTICO A FICHA CLIENTE) */}
+      {papeleraSesionModal.open && (
+        <div
+          className="modal-overlay"
+          style={{ display: 'flex', zIndex: 2350 }}
+          onClick={() => setPapeleraSesionModal(prev => ({ ...prev, open: false }))}
+        >
+          <div
+            className="modal-content"
+            style={{ maxWidth: 460 }}
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="modal-close"
+              onClick={() => setPapeleraSesionModal(prev => ({ ...prev, open: false }))}
+            >
+              ×
+            </button>
+            <div className="modal-header" style={{ marginBottom: 14 }}>
+              <h2>🗑️ Opciones de sesión</h2>
+              <p>
+                Sesión del <strong>{papeleraSesionModal.fechaStr}</strong> a las{' '}
+                <strong>{papeleraSesionModal.horaStr}</strong>. ¿Qué acción deseas realizar?
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {papeleraSesionModal.puedeEnviarSinFecha && (
+                <button
+                  type="button"
+                  className="btn-outline"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 12,
+                    padding: '14px 16px',
+                    textAlign: 'left',
+                    borderColor: '#f59e0b',
+                    background: '#fffbeb',
+                    color: '#92400e',
+                    borderRadius: 10
+                  }}
+                  onClick={async () => {
+                    const { idSesion, sFmt } = papeleraSesionModal;
+                    setPapeleraSesionModal(prev => ({ ...prev, open: false }));
+                    await handleCancelarSinFecha(idSesion, sFmt);
+                  }}
+                >
+                  <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>📌</span>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 3 }}>
+                      Enviar a sin fecha (Cancelar sesión)
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#78350f', fontWeight: 400, lineHeight: 1.35 }}>
+                      Libera el hueco en la agenda, desplaza las rutinas en cascada y ubica la última en la primera sesión vacía del bloque final (o en "Sesiones programadas sin fecha").
+                    </div>
+                  </div>
+                </button>
+              )}
+
+              <button
+                type="button"
+                className="btn-outline"
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                  padding: '14px 16px',
+                  textAlign: 'left',
+                  borderColor: '#fca5a5',
+                  background: '#fef2f2',
+                  color: '#b91c1c',
+                  borderRadius: 10
+                }}
+                onClick={async () => {
+                  const { idSesion, sFmt } = papeleraSesionModal;
+                  setPapeleraSesionModal(prev => ({ ...prev, open: false }));
+                  await handleEliminarSesion(idSesion, sFmt);
+                }}
+              >
+                <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>🗑️</span>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 3 }}>
+                    Eliminar sesión definitivamente
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: '#991b1b', fontWeight: 400, lineHeight: 1.35 }}>
+                    Borra por completo esta sesión de la agenda sin desplazar las demás sesiones.
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            <div className="modal-footer" style={{ marginTop: 18 }}>
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={() => setPapeleraSesionModal(prev => ({ ...prev, open: false }))}
               >
                 Cancelar
               </button>
