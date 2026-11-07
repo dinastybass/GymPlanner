@@ -3,6 +3,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
+import { confirmarDialogo } from '../utils/confirmDialog';
 import {
   ESTRUCTURA_MAESTROS,
   CATALOGO_PERMISOS_APP,
@@ -155,10 +156,22 @@ export const MaestrosView: React.FC = () => {
 
     const esOcupacionMaxima =
       currentSection === 'Agenda' && currentKey === 'Ocupación máxima';
+    const esMesesReprogramar =
+      currentSection === 'Agenda' && currentKey === 'Meses de margen para reprogramar';
+    const esParametroUnicoNumerico = esOcupacionMaxima || esMesesReprogramar;
+
     if (esOcupacionMaxima) {
       const numVal = parseInt(val, 10);
       if (isNaN(numVal) || numVal < 1) {
         alert('Introduce un número entero mayor o igual a 1 para la ocupación máxima.');
+        return;
+      }
+    }
+
+    if (esMesesReprogramar) {
+      const numVal = parseInt(val, 10);
+      if (isNaN(numVal) || numVal < 0) {
+        alert('Introduce un número entero mayor o igual a 0 para los meses de margen (ej. 1 = mes actual + 1 mes anterior).');
         return;
       }
     }
@@ -172,11 +185,11 @@ export const MaestrosView: React.FC = () => {
 
       const itemsCurr = getItemsActuales();
       const targetEditId =
-        editingItemId || (esOcupacionMaxima && itemsCurr.length > 0 ? itemsCurr[0].id : null);
+        editingItemId || (esParametroUnicoNumerico && itemsCurr.length > 0 ? itemsCurr[0].id : null);
       const targetOldVal =
-        editingOldValue || (esOcupacionMaxima && itemsCurr.length > 0 ? itemsCurr[0].valor : null);
+        editingOldValue || (esParametroUnicoNumerico && itemsCurr.length > 0 ? itemsCurr[0].valor : null);
 
-      if (esOcupacionMaxima) {
+      if (esParametroUnicoNumerico) {
         await reordenarValoresMaestro(currentSection, currentKey, [
           { id: String(parseInt(val, 10)), valor: String(parseInt(val, 10)) }
         ]);
@@ -184,7 +197,7 @@ export const MaestrosView: React.FC = () => {
         await guardarValorMaestro(currentSection, currentKey, val, null, targetEditId);
       }
 
-      if (targetEditId && targetOldVal && targetOldVal !== val && !esOcupacionMaxima) {
+      if (targetEditId && targetOldVal && targetOldVal !== val && !esParametroUnicoNumerico) {
         await reasignarOQuitarDependencia(currentKey, targetOldVal, val);
       }
 
@@ -276,9 +289,14 @@ export const MaestrosView: React.FC = () => {
       const deps = await comprobarDependenciasMaestro(currentKey, valor);
       if (deps.length === 0) {
         if (
-          !window.confirm(
-            `¿Seguro que deseas eliminar "${valor}" de "${currentKey}"?\n\nPodrás deshacerlo con Ctrl+Z.`
-          )
+          !(await confirmarDialogo(
+            `¿Seguro que deseas eliminar "${valor}" de "${currentKey}"?\n\nPodrás deshacerlo con Ctrl+Z.`,
+            {
+              titulo: 'Eliminar valor maestro',
+              textoConfirmar: 'Sí, eliminar',
+              danger: true
+            }
+          ))
         ) {
           return;
         }
@@ -537,7 +555,14 @@ export const MaestrosView: React.FC = () => {
   const restaurarPermisosDefectoRol = async (rolTarget: string) => {
     if (!esAdmin || esRolAdmin(rolTarget)) return;
     if (
-      !window.confirm(`¿Restaurar los permisos recomendados por defecto para el rol "${rolTarget}"?`)
+      !(await confirmarDialogo(
+        `¿Restaurar los permisos recomendados por defecto para el rol "${rolTarget}"?`,
+        {
+          titulo: 'Restaurar permisos',
+          textoConfirmar: 'Sí, restaurar',
+          danger: false
+        }
+      ))
     ) {
       return;
     }
@@ -661,14 +686,44 @@ export const MaestrosView: React.FC = () => {
             </div>
           )}
 
+          {currentSection === 'Agenda' && currentKey === 'Meses de margen para reprogramar' && (
+            <div
+              style={{
+                background: '#f0fdfa',
+                border: '1px solid #99f6e4',
+                color: '#0f766e',
+                padding: '10px 14px',
+                borderRadius: 10,
+                fontSize: '0.84rem',
+                marginBottom: 14,
+                lineHeight: 1.45
+              }}
+            >
+              ℹ️ <strong>Política de reprogramación:</strong> El valor indica cuántos meses anteriores al mes en curso permiten reprogramar sesiones (por ejemplo, <strong>1</strong> = mes actual + 1 mes anterior). Las sesiones vencidas o sin fecha de meses anteriores a ese límite quedan bloqueadas como <strong>Vencidas</strong> en su fecha original.
+            </div>
+          )}
+
           {!esVistaPermisos && editable && (
             <div className="add-item-bar">
               <input
-                type={currentSection === 'Agenda' && currentKey === 'Ocupación máxima' ? 'number' : 'text'}
-                min={currentSection === 'Agenda' && currentKey === 'Ocupación máxima' ? 1 : undefined}
+                type={
+                  currentSection === 'Agenda' &&
+                  (currentKey === 'Ocupación máxima' || currentKey === 'Meses de margen para reprogramar')
+                    ? 'number'
+                    : 'text'
+                }
+                min={
+                  currentSection === 'Agenda' && currentKey === 'Ocupación máxima'
+                    ? 1
+                    : currentSection === 'Agenda' && currentKey === 'Meses de margen para reprogramar'
+                    ? 0
+                    : undefined
+                }
                 placeholder={
                   currentSection === 'Agenda' && currentKey === 'Ocupación máxima'
                     ? 'Escribe el valor de ocupación máxima (ej: 6)...'
+                    : currentSection === 'Agenda' && currentKey === 'Meses de margen para reprogramar'
+                    ? 'Meses anteriores permitidos para reprogramar (ej: 1 = mes actual + anterior)...'
                     : 'Escribe un nuevo valor para esta lista...'
                 }
                 value={inputValor}
@@ -686,7 +741,9 @@ export const MaestrosView: React.FC = () => {
                 disabled={savingItem}
                 onClick={handleGuardarItem}
               >
-                {editingItemId || (currentSection === 'Agenda' && currentKey === 'Ocupación máxima')
+                {editingItemId ||
+                (currentSection === 'Agenda' &&
+                  (currentKey === 'Ocupación máxima' || currentKey === 'Meses de margen para reprogramar'))
                   ? 'Guardar valor'
                   : '+ Añadir'}
               </button>

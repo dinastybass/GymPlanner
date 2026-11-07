@@ -4,6 +4,11 @@ import { db } from '../firebase';
 import { cargarCatalogoMaestros, extraerListaMaster } from '../services/maestrosService';
 import { useUndo } from '../context/UndoContext';
 import { normalizarIntensidad, esSesionCompletada } from '../utils/helpers';
+import {
+  revertirVencimientosAutomaticos,
+  procesarCaducidadSesionesSinFechaPorMeses,
+  limpiarSesionesAntiguasYEjerciciosHuerfanos
+} from '../services/sessionCascadeService';
 
 interface PlanificacionViewProps {
   onNavigate: (tab: string, param?: string) => void;
@@ -117,6 +122,9 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
   const fetchDaySessions = useCallback(async () => {
     setLoading(true);
     try {
+      await revertirVencimientosAutomaticos();
+      await limpiarSesionesAntiguasYEjerciciosHuerfanos();
+      await procesarCaducidadSesionesSinFechaPorMeses();
       const y = currentDate.getFullYear();
       const m = currentDate.getMonth();
       const d = currentDate.getDate();
@@ -186,14 +194,18 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
     e.stopPropagation();
     const isCompleted = esSesionCompletada(sesion);
     const nextStatus = isCompleted ? 'Pendiente' : 'Completada';
+    const nextManual = nextStatus === 'Pendiente';
     try {
       await updateDoc(doc(db, 'agenda_sesiones', sesion.id), {
         estado: nextStatus,
-        estado_sesion: nextStatus
+        estado_sesion: nextStatus,
+        pendiente_manual: nextManual
       });
       setSesionesRaw(prev =>
         prev.map(s =>
-          s.id === sesion.id ? { ...s, estado: nextStatus, estado_sesion: nextStatus } : s
+          s.id === sesion.id
+            ? { ...s, estado: nextStatus, estado_sesion: nextStatus, pendiente_manual: nextManual }
+            : s
         )
       );
     } catch (err) {
@@ -267,19 +279,21 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
   const totalSesiones = sesionesManana.length + sesionesTarde.length + sgTimeRanges.length;
 
   const nowLocal = new Date();
-  const nowNominalUTC = new Date(
+  const startOfTodayUTC = new Date(
     Date.UTC(
       nowLocal.getFullYear(),
       nowLocal.getMonth(),
       nowLocal.getDate(),
-      nowLocal.getHours(),
-      nowLocal.getMinutes()
+      0,
+      0,
+      0,
+      0
     )
   );
 
   const renderCard = (s: any) => {
     const isCompleted = esSesionCompletada(s);
-    const isOverdue = !isCompleted && s.fecha < nowNominalUTC;
+    const isOverdue = !isCompleted && s.fecha < startOfTodayUTC;
 
     let statusClass = 'status';
     let statusContent = '⚪ Pendiente';

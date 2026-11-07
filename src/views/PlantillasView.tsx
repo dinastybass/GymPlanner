@@ -4,6 +4,7 @@ import { db } from '../firebase';
 import { useUndo } from '../context/UndoContext';
 import { cargarCatalogoMaestros, extraerListaMaster } from '../services/maestrosService';
 import { normalizarIntensidad, renderIntensityBadge } from '../utils/helpers';
+import { confirmarDialogo } from '../utils/confirmDialog';
 
 interface PlantillasViewProps {
   onNavigate: (tab: string, param?: string) => void;
@@ -148,9 +149,14 @@ export const PlantillasView: React.FC<PlantillasViewProps> = ({ onNavigate }) =>
   const borrarPlantilla = async (e: React.MouseEvent, id: string, nombre: string) => {
     e.stopPropagation();
     if (
-      !window.confirm(
-        `¿Estás seguro de que deseas eliminar permanentemente la plantilla "${nombre}"?\n\nPodrás deshacerlo con Ctrl+Z.`
-      )
+      !(await confirmarDialogo(
+        `¿Estás seguro de que deseas eliminar permanentemente la plantilla "${nombre}"?\n\nPodrás deshacerlo con Ctrl+Z.`,
+        {
+          titulo: 'Eliminar plantilla',
+          textoConfirmar: 'Sí, eliminar',
+          danger: true
+        }
+      ))
     ) {
       return;
     }

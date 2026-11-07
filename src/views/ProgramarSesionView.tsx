@@ -14,7 +14,9 @@ import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
 import { cargarCatalogoMaestros, extraerListaMaster } from '../services/maestrosService';
 import { normalizarIntensidad, renderIntensityBadge, coincideBusqueda } from '../utils/helpers';
+import { confirmarDialogo } from '../utils/confirmDialog';
 import { SendRoutineModal } from '../components/SendRoutineModal';
+import { limpiarSesionesAntiguasYEjerciciosHuerfanos } from '../services/sessionCascadeService';
 
 interface ProgramarSesionViewProps {
   sessionId: string;
@@ -140,6 +142,7 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
     }
 
     try {
+      await limpiarSesionesAntiguasYEjerciciosHuerfanos();
       const [sesSnap, catSnap, cliSnap, plantSnap] = await Promise.all([
         getDoc(doc(db, 'agenda_sesiones', sessionId)),
         getDocs(collection(db, 'ejercicios')),
@@ -763,9 +766,14 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
 
     if (sesionActual.ejercicios && sesionActual.ejercicios.length > 0) {
       if (
-        !window.confirm(
-          '¿Deseas añadir los ejercicios de esta plantilla a los que ya tienes programados en la sesión?'
-        )
+        !(await confirmarDialogo(
+          '¿Deseas añadir los ejercicios de esta plantilla a los que ya tienes programados en la sesión?',
+          {
+            titulo: 'Importar plantilla',
+            textoConfirmar: 'Sí, añadir',
+            danger: false
+          }
+        ))
       ) {
         return;
       }
@@ -1487,8 +1495,15 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
                         />
                       </div>
                       <div className="dropdown-options">
-                        {materialesMaster
+                        {Array.from(new Set([...formEx.materiales, ...materialesMaster]))
                           .filter(m => coincideBusqueda(m, matSearch))
+                          .sort((a, b) => {
+                            const aSel = formEx.materiales.includes(a);
+                            const bSel = formEx.materiales.includes(b);
+                            if (aSel && !bSel) return -1;
+                            if (!aSel && bSel) return 1;
+                            return 0;
+                          })
                           .map(m => {
                             const checked = formEx.materiales.includes(m);
                             return (

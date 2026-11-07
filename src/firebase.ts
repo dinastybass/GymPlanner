@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, Firestore, setLogLevel } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 const firebaseConfigProd = {
@@ -31,7 +31,20 @@ const activeConfig = isDev ? firebaseConfigDev : firebaseConfigProd;
 console.log(`🔥 Firebase [${isDev ? "DEV" : "PROD"}] -> ${activeConfig.projectId}`);
 
 const app = getApps().length > 0 ? getApps()[0] : initializeApp(activeConfig);
-const db = getFirestore(app);
+
+// Evitar falsos errores de conexión WebChannel en entornos con proxy / iframe
+setLogLevel('silent');
+
+let db: Firestore;
+try {
+  db = initializeFirestore(app, {
+    experimentalAutoDetectLongPolling: true,
+  });
+} catch {
+  db = getFirestore(app);
+}
+
 const auth = getAuth(app);
 
 export { app, db, auth, isDev };
+

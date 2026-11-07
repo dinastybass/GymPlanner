@@ -1,5 +1,6 @@
 import { db } from '../firebase';
 import { doc, getDoc, writeBatch } from 'firebase/firestore';
+import { confirmarDialogo } from '../utils/confirmDialog';
 
 export interface FirestoreOp {
   type: 'set' | 'update' | 'delete';
@@ -61,7 +62,7 @@ export async function eliminarDocumentoConDeshacer({
   onAfterChange?: () => Promise<void> | void;
   pushUndoAction?: (action: { label: string; undoOps: FirestoreOp[]; redoOps: FirestoreOp[]; showToast?: boolean; toastMessage?: string }) => void;
 }): Promise<boolean> {
-  if (confirmar && !window.confirm(mensajeConfirmacion)) {
+  if (confirmar && !(await confirmarDialogo(mensajeConfirmacion, { danger: true }))) {
     return false;
   }
 

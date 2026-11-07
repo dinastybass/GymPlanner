@@ -10,7 +10,7 @@ import {
 } from 'firebase/firestore';
 import { CatalogoPermiso, MatrizPermisos, PermisoAccion, UsuarioApp } from '../types';
 
-const CACHE_KEY = 'gym_maestros_doc_map_v5';
+const CACHE_KEY = 'gym_maestros_doc_map_v6';
 
 export const ESTRUCTURA_MAESTROS: Record<string, string[]> = {
   "Ejercicios": [
@@ -35,7 +35,8 @@ export const ESTRUCTURA_MAESTROS: Record<string, string[]> = {
     "Horarios Sesiones Individuales",
     "Horarios Small Groups",
     "Días de la semana",
-    "Ocupación máxima"
+    "Ocupación máxima",
+    "Meses de margen para reprogramar"
   ],
   "Gestión de Perfiles": [
     "Roles",
@@ -175,6 +176,12 @@ export async function cargarTodosLosMaestros(forzar = false): Promise<Record<str
   if (!mapa["Agenda"]["Ocupación máxima"] || mapa["Agenda"]["Ocupación máxima"].length === 0) {
     mapa["Agenda"]["Ocupación máxima"] = [{ id: "6", valor: "6", orden: 1 }];
   }
+  if (
+    !mapa["Agenda"]["Meses de margen para reprogramar"] ||
+    mapa["Agenda"]["Meses de margen para reprogramar"].length === 0
+  ) {
+    mapa["Agenda"]["Meses de margen para reprogramar"] = [{ id: "1", valor: "1", orden: 1 }];
+  }
 
   try {
     sessionStorage.setItem(CACHE_KEY, JSON.stringify(mapa));
@@ -188,6 +195,39 @@ export async function getValoresMaestro(seccion: string, clave: string): Promise
   return (mapa[seccion] && mapa[seccion][clave])
     ? mapa[seccion][clave].map(item => item.valor)
     : [];
+}
+
+export async function getMesesMargenReprogramacion(): Promise<number> {
+  try {
+    const vals = await getValoresMaestro("Agenda", "Meses de margen para reprogramar");
+    if (vals.length > 0) {
+      const parsed = parseInt(vals[0], 10);
+      if (!isNaN(parsed) && parsed >= 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn("Error leyendo Meses de margen para reprogramar:", e);
+  }
+  return 1;
+}
+
+export function obtenerFechaLimiteReprogramacionUTC(
+  mesesMargen = 1,
+  fechaReferencia = new Date()
+): Date {
+  const margenSeguro = !isNaN(mesesMargen) && mesesMargen >= 0 ? mesesMargen : 1;
+  return new Date(
+    Date.UTC(
+      fechaReferencia.getFullYear(),
+      fechaReferencia.getMonth() - margenSeguro,
+      1,
+      0,
+      0,
+      0,
+      0
+    )
+  );
 }
 
 export async function guardarValorMaestro(
@@ -355,15 +395,21 @@ export function PermisosPorDefectoParaRol(nombreRol: string): Record<string, Per
 
 export async function asegurarRolesYPermisosIniciales(): Promise<{ roles: string[]; matriz: MatrizPermisos }> {
   try {
-    // Asegurar valor por defecto "6" para "Ocupación máxima" en Agenda si no existe el documento en Firestore
+    // Asegurar valor por defecto "6" para "Ocupación máxima" y "1" para "Meses de margen para reprogramar" en Agenda
     try {
       const ocupacionDocKey = limpiarNombreDoc("Ocupación máxima");
       const ocupacionSnap = await getDoc(doc(db, "maestros", ocupacionDocKey));
       if (!ocupacionSnap.exists() || !ocupacionSnap.data()?.valores || Object.keys(ocupacionSnap.data().valores).length === 0) {
         await guardarValorMaestro("Agenda", "Ocupación máxima", "6", 1);
       }
+
+      const mesesReprogDocKey = limpiarNombreDoc("Meses de margen para reprogramar");
+      const mesesReprogSnap = await getDoc(doc(db, "maestros", mesesReprogDocKey));
+      if (!mesesReprogSnap.exists() || !mesesReprogSnap.data()?.valores || Object.keys(mesesReprogSnap.data().valores).length === 0) {
+        await guardarValorMaestro("Agenda", "Meses de margen para reprogramar", "1", 1);
+      }
     } catch (errOcup) {
-      console.warn("No se pudo asegurar Ocupación máxima por defecto:", errOcup);
+      console.warn("No se pudo asegurar valores por defecto de Agenda:", errOcup);
     }
 
     const rolesExistentes = await getValoresMaestro("Gestión de Perfiles", "Roles");
@@ -468,7 +514,9 @@ const KEY_ALIASES: Record<string, string[]> = {
   'Estado cliente': ['Estado'],
   'Horarios Small Group': ['Horarios Small Groups'],
   'Ocupacion maxima': ['Ocupación máxima'],
-  'Ocupación Máxima': ['Ocupación máxima']
+  'Ocupación Máxima': ['Ocupación máxima'],
+  'Meses para reprogramar': ['Meses de margen para reprogramar'],
+  'Meses reprogramacion': ['Meses de margen para reprogramar']
 };
 
 export function extraerListaMaster(

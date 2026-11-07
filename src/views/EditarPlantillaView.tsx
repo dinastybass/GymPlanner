@@ -1080,8 +1080,15 @@ export const EditarPlantillaView: React.FC<EditarPlantillaViewProps> = ({
                         />
                       </div>
                       <div className="dropdown-options">
-                        {materialesMaster
+                        {Array.from(new Set([...formEx.materiales, ...materialesMaster]))
                           .filter(m => coincideBusqueda(m, matSearch))
+                          .sort((a, b) => {
+                            const aSel = formEx.materiales.includes(a);
+                            const bSel = formEx.materiales.includes(b);
+                            if (aSel && !bSel) return -1;
+                            if (!aSel && bSel) return 1;
+                            return 0;
+                          })
                           .map(m => {
                             const checked = formEx.materiales.includes(m);
                             return (
