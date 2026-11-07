@@ -18,10 +18,63 @@ import { ProgramacionesPendientesView } from './views/ProgramacionesPendientesVi
 import { PantallaSalaView } from './views/PantallaSalaView';
 import { esRolProyectorSala } from './services/maestrosService';
 
+const VALID_TABS = new Set([
+  'planificacion',
+  'programar_sesion',
+  'agenda',
+  'clientes',
+  'ficha_cliente',
+  'ejercicios',
+  'ficha_ejercicio',
+  'plantillas',
+  'editar_plantilla',
+  'maestros',
+  'pendientes',
+  'pantalla_sala'
+]);
+
+const ROUTE_STORAGE_KEY = 'gym_active_route_v1';
+
+function leerRutaInicial(): { tab: string; param: string } {
+  try {
+    const rawHash = (window.location.hash || '').replace(/^#/, '').trim();
+    if (rawHash) {
+      const slashIdx = rawHash.indexOf('/');
+      const tabFromHash = slashIdx === -1 ? rawHash : rawHash.slice(0, slashIdx);
+      const paramFromHash =
+        slashIdx === -1 ? '' : decodeURIComponent(rawHash.slice(slashIdx + 1));
+
+      if (VALID_TABS.has(tabFromHash)) {
+        return { tab: tabFromHash, param: paramFromHash };
+      }
+    }
+
+    const stored = sessionStorage.getItem(ROUTE_STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed && typeof parsed.tab === 'string' && VALID_TABS.has(parsed.tab)) {
+        return { tab: parsed.tab, param: String(parsed.param || '') };
+      }
+    }
+  } catch {
+    // Fallback below
+  }
+  return { tab: 'planificacion', param: '' };
+}
+
+function guardarRutaActiva(tab: string, param: string) {
+  try {
+    sessionStorage.setItem(ROUTE_STORAGE_KEY, JSON.stringify({ tab, param }));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 const AppContent: React.FC = () => {
   const { user, isProyector, loading } = useAuth();
-  const [activeTab, setActiveTab] = useState<string>('planificacion');
-  const [routeParam, setRouteParam] = useState<string>('');
+  const [initialRoute] = useState<{ tab: string; param: string }>(() => leerRutaInicial());
+  const [activeTab, setActiveTab] = useState<string>(initialRoute.tab);
+  const [routeParam, setRouteParam] = useState<string>(initialRoute.param);
   const [historyStack, setHistoryStack] = useState<Array<{ tab: string; param: string }>>([]);
 
   useEffect(() => {
@@ -31,18 +84,33 @@ const AppContent: React.FC = () => {
   }, [isProyector]);
 
   useEffect(() => {
-    window.history.replaceState({ tab: 'planificacion', param: '' }, '', '#planificacion');
+    const tabInicial = isProyector ? 'pantalla_sala' : activeTab;
+    const paramInicial = isProyector ? '' : routeParam;
+    const hashInicial = paramInicial
+      ? `#${tabInicial}/${encodeURIComponent(paramInicial)}`
+      : `#${tabInicial}`;
+
+    window.history.replaceState({ tab: tabInicial, param: paramInicial }, '', hashInicial);
+    guardarRutaActiva(tabInicial, paramInicial);
 
     const handlePopState = (event: PopStateEvent) => {
       if (isProyector) {
         setActiveTab('pantalla_sala');
         return;
       }
-      if (event.state && event.state.tab) {
-        setActiveTab(event.state.tab);
-        setRouteParam(event.state.param || '');
-        setHistoryStack((prev) => (prev.length > 0 ? prev.slice(0, -1) : []));
+      if (event.state && event.state.tab && VALID_TABS.has(event.state.tab)) {
+        const nextTab = event.state.tab;
+        const nextParam = event.state.param || '';
+        setActiveTab(nextTab);
+        setRouteParam(nextParam);
+        guardarRutaActiva(nextTab, nextParam);
+        setHistoryStack(prev => (prev.length > 0 ? prev.slice(0, -1) : []));
         window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        const fromHash = leerRutaInicial();
+        setActiveTab(fromHash.tab);
+        setRouteParam(fromHash.param);
+        guardarRutaActiva(fromHash.tab, fromHash.param);
       }
     };
 
@@ -57,9 +125,10 @@ const AppContent: React.FC = () => {
     }
     if (tab === activeTab && param === routeParam) return;
 
-    setHistoryStack((prev) => [...prev, { tab: activeTab, param: routeParam }]);
+    setHistoryStack(prev => [...prev, { tab: activeTab, param: routeParam }]);
     setActiveTab(tab);
     setRouteParam(param);
+    guardarRutaActiva(tab, param);
 
     const hash = param ? `#${tab}/${encodeURIComponent(param)}` : `#${tab}`;
     window.history.pushState({ tab, param }, '', hash);
@@ -74,15 +143,17 @@ const AppContent: React.FC = () => {
 
   if (loading) {
     return (
-      <div style={{
-        height: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 15,
-        color: '#64748b'
-      }}>
+      <div
+        style={{
+          height: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 15,
+          color: '#64748b'
+        }}
+      >
         <img src="/assets/logo.png" alt="GO & train" style={{ height: 42 }} />
         <div>Cargando GymPlanner...</div>
       </div>
@@ -92,11 +163,16 @@ const AppContent: React.FC = () => {
   if (!user) {
     return (
       <LoginView
-        onSuccess={(role) => {
+        onSuccess={role => {
           if (esRolProyectorSala(role)) {
             setActiveTab('pantalla_sala');
+            setRouteParam('');
+            guardarRutaActiva('pantalla_sala', '');
           } else {
-            setActiveTab('planificacion');
+            const rutaPrevia = leerRutaInicial();
+            setActiveTab(rutaPrevia.tab);
+            setRouteParam(rutaPrevia.param);
+            guardarRutaActiva(rutaPrevia.tab, rutaPrevia.param);
           }
         }}
       />
@@ -118,16 +194,26 @@ const AppContent: React.FC = () => {
 
       <main style={{ flexGrow: 1 }}>
         {activeTab === 'planificacion' && <PlanificacionView onNavigate={handleNavigate} />}
-        {activeTab === 'programar_sesion' && <ProgramarSesionView sessionId={routeParam} onNavigate={handleNavigate} />}
+        {activeTab === 'programar_sesion' && (
+          <ProgramarSesionView sessionId={routeParam} onNavigate={handleNavigate} />
+        )}
         {activeTab === 'agenda' && <AgendaView onNavigate={handleNavigate} />}
         {activeTab === 'clientes' && <ClientesView onNavigate={handleNavigate} />}
-        {activeTab === 'ficha_cliente' && <FichaClienteView clientId={routeParam} onNavigate={handleNavigate} />}
+        {activeTab === 'ficha_cliente' && (
+          <FichaClienteView clientId={routeParam} onNavigate={handleNavigate} />
+        )}
         {activeTab === 'ejercicios' && <EjerciciosView onNavigate={handleNavigate} />}
-        {activeTab === 'ficha_ejercicio' && <FichaEjercicioView exerciseId={routeParam} onNavigate={handleNavigate} />}
+        {activeTab === 'ficha_ejercicio' && (
+          <FichaEjercicioView exerciseId={routeParam} onNavigate={handleNavigate} />
+        )}
         {activeTab === 'plantillas' && <PlantillasView onNavigate={handleNavigate} />}
-        {activeTab === 'editar_plantilla' && <EditarPlantillaView plantillaId={routeParam} onNavigate={handleNavigate} />}
+        {activeTab === 'editar_plantilla' && (
+          <EditarPlantillaView plantillaId={routeParam} onNavigate={handleNavigate} />
+        )}
         {activeTab === 'maestros' && <MaestrosView />}
-        {activeTab === 'pendientes' && <ProgramacionesPendientesView onNavigate={handleNavigate} />}
+        {activeTab === 'pendientes' && (
+          <ProgramacionesPendientesView onNavigate={handleNavigate} />
+        )}
       </main>
 
       <ToastNotification />

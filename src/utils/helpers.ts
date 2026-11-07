@@ -54,3 +54,41 @@ export function esSesionCancelada(data: any): boolean {
   return est1 === 'cancelada' || est2 === 'cancelada';
 }
 
+export function parsearFechaFirestore(val: any): Date | null {
+  if (!val) return null;
+  if (val instanceof Date) {
+    return isNaN(val.getTime()) ? null : val;
+  }
+  if (typeof val.toDate === 'function') {
+    try {
+      const d = val.toDate();
+      return d instanceof Date && !isNaN(d.getTime()) ? d : null;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof val === 'object') {
+    const secs =
+      typeof val.seconds === 'number'
+        ? val.seconds
+        : typeof val._seconds === 'number'
+        ? val._seconds
+        : null;
+    const nanos =
+      typeof val.nanoseconds === 'number'
+        ? val.nanoseconds
+        : typeof val._nanoseconds === 'number'
+        ? val._nanoseconds
+        : 0;
+    if (secs !== null) {
+      const d = new Date(secs * 1000 + Math.floor(nanos / 1e6));
+      return isNaN(d.getTime()) ? null : d;
+    }
+  }
+  if (typeof val === 'string' || typeof val === 'number') {
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+

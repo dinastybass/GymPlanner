@@ -1,6 +1,6 @@
 {
-  "summary":  "Plan de implementación para el límite de meses de reprogramación configurable en Maestros > Agenda, caducidad automática de sesiones Sin fecha al superar el límite mensual devolviéndolas a su fecha original como Vencidas bloqueadas con registro en el historial del cliente, y bloqueo de reprogramación/cancelación para sesiones completadas o vencidas fuera de plazo.",
-  "updatedAt":  "2026-11-07T09:50:15.410979570Z",
+  "summary":  "Plan de implementación para: (1) Persistencia de ruta y punto exacto de navegación al refrescar la página, (2) Corrección de serialización de Timestamps en el sistema Deshacer/Rehacer (Ctrl+Z) para evitar que las sesiones pasen a sin fecha al deshacer cascadas o reprogramaciones, y (3) Regla de sesión única por día con aviso de conflicto, actualización de hora y elección entre machacar ejercicios o realizar cascada hacia delante.",
+  "updatedAt":  "2026-11-07T11:27:08.234292085Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

@@ -8,8 +8,8 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { FirestoreOp } from './undoService';
-import { esSesionCompletada, esSesionCancelada } from '../utils/helpers';
+import { FirestoreOp, clonarProfundoPreservandoFechas } from './undoService';
+import { esSesionCompletada, esSesionCancelada, parsearFechaFirestore } from '../utils/helpers';
 import {
   getMesesMargenReprogramacion,
   obtenerFechaLimiteReprogramacionUTC
@@ -32,7 +32,19 @@ export interface MovimientoLogCliente {
 
 const DIAS_SEMANA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
-const clonarProfundo = (obj: any) => (obj ? JSON.parse(JSON.stringify(obj)) : obj);
+const clonarProfundo = (obj: any) => clonarProfundoPreservandoFechas(obj);
+
+export function esMismoDiaUTC(
+  f1: Date | null | undefined,
+  f2: Date | null | undefined
+): boolean {
+  if (!f1 || !f2 || isNaN(f1.getTime()) || isNaN(f2.getTime())) return false;
+  return (
+    f1.getUTCFullYear() === f2.getUTCFullYear() &&
+    f1.getUTCMonth() === f2.getUTCMonth() &&
+    f1.getUTCDate() === f2.getUTCDate()
+  );
+}
 
 export function formatearFechaHoraHumanaUTC(fecha: Date | null | undefined): string {
   if (!fecha || isNaN(fecha.getTime())) return 'Sin fecha';
@@ -110,13 +122,9 @@ async function cargarSesionesDeCliente(allClientIds: string[]): Promise<any[]> {
     const snap = await getDocs(query(collection(db, 'agenda_sesiones'), where('id_cliente', '==', cid)));
     snap.forEach(d => {
       const raw = d.data();
-      const esSinFecha = Boolean(raw.sin_fecha === true || !raw.fecha_hora_inicio);
-      const fechaObj =
-        !esSinFecha && raw.fecha_hora_inicio
-          ? raw.fecha_hora_inicio.toDate
-            ? raw.fecha_hora_inicio.toDate()
-            : new Date(raw.fecha_hora_inicio)
-          : null;
+      const parsedFecha = parsearFechaFirestore(raw.fecha_hora_inicio);
+      const esSinFecha = Boolean(raw.sin_fecha === true || !parsedFecha);
+      const fechaObj = !esSinFecha ? parsedFecha : null;
       mapDocs.set(d.id, {
         id: d.id,
         raw: clonarProfundo(raw),
@@ -190,11 +198,7 @@ export async function cancelarSesionConCascadaAdelante(params: {
   const idCliente = sesData.id_cliente || sesData.ID_Cliente || '';
   const nombreCli =
     sesData.cliente_nombre || sesData.alias || sesData.Alias || sesData.nombre_cliente || 'Cliente';
-  const fechaCancelada: Date | null = sesData.fecha_hora_inicio
-    ? sesData.fecha_hora_inicio.toDate
-      ? sesData.fecha_hora_inicio.toDate()
-      : new Date(sesData.fecha_hora_inicio)
-    : null;
+  const fechaCancelada: Date | null = parsearFechaFirestore(sesData.fecha_hora_inicio);
 
   const clienteInfo = await resolverDocumentoCliente(idCliente);
   const todasSesiones = await cargarSesionesDeCliente(
@@ -642,9 +646,7 @@ export async function reprogramarSesionConFechaOrdenCronologico(params: {
   }
 
   const idCliente = sesData.id_cliente || sesData.ID_Cliente || '';
-  const fechaOrigen: Date = sesData.fecha_hora_inicio.toDate
-    ? sesData.fecha_hora_inicio.toDate()
-    : new Date(sesData.fecha_hora_inicio);
+  const fechaOrigen: Date = parsearFechaFirestore(sesData.fecha_hora_inicio) || new Date();
 
   const clienteInfo = await resolverDocumentoCliente(idCliente);
   const todasSesiones = await cargarSesionesDeCliente(
@@ -765,6 +767,336 @@ export async function reprogramarSesionConFechaOrdenCronologico(params: {
     undoOps,
     redoOps,
     toastMessage: `📅 Sesión reprogramada al ${destinoTxt}`,
+    logEntry
+  };
+}
+
+/**
+ * 3b. BUSCAR Y RESOLVER COLISIÓN DE SESIÓN EN EL MISMO DÍA (Regla de 1 sesión por día)
+ * - Detecta si el cliente ya tiene otra sesión individual en el mismo día UTC (YYYY-MM-DD).
+ * - Permite actualizar la sesión de ese día a la nueva hora elegida y elegir entre:
+ *   a) 'MACHACAR': Machacar los ejercicios de ese día con los de la sesión entrante.
+ *   b) 'CASCADA_ADELANTE': Actualizar la hora con la rutina entrante y desplazar los ejercicios
+ *      que tenía ese día en cascada hacia delante (pasando la última a Sesiones sin fecha).
+ */
+export async function buscarSesionMismoDiaCliente(params: {
+  idCliente: string;
+  fechaUTC: Date;
+  excluirIdSesion?: string;
+}): Promise<any | null> {
+  const { idCliente, fechaUTC, excluirIdSesion } = params;
+  if (!idCliente || !fechaUTC || isNaN(fechaUTC.getTime())) return null;
+
+  const clienteInfo = await resolverDocumentoCliente(idCliente);
+  const todasSesiones = await cargarSesionesDeCliente(
+    clienteInfo.allClientIds.length > 0 ? clienteInfo.allClientIds : [idCliente]
+  );
+
+  const candidata = todasSesiones.find(s => {
+    if (excluirIdSesion && s.id === excluirIdSesion) return false;
+    if (s.sin_fecha || !s.fechaObj) return false;
+    if (esSmallGroupTipo(s.tipo_sesion) || esSesionCancelada(s)) return false;
+    return esMismoDiaUTC(s.fechaObj, fechaUTC);
+  });
+
+  return candidata || null;
+}
+
+export async function resolverColisionSesionMismoDia(params: {
+  idSesionExistenteDia: string;
+  nuevaFechaUTC: Date;
+  modo: 'MACHACAR' | 'CASCADA_ADELANTE';
+  idSesionOrigen?: string;
+  ejerciciosEntrantes?: any[];
+  intensidadEntrante?: string;
+  ordenCustomizadoEntrante?: boolean;
+  usuario?: string;
+}): Promise<{
+  ok: boolean;
+  undoOps: FirestoreOp[];
+  redoOps: FirestoreOp[];
+  toastMessage: string;
+  logEntry?: MovimientoLogCliente;
+}> {
+  const {
+    idSesionExistenteDia,
+    nuevaFechaUTC,
+    modo,
+    idSesionOrigen,
+    ejerciciosEntrantes,
+    intensidadEntrante,
+    ordenCustomizadoEntrante,
+    usuario = 'Entrenador'
+  } = params;
+
+  const destSnap = await getDoc(doc(db, 'agenda_sesiones', idSesionExistenteDia));
+  if (!destSnap.exists()) {
+    return {
+      ok: false,
+      undoOps: [],
+      redoOps: [],
+      toastMessage: 'La sesión existente de ese día ya no se encuentra.'
+    };
+  }
+
+  const destRaw = clonarProfundo(destSnap.data());
+  if (esSesionCompletada(destRaw)) {
+    return {
+      ok: false,
+      undoOps: [],
+      redoOps: [],
+      toastMessage: 'No se puede machacar una sesión que ya está marcada como Completada.'
+    };
+  }
+
+  let origRaw: any = null;
+  if (idSesionOrigen && idSesionOrigen !== idSesionExistenteDia) {
+    const origSnap = await getDoc(doc(db, 'agenda_sesiones', idSesionOrigen));
+    if (origSnap.exists()) {
+      origRaw = clonarProfundo(origSnap.data());
+    }
+  }
+
+  const idCliente =
+    destRaw.id_cliente ||
+    destRaw.ID_Cliente ||
+    origRaw?.id_cliente ||
+    origRaw?.ID_Cliente ||
+    '';
+  const nombreCli =
+    destRaw.cliente_nombre ||
+    destRaw.alias ||
+    destRaw.Alias ||
+    destRaw.nombre_cliente ||
+    origRaw?.alias ||
+    'Cliente';
+
+  const clienteInfo = await resolverDocumentoCliente(idCliente);
+  const todasSesiones = await cargarSesionesDeCliente(
+    clienteInfo.allClientIds.length > 0 ? clienteInfo.allClientIds : [idCliente]
+  );
+
+  const payloadExistenteDia = extraerPayloadProgramacion(destRaw);
+  const payloadEntrante = origRaw
+    ? extraerPayloadProgramacion(origRaw)
+    : {
+        ejercicios: clonarProfundo(ejerciciosEntrantes || []),
+        intensidad_sesion: intensidadEntrante || destRaw.intensidad_sesion || 'MED',
+        orden_customizado:
+          ordenCustomizadoEntrante !== undefined
+            ? Boolean(ordenCustomizadoEntrante)
+            : Boolean(destRaw.orden_customizado),
+        ultimo_editor: usuario,
+        fecha_ultima_edicion: new Date()
+      };
+
+  const batch = writeBatch(db);
+  const undoOps: FirestoreOp[] = [];
+  const redoOps: FirestoreOp[] = [];
+  const ahora = new Date();
+
+  // Si venía de otra sesión (sin fecha o de otro día), se elimina el documento origen porque se fusiona en el de este día
+  if (idSesionOrigen && idSesionOrigen !== idSesionExistenteDia && origRaw) {
+    batch.delete(doc(db, 'agenda_sesiones', idSesionOrigen));
+    undoOps.push({
+      type: 'set',
+      collection: 'agenda_sesiones',
+      id: idSesionOrigen,
+      data: origRaw,
+      merge: false
+    });
+    redoOps.push({
+      type: 'delete',
+      collection: 'agenda_sesiones',
+      id: idSesionOrigen
+    });
+  }
+
+  // Determinar qué ejercicios quedan en la sesión del día
+  // Si estamos en MACHACAR y la sesión entrante tiene ejercicios (o se pasaron explícitamente), usamos los entrantes;
+  // si la sesión entrante estaba vacía pero la del día tenía ejercicios y eligieron MACHACAR, se reemplaza por los entrantes (vacíos o nuevos).
+  const nuevoPayloadEnDia =
+    modo === 'MACHACAR'
+      ? tieneEjercicios(payloadEntrante) || ejerciciosEntrantes !== undefined || origRaw
+        ? payloadEntrante
+        : payloadExistenteDia
+      : payloadEntrante;
+
+  const updateDiaFields: any = {
+    sin_fecha: false,
+    fecha_hora_inicio: nuevaFechaUTC,
+    estado: 'Pendiente',
+    estado_sesion: 'Pendiente',
+    ejercicios: nuevoPayloadEnDia.ejercicios,
+    intensidad_sesion: nuevoPayloadEnDia.intensidad_sesion,
+    orden_customizado: nuevoPayloadEnDia.orden_customizado,
+    ultimo_editor: usuario,
+    fecha_ultima_edicion: ahora,
+    ultimo_modificado_por: usuario,
+    fecha_modificacion: ahora,
+    utc_migrado: true
+  };
+
+  batch.set(doc(db, 'agenda_sesiones', idSesionExistenteDia), updateDiaFields, { merge: true });
+  undoOps.push({
+    type: 'set',
+    collection: 'agenda_sesiones',
+    id: idSesionExistenteDia,
+    data: destRaw,
+    merge: false
+  });
+  redoOps.push({
+    type: 'set',
+    collection: 'agenda_sesiones',
+    id: idSesionExistenteDia,
+    data: { ...destRaw, ...updateDiaFields },
+    merge: false
+  });
+
+  let pasoASinFecha = false;
+
+  if (modo === 'CASCADA_ADELANTE') {
+    // Si la sesión que había ese día tenía ejercicios, desplazamos esa programación hacia las siguientes sesiones futuras
+    // Si la sesión del día estaba vacía pero la entrante no, o viceversa, desplazamos la que corresponda para no perder ninguna rutina
+    const payloadADesplazar = tieneEjercicios(payloadExistenteDia)
+      ? payloadExistenteDia
+      : payloadEntrante;
+
+    if (tieneEjercicios(payloadADesplazar)) {
+      const futuras = todasSesiones
+        .filter(
+          s =>
+            s.id !== idSesionExistenteDia &&
+            s.id !== idSesionOrigen &&
+            !s.sin_fecha &&
+            s.fechaObj &&
+            !esSmallGroupTipo(s.tipo_sesion) &&
+            !esSesionCompletada(s) &&
+            !esSesionCancelada(s) &&
+            s.fechaObj.getTime() > nuevaFechaUTC.getTime()
+        )
+        .sort((a, b) => a.fechaObj.getTime() - b.fechaObj.getTime());
+
+      const nodoInicial = {
+        id: idSesionExistenteDia,
+        raw: destRaw,
+        ...payloadADesplazar
+      };
+      const secuencia = [nodoInicial, ...futuras];
+
+      let lastProgIdx = -1;
+      for (let i = secuencia.length - 1; i >= 0; i--) {
+        if (tieneEjercicios(secuencia[i])) {
+          lastProgIdx = i;
+          break;
+        }
+      }
+
+      if (lastProgIdx >= 0) {
+        const payloadParaSinFecha = extraerPayloadProgramacion(secuencia[lastProgIdx]);
+
+        for (let i = 1; i <= lastProgIdx; i++) {
+          const sesionDestino = secuencia[i];
+          const payloadAnterior = extraerPayloadProgramacion(secuencia[i - 1]);
+          const updateCascadaFields = {
+            ejercicios: payloadAnterior.ejercicios,
+            intensidad_sesion: payloadAnterior.intensidad_sesion,
+            orden_customizado: payloadAnterior.orden_customizado,
+            ultimo_editor: usuario,
+            fecha_ultima_edicion: ahora,
+            ultimo_modificado_por: usuario,
+            fecha_modificacion: ahora
+          };
+          batch.update(doc(db, 'agenda_sesiones', sesionDestino.id), updateCascadaFields);
+          undoOps.push({
+            type: 'set',
+            collection: 'agenda_sesiones',
+            id: sesionDestino.id,
+            data: sesionDestino.raw,
+            merge: false
+          });
+          redoOps.push({
+            type: 'set',
+            collection: 'agenda_sesiones',
+            id: sesionDestino.id,
+            data: { ...sesionDestino.raw, ...updateCascadaFields },
+            merge: false
+          });
+        }
+
+        const newSinFechaId = `SES-SF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        const sinFechaDocData = {
+          id_sesion_global: newSinFechaId,
+          id_cliente: clienteInfo.docId || idCliente,
+          alias: nombreCli,
+          nombre_cliente: nombreCli,
+          cliente_nombre: nombreCli,
+          tipo_sesion: destRaw.tipo_sesion || 'Individual',
+          sin_fecha: true,
+          fecha_hora_inicio: null,
+          fecha_hora_anterior: destRaw.fecha_hora_inicio || nuevaFechaUTC,
+          fecha_creacion_sin_fecha: ahora,
+          estado: 'Sin fecha',
+          estado_sesion: 'Pendiente',
+          ejercicios: payloadParaSinFecha.ejercicios,
+          intensidad_sesion: payloadParaSinFecha.intensidad_sesion,
+          orden_customizado: payloadParaSinFecha.orden_customizado,
+          ultimo_editor: usuario,
+          fecha_ultima_edicion: ahora,
+          creado_por: usuario,
+          fecha_creacion: ahora,
+          utc_migrado: true
+        };
+
+        batch.set(doc(db, 'agenda_sesiones', newSinFechaId), sinFechaDocData);
+        undoOps.push({
+          type: 'delete',
+          collection: 'agenda_sesiones',
+          id: newSinFechaId
+        });
+        redoOps.push({
+          type: 'set',
+          collection: 'agenda_sesiones',
+          id: newSinFechaId,
+          data: sinFechaDocData,
+          merge: false
+        });
+        pasoASinFecha = true;
+      }
+    }
+  }
+
+  const destinoTxt = formatearFechaHoraHumanaUTC(nuevaFechaUTC);
+  const logEntry: MovimientoLogCliente = {
+    id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    id_cliente: clienteInfo.docId || idCliente,
+    tipo: 'REPROGRAMACION',
+    titulo:
+      modo === 'MACHACAR'
+        ? 'Sesión actualizada en el mismo día (Machaque)'
+        : 'Sesión actualizada en el mismo día (Cascada)',
+    detalle:
+      modo === 'MACHACAR'
+        ? `Se actualizó la sesión del día a ${destinoTxt} reemplazando la programación existente.`
+        : `Se actualizó la sesión del día a ${destinoTxt} y se desplazó la programación anterior en cascada hacia delante${
+            pasoASinFecha ? ' (pasando la última a Sesiones sin fecha)' : ''
+          }.`,
+    fecha_registro: ahora.toISOString(),
+    usuario
+  };
+
+  prepararOperacionLogCliente(batch, undoOps, redoOps, clienteInfo, logEntry);
+
+  await batch.commit();
+
+  return {
+    ok: true,
+    undoOps,
+    redoOps,
+    toastMessage:
+      modo === 'MACHACAR'
+        ? `📅 Sesión actualizada al ${destinoTxt} (ejercicios reemplazados)`
+        : `📅 Sesión actualizada al ${destinoTxt} (cascada hacia delante aplicada)`,
     logEntry
   };
 }
@@ -1526,11 +1858,23 @@ export async function limpiarSesionesAntiguasYEjerciciosHuerfanos(force = false)
 
     sesSnap.forEach(d => {
       const data = d.data();
-      const esSinFecha = Boolean(data.sin_fecha === true || !data.fecha_hora_inicio);
+
+      // Reparar sesiones donde un Deshacer previo guardó fecha_hora_inicio como mapa plano {seconds, nanoseconds}
+      const rawFhi = data.fecha_hora_inicio;
+      const esMapaSerializado =
+        rawFhi &&
+        typeof rawFhi === 'object' &&
+        typeof rawFhi.toDate !== 'function' &&
+        !(rawFhi instanceof Date) &&
+        (typeof rawFhi.seconds === 'number' || typeof rawFhi._seconds === 'number');
+      const fechaReparada = esMapaSerializado ? parsearFechaFirestore(rawFhi) : null;
+
+      const parsedFhi = parsearFechaFirestore(rawFhi);
+      const esSinFecha = Boolean(data.sin_fecha === true || !parsedFhi);
 
       let msRef = 0;
-      if (!esSinFecha) {
-        msRef = toMillis(data.fecha_hora_inicio);
+      if (!esSinFecha && parsedFhi) {
+        msRef = parsedFhi.getTime();
       } else {
         const fOrig = obtenerFechaOrigenSesionSinFecha(data);
         msRef = fOrig ? fOrig.getTime() : 0;
@@ -1540,6 +1884,17 @@ export async function limpiarSesionesAntiguasYEjerciciosHuerfanos(force = false)
         actions.push({ type: 'delete', col: 'agenda_sesiones', id: d.id });
         sesionesAntiguasBorradas++;
         return;
+      }
+
+      const updatePayload: Record<string, any> = {};
+      let needsUpdate = false;
+
+      if (fechaReparada) {
+        updatePayload.fecha_hora_inicio = fechaReparada;
+        if (data.sin_fecha !== true) {
+          updatePayload.sin_fecha = false;
+        }
+        needsUpdate = true;
       }
 
       if (Array.isArray(data.ejercicios) && data.ejercicios.length > 0) {
@@ -1573,14 +1928,19 @@ export async function limpiarSesionesAntiguasYEjerciciosHuerfanos(force = false)
         }
 
         if (changed) {
-          actions.push({
-            type: 'update',
-            col: 'agenda_sesiones',
-            id: d.id,
-            data: { ejercicios: nuevosEjercicios }
-          });
-          sesionesLimpiadas++;
+          updatePayload.ejercicios = nuevosEjercicios;
+          needsUpdate = true;
         }
+      }
+
+      if (needsUpdate) {
+        actions.push({
+          type: 'update',
+          col: 'agenda_sesiones',
+          id: d.id,
+          data: updatePayload
+        });
+        sesionesLimpiadas++;
       }
     });
 

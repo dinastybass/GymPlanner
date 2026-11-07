@@ -17,6 +17,81 @@ export interface UndoStep {
   timestamp: number;
 }
 
+const CAMPOS_FECHA_CONOCIDOS = new Set([
+  'fecha_hora_inicio',
+  'fecha_hora_anterior',
+  'fecha_creacion_sin_fecha',
+  'fecha_ultima_edicion',
+  'fecha_modificacion',
+  'fecha_creacion',
+  'fecha_programacion',
+  'fecha_alta',
+  'fecha'
+]);
+
+/**
+ * Clona profundamente un objeto preservando instancias Date y convirtiendo
+ * objetos Timestamp de Firestore (o mapas {seconds, nanoseconds} serializados por JSON)
+ * en instancias Date nativas para que Firestore las almacene siempre como Timestamp real.
+ */
+export function clonarProfundoPreservandoFechas(val: any, keyName?: string): any {
+  if (val === null || val === undefined) return val;
+  if (typeof val !== 'object') {
+    if (
+      typeof val === 'string' &&
+      keyName &&
+      CAMPOS_FECHA_CONOCIDOS.has(keyName) &&
+      /^\d{4}-\d{2}-\d{2}T/.test(val)
+    ) {
+      const parsed = new Date(val);
+      if (!isNaN(parsed.getTime())) return parsed;
+    }
+    return val;
+  }
+
+  if (val instanceof Date) {
+    return new Date(val.getTime());
+  }
+
+  if (typeof val.toDate === 'function') {
+    try {
+      const d = val.toDate();
+      if (d instanceof Date && !isNaN(d.getTime())) {
+        return new Date(d.getTime());
+      }
+    } catch {
+      // Fallback below
+    }
+  }
+
+  const secs =
+    typeof val.seconds === 'number'
+      ? val.seconds
+      : typeof val._seconds === 'number'
+      ? val._seconds
+      : null;
+  const nanos =
+    typeof val.nanoseconds === 'number'
+      ? val.nanoseconds
+      : typeof val._nanoseconds === 'number'
+      ? val._nanoseconds
+      : 0;
+
+  if (secs !== null && Object.keys(val).length <= 3) {
+    return new Date(secs * 1000 + Math.floor(nanos / 1e6));
+  }
+
+  if (Array.isArray(val)) {
+    return val.map(item => clonarProfundoPreservandoFechas(item));
+  }
+
+  const copy: Record<string, any> = {};
+  for (const k of Object.keys(val)) {
+    copy[k] = clonarProfundoPreservandoFechas(val[k], k);
+  }
+  return copy;
+}
+
 export async function ejecutarOperacionesFirestore(ops: FirestoreOp[] = []): Promise<void> {
   if (!Array.isArray(ops) || ops.length === 0) return;
 
@@ -31,12 +106,14 @@ export async function ejecutarOperacionesFirestore(ops: FirestoreOp[] = []): Pro
       if (op.type === 'delete') {
         batch.delete(ref);
       } else if (op.type === 'update') {
-        batch.set(ref, op.data || {}, { merge: true });
+        const sanitized = clonarProfundoPreservandoFechas(op.data || {});
+        batch.set(ref, sanitized, { merge: true });
       } else if (op.type === 'set') {
+        const sanitized = clonarProfundoPreservandoFechas(op.data || {});
         if (op.merge) {
-          batch.set(ref, op.data || {}, { merge: true });
+          batch.set(ref, sanitized, { merge: true });
         } else {
-          batch.set(ref, op.data || {});
+          batch.set(ref, sanitized);
         }
       }
     });
@@ -60,7 +137,13 @@ export async function eliminarDocumentoConDeshacer({
   confirmar?: boolean;
   mensajeConfirmacion?: string;
   onAfterChange?: () => Promise<void> | void;
-  pushUndoAction?: (action: { label: string; undoOps: FirestoreOp[]; redoOps: FirestoreOp[]; showToast?: boolean; toastMessage?: string }) => void;
+  pushUndoAction?: (action: {
+    label: string;
+    undoOps: FirestoreOp[];
+    redoOps: FirestoreOp[];
+    showToast?: boolean;
+    toastMessage?: string;
+  }) => void;
 }): Promise<boolean> {
   if (confirmar && !(await confirmarDialogo(mensajeConfirmacion, { danger: true }))) {
     return false;
@@ -73,7 +156,7 @@ export async function eliminarDocumentoConDeshacer({
     return false;
   }
 
-  const backupData = snap.data();
+  const backupData = clonarProfundoPreservandoFechas(snap.data());
 
   await ejecutarOperacionesFirestore([{ type: 'delete', collection: coleccion, id }]);
   if (onAfterChange) await onAfterChange();
