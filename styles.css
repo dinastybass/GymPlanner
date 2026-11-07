@@ -1687,12 +1687,14 @@ textarea.form-control {
   flex-grow: 1;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 .card-body.has-data {
   border-color: var(--accent-light);
   background-color: #f0fdfa;
+  justify-content: flex-start;
+  text-align: left;
 }
 
 .nav-arrow {
@@ -3060,73 +3062,121 @@ textarea.form-control {
 
 .month-content {
   display: block;
-  padding: 0 14px 8px 14px;
+  padding: 0 12px 8px 12px;
   background: var(--surface);
-  overflow-x: auto;
+  overflow-x: hidden;
 }
 
 .client-sessions-table {
   width: 100%;
   border-collapse: collapse;
-  table-layout: auto;
+  table-layout: fixed;
 }
 
 .client-sessions-table th,
 .client-sessions-table td {
-  padding: 8px 8px;
-  font-size: 0.82rem;
+  padding: 8px 6px;
+  font-size: 0.81rem;
   line-height: 1.15;
   vertical-align: middle;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .client-sessions-table th {
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   letter-spacing: 0.3px;
   color: var(--text-muted);
   font-weight: 700;
+  text-align: left;
 }
 
 .client-sessions-table .col-chevron {
   width: 26px;
-  padding-left: 4px;
+  padding-left: 2px;
   padding-right: 2px;
   text-align: center;
 }
 
 .client-sessions-table .col-fecha {
+  width: 24%;
   font-weight: 600;
+  text-align: left;
 }
 
 .client-sessions-table .col-hora {
+  width: 12%;
   font-weight: 700;
   color: #1e293b;
+  text-align: left;
+}
+
+.client-sessions-table .col-tipo {
+  width: 13%;
+  text-align: left;
+}
+
+.client-sessions-table .col-estado {
+  width: 23%;
+  text-align: left;
+}
+
+.client-sessions-table .col-acciones {
+  width: 28%;
+  text-align: right;
+  overflow: visible;
+}
+
+.client-sessions-table th.col-acciones {
+  text-align: right;
+}
+
+.client-sessions-table.sin-fecha-table .col-fecha {
+  width: 34%;
+}
+
+.client-sessions-table.sin-fecha-table .col-tipo {
+  width: 13%;
+}
+
+.client-sessions-table.sin-fecha-table .col-estado {
+  width: 23%;
+}
+
+.client-sessions-table.sin-fecha-table .col-acciones {
+  width: 30%;
 }
 
 .client-sessions-table .pill {
   white-space: nowrap;
-  padding: 3px 10px;
-  font-size: 0.73rem;
+  padding: 3px 8px;
+  font-size: 0.72rem;
   line-height: 1.2;
+  display: inline-block;
+  text-align: center;
 }
 
 .estado-cell-wrap {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   flex-wrap: nowrap;
   white-space: nowrap;
 }
 
 .client-sessions-table .action-btns {
-  gap: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
   flex-wrap: nowrap;
 }
 
 .client-sessions-table .action-btn {
-  padding: 5px 7px;
-  min-width: 30px;
-  height: 30px;
+  padding: 4px 6px;
+  min-width: 28px;
+  height: 28px;
   border-radius: 6px;
 }
 

@@ -1,122 +1,91 @@
-# Lógica Unificada de Cancelación, Vencimiento Automático, Reprogramación en Cascada y Registro de Movimientos
+# Política de Límite Mensual de Reprogramación y Caducidad de Sesiones Sin Fecha
 
-Rediseño integral del flujo de anulación, vencimiento y reprogramación de entrenamientos para preservar siempre la secuencia lógica de las rutinas del cliente sin mostrar opciones confusas, liberando automáticamente los huecos del calendario y dejando constancia profesional de cada movimiento en la ficha del cliente.
+Este plan implementa la política del gimnasio que restringe la reprogramación únicamente a las sesiones del mes en curso y los meses previos configurados en **Maestros > Agenda** (por defecto `1`, es decir, mes actual más el mes anterior), bloqueando las sesiones completadas y las vencidas fuera de plazo, y devolviendo automáticamente las sesiones **Sin fecha** caducadas a su fecha original como **Vencidas** no reprogramables.
 
-## Revisión y Decisiones Confirmadas
+## Revisión de Usuario y Decisiones Confirmadas
 
 > [!IMPORTANT]
-> Estas decisiones recogen las respuestas confirmadas para alinear el comportamiento de la Agenda y la Ficha del Cliente con el método real de trabajo del gimnasio.
+> Las siguientes decisiones han sido confirmadas e incorporadas en el diseño:
 
-- **Liberación del hueco al cancelar o vencer**: Cuando una sesión se cancela manualmente o vence automáticamente sin haberse completado, **la cita se elimina del calendario** para liberar el hueco en la agenda, desplazando su programación en cascada hacia delante.
-- **Vencimiento automático a partir del día siguiente**: Cualquier sesión individual cuya fecha haya quedado en un día anterior a hoy (a partir de las 00:00 del día siguiente) y no esté marcada como *Completada* se procesa automáticamente como una cancelación por inasistencia/vencimiento: libera su hueco, empuja su rutina en cascada a las siguientes sesiones y envía la última rutina sobrante a la bolsa de *Sesiones programadas sin fecha*.
-- **Reprogramación directa sin preguntas intermedias**: Si una sesión con fecha se mueve directamente a otro día u hora, el sistema **reordena automáticamente las rutinas en orden cronológico** entre las sesiones pendientes del cliente sin mostrar el antiguo paso de selección de modos de cascada.
-- **Registro profesional de movimientos (Log de actividad en la Ficha del Cliente)**: Cada acción relevante (*Cancelación manual*, *Cancelación automática por vencimiento*, *Reprogramación de fecha/hora* y *Recuperación/asignación desde Sin fecha*) genera una entrada clara, legible y en lenguaje natural dentro de la Ficha del Cliente.
+- **Comportamiento al caducar una sesión Sin fecha fuera de plazo**: Se mantienen intactas las rutinas de las sesiones futuras y la sesión **Sin fecha** se quita de la bolsa y vuelve a su fecha y hora original (`fecha_hora_anterior`) con sus ejercicios y con estado **Vencida** bloqueada para reprogramación.
+- **Interpretación del parámetro en Maestros > Agenda**: El valor numérico indica cuántos meses anteriores al mes actual están permitidos (por ejemplo, el valor por defecto `1` permite reprogramar sesiones del **mes actual + 1 mes anterior**; en noviembre son reprogramables noviembre y octubre, mientras que septiembre y meses anteriores quedan bloqueados).
+- **Trazabilidad en el Registro de Movimientos**: Cuando una sesión **Sin fecha** supera el plazo mensual y vuelve a su fecha original como **Vencida**, se añade automáticamente una entrada profesional en la pestaña **Registro de Movimientos** de la ficha del cliente.
 
 ---
 
-## 1. Visión General y Concepto Central
+## 1. Visión General y Concepto Principal
 
-- **Qué hace**: Automatiza el movimiento de las programaciones de ejercicios para que el orden de entrenamiento diseñado por el entrenador nunca se rompa cuando un cliente falta, cancela, cambia de día o recupera una sesión pendiente.
-- **Usuarios**: Entrenadores y responsables de programación desde **Agenda**, **Hoy** y **Ficha de Cliente**.
-- **Valor principal**:
-  1. **Cero fricción operativa**: Desaparecen los modales con múltiples opciones técnicas de cascada; el sistema aplica siempre la regla del gimnasio.
-  2. **Secuencia de entrenamiento intacta**: Tanto al cancelar (cascada hacia delante + sobrante a *Sin fecha*) como al recuperar una sesión de *Sin fecha* (cascada hacia atrás + ubicación de la rutina de *Sin fecha* en la última sesión programada o primera vacía), el cliente realiza sus sesiones exactamente en el orden previsto.
-  3. **Trazabilidad clara**: El entrenador puede consultar en la ficha del cliente qué sesiones se cancelaron, reprogramaron o recuperaron y cuándo ocurrió.
+- **Qué hace**:
+  1. Incorpora en **Maestros > Agenda** el parámetro **"Meses de margen para reprogramar"** con valor inicial `1`.
+  2. Registra y muestra en cada sesión de la bolsa **Sin fecha** su fecha de origen (`fecha_hora_anterior`).
+  3. Al cargar la aplicación o cambiar de mes, evalúa todas las sesiones **Sin fecha**: aquellas cuya fecha original sea anterior al primer día del mes límite permitido (`mesActual - mesesMargen`) salen automáticamente de la bolsa **Sin fecha**, se reubican en su fecha y hora original como **Vencida** (sin alterar las sesiones futuras) y registran el movimiento en la ficha del cliente.
+  4. Bloquea las acciones de **Reprogramar**, **Cancelar a Sin fecha** y **Volcar en hueco** tanto en **Agenda** como en **Ficha de Cliente** para todas las sesiones **Completadas** y para todas las sesiones **Vencidas** cuya fecha sea anterior al límite de meses configurado.
+- **Valor clave**: Garantiza que las sesiones vencidas o sin fecha de más de dos meses (ej. septiembre o anteriores estando en noviembre) queden cerradas como **Vencidas** en su día original sin posibilidad de reprogramarse, automatizando el control administrativo del gimnasio.
 
 ---
 
 ## 2. Experiencia de Usuario y Diseño Visual
 
-### Flujos de Usuario Clave
-
-1. **Cancelar Sesión (Manual desde Agenda o Ficha de Cliente)**:
-   - El botón antiguo *"Cancelar sin fecha"* pasa a llamarse **"Cancelar sesión"**.
-   - Al pulsarlo (previa confirmación clara):
-     - La cita del día cancelado se elimina del calendario (liberando el hueco).
-     - Su programación pasa a la siguiente sesión futura del cliente, la de esa sesión a la siguiente, y así sucesivamente (**cascada hacia delante**).
-     - La programación que estaba en la última sesión programada del cliente no crea una cita inventada al día siguiente, sino que **pasa con todos sus ejercicios a la bolsa de "Sesiones programadas sin fecha"**. (Si la sesión cancelada era la única o la última y tenía ejercicios, pasa directamente a *Sin fecha*).
-     - Se registra en el historial del cliente: *"Sesión del [Fecha y Hora] cancelada. Su programación se desplazó a las siguientes sesiones y la última rutina pasó a Sesiones sin fecha."*
-
-2. **Vencimiento Automático (Al pasar de día sin marcarse como Completada)**:
-   - Al cargar la Agenda, la vista de Hoy o la Ficha del Cliente, el sistema detecta si existen sesiones de días anteriores a hoy (`fecha < inicio_de_hoy`) que sigan en estado *Pendiente* / *Vencida* (no completadas).
-   - Automáticamente ejecuta la misma lógica de **Cancelación en cascada hacia delante**:
-     - Desplaza las rutinas hacia las sesiones posteriores del cliente.
-     - Envía la rutina desplazada del final a la bolsa de **Sesiones programadas sin fecha**.
-     - Elimina la cita vencida del calendario y añade una entrada en el registro del cliente indicando que la sesión venció sin completarse y su rutina fue desplazada automáticamente.
-   - Al ser automático al cambiar de día, la pestaña de *"Vencidas"* queda limpia y es sustituida de forma mucho más útil por el **Registro de Movimientos / Historial de Cambios** del cliente.
-
-3. **Asignar Fecha / Reprogramar una Sesión desde la Bolsa "Sin fecha" (Cascada hacia atrás)**:
-   - Cuando el entrenador selecciona una sesión de la bolsa **Programadas sin fecha** y elige un hueco de destino en el calendario (`Fecha Destino`):
-     - Se crea/ubica la cita en la `Fecha Destino`.
-     - **Si existen sesiones programadas posteriores a `Fecha Destino`**: se aplica la **cascada hacia atrás** (la programación de la sesión inmediatamente posterior pasa a `Fecha Destino`, la siguiente pasa a la anterior, etc.) y la programación que guardaba la sesión *Sin fecha* se coloca al final de la cola: en la **primera sesión no programada (vacía)** tras las sesiones con rutina, o bien en la **última sesión programada** si todas tenían ya ejercicios (en cuyo caso la que estaba en esa última pasa a la primera vacía si existe).
-     - **Si `Fecha Destino` es posterior a todas las sesiones con ejercicios** (o no hay sesiones intermedias con ejercicios): la rutina de *Sin fecha* se ubica en la primera sesión no programada disponible siguiendo el orden cronológico.
-     - Se elimina el documento de la bolsa *Sin fecha* ya consumido y se registra en el log del cliente: *"Sesión sin fecha asignada al [Fecha y Hora destino] reordenando el bloque de entrenamientos."*
-
-4. **Reprogramar Fecha/Hora de una Sesión con Fecha**:
-   - Al elegir el nuevo día y hora en el selector semanal, **no se muestra ningún paso 2 de preguntas técnicas**.
-   - El cambio se aplica directamente manteniendo el orden cronológico de todas las rutinas pendientes desde la fecha afectada, y se anota en el registro del cliente: *"Sesión del [Fecha origen] reprogramada al [Fecha destino]."*
-
-### Identidad Visual y Diseño del Registro de Movimientos
-
-- **Estética y Superficies**: Integrado con el sistema visual actual del gimnasio (`--surface: #ffffff`, `--border: #e2e8f0`, `--accent-dark: #0f766e`), manteniendo superficies limpias de un solo nivel de elevación y tipografía tabular (`tabular-nums`) para fechas y horas.
-- **Nuevo Panel / Pestaña "📋 Registro de Movimientos" en la Ficha del Cliente**:
-  - Accesible directamente en la conmutación principal de la Ficha del Cliente (junto a *📅 Historial de Sesiones* y *📈 Progreso*) con contador de eventos.
-  - Cada fila muestra en lenguaje claro y no técnico:
-    - **Etiqueta semántica de acción**: *Cancelada*, *Vencimiento automático*, *Reprogramada* o *Sin fecha asignada*.
-    - **Descripción humana**: Ej. *"El cliente canceló la sesión del Miércoles 04/11 a las 18:00. La rutina se desplazó a la siguiente sesión y la última programación pasó a Sin fecha."*
-    - **Fecha del registro y autor**: Cuándo se realizó el movimiento y qué entrenador estaba activo (con cifras tabulares).
+- **Flujos de Usuario Clave**:
+  1. **Configuración en Maestros > Agenda**: El administrador accede a **Maestros**, selecciona la sección **Agenda** y edita la categoría **"Meses de margen para reprogramar"** (por defecto `1`).
+  2. **Visualización de fecha de origen en Sesiones Sin Fecha**: En la tabla de **Sesiones programadas sin fecha** dentro de la ficha del cliente, cada sesión muestra su fecha de origen (`Origen: DD/MM/AAAA HH:MM`) para identificar de qué mes proviene.
+  3. **Paso de mes y conversión a Vencida**: Si una sesión **Sin fecha** tiene fecha de origen anterior al mes límite (por ejemplo, septiembre estando en noviembre con margen `1`), desaparece de la bolsa **Sin fecha**, aparece ubicada en su mes y día original dentro del historial del cliente con estado **Vencida** y queda registrada en **Registro de Movimientos**.
+  4. **Bloqueo de acciones fuera de plazo**: En el listado de sesiones de **Ficha de Cliente** y en el menú contextual de **Agenda**, las sesiones **Completadas** y las sesiones **Vencidas** anteriores al mes límite solo permiten consultar su programación o enviar copia de ejercicios a sesiones futuras, ocultando los botones de reprogramación y cancelación.
+- **Identidad Visual y Jerarquía**:
+  - **Estética de Panel Operativo**: Superficies limpias en blanco (`#FFFFFF`) y gris pizarra (`#F8FAFC`) con bordes sutiles de `1px` (`#E2E8F0`), manteniendo la tipografía tabular (`tabular-nums`) en fechas, horas y contadores.
+  - **Semántica de Estados**:
+    - **Completada**: Texto e indicador en verde (`#15803D`), bloqueada para reprogramación.
+    - **Vencida (dentro de plazo, ej. mes anterior)**: Indicador en rojo (`#B91C1C`), con botones de reprogramación activos.
+    - **Vencida (fuera de plazo, ej. septiembre o anterior)**: Indicador en rojo (`#B91C1C`) acompañado de etiqueta sutil de plazo agotado, sin controles de reprogramación ni cancelación.
 
 ---
 
-## 3. Decisiones de Producto y Racional
+## 3. Decisiones de Producto y Arquitectura
 
-- **Decisión 1: Unificación de los algoritmos de Cascada en un Servicio Centralizado**
-  - *Enfoque elegido*: Crear un motor único de operaciones de sesión que ejecutan por igual la Agenda y la Ficha del Cliente.
-  - *Por qué*: Garantiza que cancelar o reprogramar desde la Agenda produzca exactamente el mismo resultado en base de datos, el mismo soporte de Deshacer (`Ctrl+Z`) y el mismo registro en el log que hacerlo desde la Ficha del Cliente.
-- **Decisión 2: Destino de la rutina de "Sin fecha" al hacer cascada hacia atrás**
-  - *Enfoque elegido*: Al insertar una sesión procedente de *Sin fecha* en una `Fecha Destino` intermedia, todas las sesiones con fecha en `[Fecha Destino ... última sesión]` forman una cola cronológica. Las rutinas de las sesiones posteriores a `Fecha Destino` dan un paso atrás (hacia `Fecha Destino`), y la rutina que venía de *Sin fecha* se deposita al final de las rutinas programadas (en la primera sesión vacía de las últimas sesiones o cerrando la última sesión programada).
-  - *Por qué*: Como la sesión que estaba en *Sin fecha* contenía precisamente la rutina que salió despedida de la última sesión cuando el cliente canceló un día anterior, colocarla al final mientras las demás retroceden un puesto reconstruye exactamente la secuencia original `Sesión 1 → Sesión 2 → Sesión 3`.
+- **Cálculo dinámico de la fecha de corte (`fechaLimiteReprogramacionUTC`)**:
+  - *Enfoque elegido*: Calcular el primer instante en UTC del mes permitido según el valor maestro `N` (`Date.UTC(añoActual, mesActual - N, 1, 0, 0, 0, 0)`).
+  - *Por qué*: Con `N = 1` en noviembre de 2026, la fecha de corte es el `01/10/2026 00:00 UTC`. Cualquier sesión con fecha `< 01/10/2026` pertenece a septiembre o meses anteriores y queda automáticamente bloqueada.
+- **Conservación de la fecha de origen en la bolsa Sin fecha**:
+  - *Enfoque elegido*: Al cancelar una sesión con cascada hacia delante, la sesión que pasa a **Sin fecha** conserva en `fecha_hora_anterior` la fecha y hora exacta de la cita cancelada que originó el movimiento. Si existiera alguna sesión sin fecha antigua sin `fecha_hora_anterior`, se toma `fecha_creacion_sin_fecha` o `fecha_creacion` como respaldo.
+  - *Por qué*: Permite saber con exactitud a qué día y hora debe regresar la sesión cuando supere el plazo mensual de reprogramación.
 
 ---
 
 ## 4. Arquitectura Técnica y Flujo de Datos
 
-### Diagrama de Arquitectura y Flujo de Cascadas
-
 ```
-┌────────────────────────────────────────────────────────────────────────────┐
-│                   MOTOR DE CASCADAS Y LOG DE SESIONES                      │
-└─────────────────────────────────────┬──────────────────────────────────────┘
-                                      │
-       ┌──────────────────────────────┼──────────────────────────────┐
-       ▼                              ▼                              ▼
-┌─────────────────────────┐  ┌─────────────────────────┐  ┌─────────────────────────┐
-│ 1. CANCELAR / VENCER    │  │ 2. ASIGNAR "SIN FECHA"  │  │ 3. REPROGRAMAR CON FECHA│
-│ (Cascada hacia delante) │  │ (Cascada hacia atrás)   │  │ (Orden cronológico)     │
-├─────────────────────────┤  ├─────────────────────────┤  ├─────────────────────────┤
-│ • Elimina cita del slot │  │ • Crea cita en F_dest   │  │ • Mueve cita de F_orig  │
-│ • Empuja rutinas S_i a  │  │ • Trae rutinas de       │  │   a F_dest              │
-│   S_{i+1}               │  │   S_{i+1} hacia S_i     │  │ • Reordena las rutinas  │
-│ • La rutina de la última│  │ • Ubica rutina SinFecha │  │   en [min(F), max(F)]   │
-│   sesión programada     │  │   en 1ª vacía final o   │  │   manteniendo su orden  │
-│   pasa a bolsa SinFecha │  │   última programada     │  │   de secuencia          │
-└────────────┬────────────┘  └────────────┬────────────┘  └────────────┬────────────┘
-             │                            │                            │
-             └────────────────────────────┼────────────────────────────┘
-                                          ▼
-                   ┌────────────────────────────────────────────┐
-                   │ Firestore Batch + Historial Log Cliente    │
-                   │ (Soporte completo de Deshacer / Ctrl+Z)    │
-                   └────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        Maestros > Agenda (Firestore)                    │
+│        "Meses de margen para reprogramar" (Valor por defecto: 1)        │
+└───────────────────────────────────┬─────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│             Cálculo de Corte: 1º día de (Mes Actual - N meses)          │
+│         Ej. Noviembre 2026 (N=1) ──► Corte = 01/10/2026 00:00 UTC       │
+└─────────────────┬─────────────────────────────────────┬─────────────────┘
+                  │                                     │
+                  ▼                                     ▼
+┌───────────────────────────────────┐ ┌───────────────────────────────────┐
+│   Procesador de Caducidad Mensual │ │   Reglas de UI (Agenda y Ficha)   │
+│   de Bolsa "Sin Fecha"            │ │                                   │
+│                                   │ │ • Si Completada:                  │
+│ • Detecta sesiones sin_fecha con  │ │   Bloquea Reprogramar y Cancelar  │
+│   fecha_hora_anterior < Corte     │ │ • Si Vencida y fecha < Corte:     │
+│ • Mantiene rutinas futuras        │ │   Bloquea Reprogramar, Cancelar   │
+│ • Pasa sesión a su fecha original │ │   y Volcar en hueco               │
+│   con estado = "Vencida"          │ │ • Si Vencida y fecha >= Corte:    │
+│ • Añade entrada en Registro de    │ │   Permite Reprogramar             │
+│   Movimientos del cliente         │ │                                   │
+└───────────────────────────────────┘ └───────────────────────────────────┘
 ```
 
-### Modelo de Datos para el Registro de Movimientos del Cliente
-
-- Los eventos se almacenan de forma persistente asociados al cliente (`historial_movimientos` en el documento del cliente o colección dedicada vinculada por `id_cliente`), con la estructura:
-  - `id`: Identificador único del movimiento.
-  - `id_cliente`: Identificador del cliente.
-  - `tipo`: `'CANCELACION' | 'VENCIMIENTO' | 'REPROGRAMACION' | 'ASIGNACION_SIN_FECHA'`.
-  - `titulo`: Resumen corto (ej. `"Sesión cancelada"`, `"Sesión reprogramada"`, `"Sesión sin fecha asignada"`, `"Cancelación automática por vencimiento"`).
-  - `detalle`: Explicación clara y profesional con las fechas/horas implicadas.
-  - `fecha_registro`: Marca temporal del movimiento.
-  - `usuario`: Nombre del entrenador o `"Automático"` en el caso de vencimiento al cambiar de día.
+### Modelo de Datos y Estados Interactivos
+- **Catálogo de Maestros**:
+  - Se añade `"Meses de margen para reprogramar"` dentro de `ESTRUCTURA_MAESTROS["Agenda"]` con inicialización automática en `"1"` si no existe en Firestore, junto con una función auxiliar `getMesesMargenReprogramacion()` y `obtenerFechaLimiteReprogramacionUTC(mesesMargen)`.
+- **Proceso de Caducidad de Sesiones Sin Fecha**:
+  - Al cargar `Agenda`, `Ficha de Cliente` o `Hoy`, se verifica si existen sesiones `sin_fecha: true` cuya fecha de origen (`fecha_hora_anterior` o `fecha_creacion_sin_fecha`) sea `< fechaLimiteUTC`.
+  - Para cada sesión detectada, se actualiza su documento pasando `sin_fecha: false`, `fecha_hora_inicio: fechaOrigen`, `estado: 'Vencida'`, `estado_sesion: 'Vencida'` y se inserta un registro en `historial_movimientos` del cliente con el detalle de la caducidad por plazo superado.
+- **Controles en Ficha de Cliente y Agenda**:
+  - En `FichaClienteView`: los botones de **Reprogramar fecha/hora**, **Cancelar sesión** (`📌`) y **Asignar a hueco** (`📥`) solo se muestran cuando la sesión no está `Completada` y su fecha es `>= fechaLimiteUTC`. Además, el modal de asignar sesión existente a un hueco excluye sesiones vencidas anteriores a `fechaLimiteUTC`.
+  - En `AgendaView`: `obtenerAccionesDisponiblesSesion` utiliza el valor de `mesesMargen` leído de Maestros para calcular `limiteReprogramar` y deshabilitar tanto `puedeReprogramar` como `puedeCancelarSinFecha` en sesiones anteriores a `limiteReprogramar`.

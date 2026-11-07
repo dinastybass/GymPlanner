@@ -109,6 +109,11 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
 
     setLoadingSesiones(true);
     setSelectedSesion('');
+    const now = new Date();
+    const endOfTodayUTC = new Date(
+      Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+    );
+
     const q = query(collection(db, 'agenda_sesiones'), where('id_cliente', '==', selectedCliente));
     getDocs(q)
       .then(snap => {
@@ -120,6 +125,15 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
           const data = d.data();
           // Excluir sesiones completadas o canceladas
           if (isSessionCompletedOrCancelled(data)) return;
+
+          // Solo permitir sesiones sin fecha o posteriores al día de hoy
+          const esSinFecha = Boolean(data.sin_fecha === true || !data.fecha_hora_inicio);
+          if (!esSinFecha) {
+            const fechaObj = data.fecha_hora_inicio?.toDate
+              ? data.fecha_hora_inicio.toDate()
+              : new Date(data.fecha_hora_inicio);
+            if (isNaN(fechaObj.getTime()) || fechaObj <= endOfTodayUTC) return;
+          }
 
           list.push({ id: d.id, ...data });
         });
@@ -413,10 +427,10 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
                       let dateStr = '📌 Sin fecha asignada';
                       if (s.fecha_hora_inicio?.toDate) {
                         const d = s.fecha_hora_inicio.toDate();
-                        dateStr = `${d.toLocaleDateString('es-ES', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })} · ${d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
+                        dateStr = `${d.toLocaleDateString('es-ES', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' })} · ${d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })}`;
                       } else if (s.fecha_hora_inicio) {
                         const d = new Date(s.fecha_hora_inicio);
-                        dateStr = `${d.toLocaleDateString('es-ES', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })} · ${d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
+                        dateStr = `${d.toLocaleDateString('es-ES', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' })} · ${d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })}`;
                       }
                       const tipoLabel = s.tipo_sesion ? `[${s.tipo_sesion}]` : '';
 

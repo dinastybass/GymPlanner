@@ -1,6 +1,6 @@
 {
-  "summary": "Plan de implementación para la lógica unificada de Cancelación de Sesiones (con cascada hacia delante y paso del sobrante a la bolsa Sin Fecha), Vencimiento Automático al día siguiente, Reprogramación desde Sin Fecha (cascada hacia atrás ubicando la rutina de Sin Fecha al final o en la primera sesión vacía), Reprogramación directa con orden cronológico automático y Registro de Actividad (Log profesional) en la Ficha del Cliente.",
-  "updatedAt": "2026-11-06T17:45:25.527190092Z",
-  "requestFeedback": true,
-  "userFacing": true
+  "summary":  "Plan de implementación para el límite de meses de reprogramación configurable en Maestros > Agenda, caducidad automática de sesiones Sin fecha al superar el límite mensual devolviéndolas a su fecha original como Vencidas bloqueadas con registro en el historial del cliente, y bloqueo de reprogramación/cancelación para sesiones completadas o vencidas fuera de plazo.",
+  "updatedAt":  "2026-11-07T09:50:15.410979570Z",
+  "requestFeedback":  true,
+  "userFacing":  true
 }

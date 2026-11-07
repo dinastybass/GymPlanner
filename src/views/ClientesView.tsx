@@ -9,6 +9,7 @@ import {
   getListaProgramadores
 } from '../services/maestrosService';
 import { coincideBusqueda, normalizarTextoBusqueda } from '../utils/helpers';
+import { confirmarDialogo } from '../utils/confirmDialog';
 
 interface ClientesViewProps {
   onNavigate: (tab: string, param?: string) => void;
@@ -24,6 +25,8 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [typeFilter, setTypeFilter] = useState('Todos');
+  const [onlySinFechaFilter, setOnlySinFechaFilter] = useState(false);
+  const [sinFechaCountByClient, setSinFechaCountByClient] = useState<Record<string, number>>({});
 
   const [sortCol, setSortCol] = useState<'nombre_completo' | 'alias'>('nombre_completo');
   const [sortAsc, setSortAsc] = useState(true);
@@ -70,8 +73,25 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
   const cargarClientes = useCallback(async () => {
     setLoading(true);
     try {
-      const snap = await getDocs(collection(db, 'clientes'));
+      const [snap, sesSnap] = await Promise.all([
+        getDocs(collection(db, 'clientes')),
+        getDocs(collection(db, 'agenda_sesiones'))
+      ]);
+
+      const countsRaw: Record<string, number> = {};
+      sesSnap.forEach(sDoc => {
+        const sData = sDoc.data();
+        const esSinFecha = Boolean(sData.sin_fecha === true || !sData.fecha_hora_inicio);
+        if (esSinFecha) {
+          const idCli = sData.id_cliente || sData.ID_Cliente || '';
+          if (idCli) {
+            countsRaw[idCli] = (countsRaw[idCli] || 0) + 1;
+          }
+        }
+      });
+
       const list: any[] = [];
+      const countsByDocId: Record<string, number> = {};
       snap.forEach(d => {
         const data = d.data();
         const nom = data.Nombre_Cliente || data.nombre_completo || 'Sin nombre';
@@ -86,6 +106,13 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
         if (estLower.includes('pausa')) estadoNorm = 'En pausa';
         if (estLower.includes('baja') || estLower.includes('inactivo')) estadoNorm = 'De baja';
 
+        const altId = data.ID_Cliente || data.Id_Cliente || '';
+        const countSf =
+          (countsRaw[d.id] || 0) + (altId && altId !== d.id ? countsRaw[altId] || 0 : 0);
+        if (countSf > 0) {
+          countsByDocId[d.id] = countSf;
+        }
+
         list.push({
           id: d.id,
           raw: data,
@@ -94,9 +121,11 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
           objetivo_global: obj,
           lesiones: les,
           estado: estadoNorm,
-          tipo_cliente: tipo
+          tipo_cliente: tipo,
+          sin_fecha_count: countSf
         });
       });
+      setSinFechaCountByClient(countsByDocId);
       setClientesData(list);
     } catch (e) {
       console.error('Error al cargar clientes:', e);
@@ -143,9 +172,14 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
   const handleBorrarCliente = async (e: React.MouseEvent, id: string, nombre: string) => {
     e.stopPropagation();
     if (
-      !window.confirm(
-        `¿Estás completamente seguro de que deseas eliminar permanentemente la ficha de "${nombre}"?\n\nPodrás deshacer esta acción con el botón Deshacer o Ctrl+Z.`
-      )
+      !(await confirmarDialogo(
+        `¿Estás completamente seguro de que deseas eliminar permanentemente la ficha de "${nombre}"?\n\nPodrás deshacer esta acción con el botón Deshacer o Ctrl+Z.`,
+        {
+          titulo: 'Eliminar cliente',
+          textoConfirmar: 'Sí, eliminar',
+          danger: true
+        }
+      ))
     ) {
       return;
     }
@@ -255,9 +289,12 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
 
     const matchStatus = statusFilter === 'Todos' || c.estado === statusFilter;
     const matchType = typeFilter === 'Todos' || c.tipo_cliente === typeFilter;
+    const matchSinFecha = !onlySinFechaFilter || (c.sin_fecha_count || 0) > 0;
 
-    return matchText && matchStatus && matchType;
+    return matchText && matchStatus && matchType && matchSinFecha;
   });
+
+  const totalClientesConSinFecha = Object.keys(sinFechaCountByClient).length;
 
   filtrados.sort((a, b) => {
     const valA = normalizarTextoBusqueda(a[sortCol]);
@@ -285,7 +322,10 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
   };
 
   const isFilteredOrSearching =
-    statusFilter !== 'Todos' || typeFilter !== 'Todos' || searchText.trim() !== '';
+    statusFilter !== 'Todos' ||
+    typeFilter !== 'Todos' ||
+    onlySinFechaFilter ||
+    searchText.trim() !== '';
 
   return (
     <div className="container">
@@ -345,6 +385,24 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
           ))}
           <option value="Sin asignar">Sin asignar</option>
         </select>
+
+        <button
+          type="button"
+          className={onlySinFechaFilter ? 'btn-primary' : 'btn-outline'}
+          style={{
+            padding: '8px 12px',
+            fontSize: '0.82rem',
+            whiteSpace: 'nowrap',
+            background: onlySinFechaFilter ? '#d97706' : '#fffbeb',
+            borderColor: '#f59e0b',
+            color: onlySinFechaFilter ? '#ffffff' : '#92400e',
+            fontWeight: 700
+          }}
+          onClick={() => setOnlySinFechaFilter(prev => !prev)}
+          title="Filtrar clientes que tienen sesiones programadas sin fecha"
+        >
+          📌 Con sin fecha ({totalClientesConSinFecha})
+        </button>
 
         <span className="total-count">{filtrados.length} clientes</span>
       </div>
@@ -506,6 +564,24 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
                                     <td className="col-cli-nombre">{c.nombre_completo}</td>
                                     <td className="col-cli-alias">
                                       <strong>{c.alias}</strong>
+                                      {(c.sin_fecha_count || 0) > 0 && (
+                                        <span
+                                          style={{
+                                            marginLeft: 8,
+                                            background: '#fef3c7',
+                                            color: '#92400e',
+                                            border: '1px solid #f59e0b',
+                                            borderRadius: 10,
+                                            padding: '2px 7px',
+                                            fontSize: '0.72rem',
+                                            fontWeight: 700,
+                                            whiteSpace: 'nowrap'
+                                          }}
+                                          title={`${c.sin_fecha_count} sesión(es) sin fecha asignada`}
+                                        >
+                                          📌 {c.sin_fecha_count} sin fecha
+                                        </span>
+                                      )}
                                     </td>
                                     <td className="col-cli-objetivo text-light">{c.objetivo_global}</td>
                                     {!isProgramadorOnly && (

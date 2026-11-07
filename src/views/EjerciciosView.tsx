@@ -4,6 +4,12 @@ import { db } from '../firebase';
 import { useUndo } from '../context/UndoContext';
 import { cargarCatalogoMaestros, extraerListaMaster } from '../services/maestrosService';
 import { coincideBusqueda } from '../utils/helpers';
+import { confirmarDialogo } from '../utils/confirmDialog';
+import {
+  limpiarSesionesAntiguasYEjerciciosHuerfanos,
+  contarReferenciasEjercicio,
+  eliminarEjercicioConCascada
+} from '../services/sessionCascadeService';
 
 interface EjerciciosViewProps {
   onNavigate?: (tab: string, param?: string) => void;
@@ -93,6 +99,7 @@ export const EjerciciosView: React.FC<EjerciciosViewProps> = () => {
   const cargarEjercicios = useCallback(async () => {
     setLoading(true);
     try {
+      await limpiarSesionesAntiguasYEjerciciosHuerfanos();
       const snap = await getDocs(collection(db, 'ejercicios'));
       const list: any[] = [];
       snap.forEach(d => {
@@ -316,33 +323,76 @@ export const EjerciciosView: React.FC<EjerciciosViewProps> = () => {
   };
 
   const eliminarEjercicio = async (id: string, nombre: string) => {
+    const ejPrevio = ejerciciosData.find(x => x.id === id);
+    const prevRaw = ejPrevio ? clonarProfundo(ejPrevio.raw) : null;
+    const altId = prevRaw
+      ? String(prevRaw.Id_Ejercicio || prevRaw.ID_Ejercicio || prevRaw.id_ejercicio || '').trim()
+      : '';
+
+    let avisoCascada =
+      'Se eliminará en cascada de cualquier sesión, plantilla o registro de progreso donde estuviera asignado.';
+    try {
+      const refs = await contarReferenciasEjercicio(id, nombre, altId);
+      const partes: string[] = [];
+      if (refs.sesionesCount > 0) {
+        partes.push(`${refs.sesionesCount} ${refs.sesionesCount === 1 ? 'sesión' : 'sesiones'}`);
+      }
+      if (refs.plantillasCount > 0) {
+        partes.push(
+          `${refs.plantillasCount} ${refs.plantillasCount === 1 ? 'plantilla' : 'plantillas'}`
+        );
+      }
+      if (refs.progresoCount > 0) {
+        partes.push(
+          `${refs.progresoCount} ${refs.progresoCount === 1 ? 'registro PR' : 'registros PR'}`
+        );
+      }
+      if (partes.length > 0) {
+        avisoCascada =
+          `⚠️ AVISO DE BORRADO EN CASCADA:\n` +
+          `Este ejercicio está asignado actualmente en ${partes.join(', ')}.\n` +
+          `Al eliminarlo del catálogo, también se quitará automáticamente en cascada de todas esas sesiones, plantillas y registros.`;
+      }
+    } catch (e) {
+      console.warn('Error contando referencias del ejercicio:', e);
+    }
+
     if (
-      !window.confirm(
-        `¿Estás seguro de que deseas eliminar permanentemente el ejercicio "${nombre}" del catálogo?\n\nPodrás deshacerlo con Ctrl+Z.`
-      )
+      !(await confirmarDialogo(
+        `¿Estás seguro de que deseas eliminar permanentemente el ejercicio "${nombre}" del catálogo?\n\n${avisoCascada}\n\nPodrás deshacer toda la operación con Ctrl+Z.`,
+        {
+          titulo: 'Eliminar ejercicio (Borrado en cascada)',
+          textoConfirmar: 'Sí, eliminar en cascada',
+          danger: true
+        }
+      ))
     ) {
       return;
     }
 
-    const ejPrevio = ejerciciosData.find(x => x.id === id);
-    const prevRaw = ejPrevio ? clonarProfundo(ejPrevio.raw) : null;
-
     try {
-      await deleteDoc(doc(db, 'ejercicios', id));
+      const res = await eliminarEjercicioConCascada({
+        idEjercicio: id,
+        nombreEjercicio: nombre,
+        rawEjercicio: prevRaw
+      });
       setEjerciciosData(prev => prev.filter(e => e.id !== id));
 
-      if (prevRaw) {
-        pushAction({
-          label: `Eliminar ejercicio "${nombre}"`,
-          undoOps: [{ type: 'set', collection: 'ejercicios', id, data: prevRaw }],
-          redoOps: [{ type: 'delete', collection: 'ejercicios', id }],
-          showToast: true,
-          toastMessage: `🗑️ Ejercicio "${nombre}" eliminado`
-        });
-      }
+      const extraMsg =
+        res.sesionesAfectadas > 0 || res.plantillasAfectadas > 0
+          ? ` (limpiado de ${res.sesionesAfectadas} sesiones y ${res.plantillasAfectadas} plantillas)`
+          : '';
+
+      pushAction({
+        label: `Eliminar ejercicio "${nombre}"${extraMsg}`,
+        undoOps: res.undoOps,
+        redoOps: res.redoOps,
+        showToast: true,
+        toastMessage: `🗑️ Ejercicio "${nombre}" eliminado${extraMsg}`
+      });
     } catch (e) {
       console.error(e);
-      alert('Error al eliminar el ejercicio.');
+      alert('Error al eliminar el ejercicio en cascada.');
     }
   };
 
@@ -409,16 +459,25 @@ export const EjerciciosView: React.FC<EjerciciosViewProps> = () => {
                 />
               </div>
               <div className="dropdown-options">
-                {filteredOpts.map(opt => (
-                  <label key={opt} className="dropdown-option">
-                    <input
-                      type="checkbox"
-                      checked={selected.includes(opt)}
-                      onChange={() => toggleMultiOption(field, opt)}
-                    />
-                    <span>{opt}</span>
-                  </label>
-                ))}
+                {Array.from(new Set([...selected, ...filteredOpts]))
+                  .filter(opt => coincideBusqueda(opt, searchVal))
+                  .sort((a, b) => {
+                    const aSel = selected.includes(a);
+                    const bSel = selected.includes(b);
+                    if (aSel && !bSel) return -1;
+                    if (!aSel && bSel) return 1;
+                    return 0;
+                  })
+                  .map(opt => (
+                    <label key={opt} className="dropdown-option">
+                      <input
+                        type="checkbox"
+                        checked={selected.includes(opt)}
+                        onChange={() => toggleMultiOption(field, opt)}
+                      />
+                      <span>{opt}</span>
+                    </label>
+                  ))}
               </div>
               <div className="dropdown-actions">
                 <button

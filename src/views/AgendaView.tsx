@@ -11,12 +11,21 @@ import {
   deleteDoc,
   writeBatch
 } from 'firebase/firestore';
-import { getValoresMaestro } from '../services/maestrosService';
+import { getValoresMaestro, obtenerFechaLimiteReprogramacionUTC } from '../services/maestrosService';
 import { CustomDropdown } from '../components/CustomDropdown';
 import { SendRoutineModal } from '../components/SendRoutineModal';
 import { useUndo } from '../context/UndoContext';
 import { FirestoreOp } from '../services/undoService';
 import { esSesionCompletada } from '../utils/helpers';
+import { confirmarDialogo } from '../utils/confirmDialog';
+import {
+  cancelarSesionConCascadaAdelante,
+  asignarFechaASesionSinFechaConCascadaAtras,
+  reprogramarSesionConFechaOrdenCronologico,
+  revertirVencimientosAutomaticos,
+  procesarCaducidadSesionesSinFechaPorMeses,
+  limpiarSesionesAntiguasYEjerciciosHuerfanos
+} from '../services/sessionCascadeService';
 
 interface AgendaViewProps {
   onNavigate: (tab: string, param?: string) => void;
@@ -78,7 +87,7 @@ function obtenerSiguienteDiaHabilUTC(fechaBase: Date): Date {
   return sig;
 }
 
-function obtenerAccionesDisponiblesSesion(sesionRaw: any = {}) {
+function obtenerAccionesDisponiblesSesion(sesionRaw: any = {}, mesesMargen = 1) {
   const isSinFecha = Boolean(
     sesionRaw.sin_fecha ||
     sesionRaw.estado === 'Sin fecha' ||
@@ -94,9 +103,9 @@ function obtenerAccionesDisponiblesSesion(sesionRaw: any = {}) {
         : new Date(sesionRaw.fecha_hora_inicio || Date.now());
 
   const now = new Date();
-  const nowNominalUTC = new Date(Date.UTC(
+  const startOfTodayUTC = new Date(Date.UTC(
     now.getFullYear(), now.getMonth(), now.getDate(),
-    now.getHours(), now.getMinutes(), now.getSeconds()
+    0, 0, 0, 0
   ));
 
   let estado = 'Pendiente';
@@ -104,18 +113,18 @@ function obtenerAccionesDisponiblesSesion(sesionRaw: any = {}) {
     estado = 'Sin fecha';
   } else if (esSesionCompletada(sesionRaw)) {
     estado = 'Completada';
-  } else if ((d && d < nowNominalUTC) || sesionRaw.estado === 'Vencida') {
+  } else if ((d && d < startOfTodayUTC) || sesionRaw.estado === 'Vencida') {
     estado = 'Vencida';
   }
 
-  const limiteReprogramar = new Date(Date.UTC(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0));
+  const limiteReprogramar = obtenerFechaLimiteReprogramacionUTC(mesesMargen, now);
   const tipoSesion = sesionRaw.tipo_sesion || sesionRaw.Tipo || 'Individual';
   const isSG = tipoSesion === 'Small Group' || tipoSesion === 'SG';
   const ejercicios = Array.isArray(sesionRaw.ejercicios) ? sesionRaw.ejercicios : [];
 
-  const puedeProgramar = !isSG && (estado === 'Pendiente' || isSinFecha);
+  const puedeProgramar = true;
   const puedeReprogramar = !isSG && (isSinFecha || estado === 'Pendiente' || (estado === 'Vencida' && d && d >= limiteReprogramar));
-  const puedeCancelarSinFecha = !isSG && !isSinFecha && estado !== 'Completada';
+  const puedeCancelarSinFecha = !isSG && !isSinFecha && estado !== 'Completada' && !(estado === 'Vencida' && d && d < limiteReprogramar);
   const puedeEnviar = ejercicios.length > 0;
   const puedeEliminar = true;
 
@@ -134,8 +143,8 @@ function obtenerAccionesDisponiblesSesion(sesionRaw: any = {}) {
   };
 }
 
-function formatearSesionAgenda(id: string, data: any = {}) {
-  const info = obtenerAccionesDisponiblesSesion(data);
+function formatearSesionAgenda(id: string, data: any = {}, mesesMargen = 1) {
+  const info = obtenerAccionesDisponiblesSesion(data, mesesMargen);
   const d = info.fechaObj;
   const isSinFecha = info.sin_fecha;
   const dAnt = data.fecha_hora_anterior?.toDate ? data.fecha_hora_anterior.toDate() : null;
@@ -189,6 +198,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
   ]);
   const [sgTimeSlotsRaw, setSgTimeSlotsRaw] = useState<string[]>(['Lunes 18:00', 'Martes 17:00']);
   const [ocupacionMaxima, setOcupacionMaxima] = useState<number>(6);
+  const [mesesMargenReprog, setMesesMargenReprog] = useState<number>(1);
 
   // Clients & Sessions
   const [globalClientes, setGlobalClientes] = useState<{ id: string; alias: string; nombre: string }[]>([]);
@@ -341,11 +351,15 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
   const loadAgenda = useCallback(async () => {
     setLoading(true);
     try {
-      const [diasDB, horasIndDB, horasSGDB, ocupacionDB] = await Promise.all([
+      await revertirVencimientosAutomaticos();
+      await limpiarSesionesAntiguasYEjerciciosHuerfanos();
+      await procesarCaducidadSesionesSinFechaPorMeses();
+      const [diasDB, horasIndDB, horasSGDB, ocupacionDB, mesesMargenDB] = await Promise.all([
         getValoresMaestro('Agenda', 'Días de la semana'),
         getValoresMaestro('Agenda', 'Horarios Sesiones Individuales'),
         getValoresMaestro('Agenda', 'Horarios Small Groups'),
-        getValoresMaestro('Agenda', 'Ocupación máxima')
+        getValoresMaestro('Agenda', 'Ocupación máxima'),
+        getValoresMaestro('Agenda', 'Meses de margen para reprogramar')
       ]);
 
       if (diasDB.length > 0) setDiasSemana(diasDB);
@@ -355,6 +369,12 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
         const parsedOcup = parseInt(String(ocupacionDB[0]).trim(), 10);
         if (!isNaN(parsedOcup) && parsedOcup > 0) {
           setOcupacionMaxima(parsedOcup);
+        }
+      }
+      if (mesesMargenDB.length > 0) {
+        const parsedMargen = parseInt(String(mesesMargenDB[0]).trim(), 10);
+        if (!isNaN(parsedMargen) && parsedMargen >= 0) {
+          setMesesMargenReprog(parsedMargen);
         }
       }
 
@@ -453,11 +473,14 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     weekNum: number;
     col: number;
     row: number;
-    clientes: { nombre: string; idSesion: string; isPending: boolean }[];
+    clientes: { nombre: string; idSesion: string; isPending: boolean; isCompleted: boolean }[];
     dateStrID: string;
     position?: 'left' | 'right';
     isOverlapping?: boolean;
   }[]> = {};
+
+  const nowCal = new Date();
+  const startOfTodayCalUTC = new Date(Date.UTC(nowCal.getFullYear(), nowCal.getMonth(), nowCal.getDate(), 0, 0, 0, 0));
 
   const startDateCalendar = new Date(weeksList[0].mondayDate);
   startDateCalendar.setUTCHours(0, 0, 0, 0);
@@ -487,8 +510,9 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     if (data.tipo_sesion === 'Small Group') return;
     if (!data.fecha_hora_inicio?.toDate) return;
 
-    const isPending = !data.ejercicios || data.ejercicios.length === 0;
     const fecha: Date = data.fecha_hora_inicio.toDate();
+    const isCompleted = esSesionCompletada(data);
+    const isPending = !isCompleted && (!data.ejercicios || data.ejercicios.length === 0);
     const timeStr = fecha.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
     const diffDays = Math.floor(Math.abs(fecha.getTime() - startDateCalendar.getTime()) / (1000 * 60 * 60 * 24));
     const weekNum = Math.floor(diffDays / 7) + 1;
@@ -506,14 +530,15 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
           existingSlot.clientes.push({
             nombre: info.nombreCliente,
             idSesion: info.id,
-            isPending
+            isPending,
+            isCompleted
           });
         } else {
           dayEventsMap[dayKey].push({
             weekNum,
             col,
             row,
-            clientes: [{ nombre: info.nombreCliente, idSesion: info.id, isPending }],
+            clientes: [{ nombre: info.nombreCliente, idSesion: info.id, isPending, isCompleted }],
             dateStrID: fecha.toISOString().split('T')[0]
           });
         }
@@ -537,7 +562,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
 
   // Build Small Groups map
   const sgSlotsMap: Record<string, {
-    clientes: { idSesion: string; nombre: string }[];
+    clientes: { idSesion: string; nombre: string; isCompleted: boolean }[];
     firstId: string;
     isPending: boolean;
   }> = {};
@@ -548,6 +573,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     if (!data.fecha_hora_inicio?.toDate) return;
 
     const fecha: Date = data.fecha_hora_inicio.toDate();
+    const isCompleted = esSesionCompletada(data);
     const dateStrID = fecha.toISOString().split('T')[0];
     const timeStr = fecha.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
     const keyHora = timeStr.replace(':', '');
@@ -566,7 +592,8 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
 
     sgSlotsMap[slotKey].clientes.push({
       idSesion: info.id,
-      nombre: info.nombreCliente
+      nombre: info.nombreCliente,
+      isCompleted
     });
   });
 
@@ -577,8 +604,8 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     const info = sesionesRaw[idSesion];
     if (!info) return;
 
-    const sFmt = formatearSesionAgenda(idSesion, info.docData);
-    const acciones = obtenerAccionesDisponiblesSesion(info.docData);
+    const sFmt = formatearSesionAgenda(idSesion, info.docData, mesesMargenReprog);
+    const acciones = obtenerAccionesDisponiblesSesion(info.docData, mesesMargenReprog);
 
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     let left = rect.left;
@@ -601,38 +628,48 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     });
   };
 
-  // Cancelar sin fecha with Undo
+  // Cancelar sesión (cascada hacia delante + sobrante a Sin fecha)
   const handleCancelarSinFecha = async (idSesion: string, sFmt: any) => {
     setActiveMenu(null);
+    const nombreCli = sFmt.alias || sFmt.nombre_cliente || 'Cliente';
+    const msg =
+      `¿Cancelar esta sesión de ${nombreCli}?\n\n` +
+      '• Se eliminará la cita del calendario para liberar el hueco.\n' +
+      '• Su programación se desplazará en cascada al siguiente día programado.\n' +
+      '• La programación de la última sesión pasará a la bolsa de "Sesiones programadas sin fecha".';
+
+    if (
+      !(await confirmarDialogo(msg, {
+        titulo: 'Cancelar sesión',
+        textoConfirmar: 'Sí, cancelar sesión',
+        danger: true
+      }))
+    ) {
+      return;
+    }
+
     try {
-      const backupData = sFmt.docData;
-      const autor = localStorage.getItem('gym_user_name') || 'Usuario';
-      const nombreCli = sFmt.alias || sFmt.nombre_cliente || 'Cliente';
-      const fechaLabel = sFmt.sin_fecha ? 'sin fecha' : `${sFmt.fechaStr} (${sFmt.horaStr.split(' - ')[0]})`;
+      const autor = localStorage.getItem('gym_user_name') || 'Entrenador';
+      const res = await cancelarSesionConCascadaAdelante({
+        idSesion,
+        esAutomatico: false,
+        usuario: autor
+      });
 
-      const updateData = {
-        sin_fecha: true,
-        fecha_hora_inicio: null,
-        fecha_hora_anterior: backupData.fecha_hora_inicio || backupData.fecha_hora_anterior || null,
-        estado: 'Sin fecha',
-        estado_sesion: 'Pendiente',
-        ultimo_modificado_por: autor,
-        fecha_modificacion: new Date()
-      };
-
-      await setDoc(doc(db, "agenda_sesiones", idSesion), updateData, { merge: true });
       await loadAgenda();
 
-      pushAction({
-        label: `Cancelar sin fecha (${nombreCli} · ${fechaLabel})`,
-        undoOps: [{ type: 'set', collection: 'agenda_sesiones', id: idSesion, data: backupData, merge: false }],
-        redoOps: [{ type: 'set', collection: 'agenda_sesiones', id: idSesion, data: updateData, merge: true }],
-        showToast: true,
-        toastMessage: `📌 Sesión de ${nombreCli} pasada a "Sin fecha"`
-      });
+      if (res) {
+        pushAction({
+          label: `Cancelar sesión (${nombreCli})`,
+          undoOps: res.undoOps,
+          redoOps: res.redoOps,
+          showToast: true,
+          toastMessage: res.toastMessage
+        });
+      }
     } catch (err) {
-      console.error("Error al cancelar sesión sin fecha:", err);
-      alert("No se pudo cancelar la sesión sin fecha.");
+      console.error("Error al cancelar sesión:", err);
+      alert("No se pudo cancelar la sesión.");
     }
   };
 
@@ -640,14 +677,15 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     setActiveMenu(null);
     try {
       const backupData = sFmt.docData || {};
-      const isComp = esSesionCompletada(backupData);
+      const isComp = sFmt.estado === 'Completada' || esSesionCompletada(backupData);
       const nextStatus = isComp ? 'Pendiente' : 'Completada';
       const prevStatus = isComp ? 'Completada' : 'Pendiente';
       const nombreCli = sFmt.alias || sFmt.nombre_cliente || 'Cliente';
 
       const updateData = {
         estado: nextStatus,
-        estado_sesion: nextStatus
+        estado_sesion: nextStatus,
+        pendiente_manual: nextStatus === 'Pendiente'
       };
 
       await setDoc(doc(db, "agenda_sesiones", idSesion), updateData, { merge: true });
@@ -655,7 +693,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
 
       pushAction({
         label: `Marcar sesión de ${nombreCli} como ${nextStatus}`,
-        undoOps: [{ type: 'set', collection: 'agenda_sesiones', id: idSesion, data: { estado: prevStatus, estado_sesion: prevStatus }, merge: true }],
+        undoOps: [{ type: 'set', collection: 'agenda_sesiones', id: idSesion, data: { estado: prevStatus, estado_sesion: prevStatus, pendiente_manual: prevStatus === 'Pendiente' }, merge: true }],
         redoOps: [{ type: 'set', collection: 'agenda_sesiones', id: idSesion, data: updateData, merge: true }],
         showToast: true,
         toastMessage: nextStatus === 'Completada' ? `🟢 Sesión de ${nombreCli} marcada como Completada` : `⚪ Sesión de ${nombreCli} marcada como Pendiente`
@@ -669,7 +707,15 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
   // Eliminar sesión with Undo
   const handleEliminarSesion = async (idSesion: string, sFmt: any) => {
     setActiveMenu(null);
-    if (!window.confirm("¿Estás seguro de que quieres eliminar esta sesión de la agenda?")) return;
+    if (
+      !(await confirmarDialogo('¿Estás seguro de que quieres eliminar esta sesión de la agenda?', {
+        titulo: 'Eliminar sesión',
+        textoConfirmar: 'Sí, eliminar',
+        danger: true
+      }))
+    ) {
+      return;
+    }
 
     try {
       const backupData = sFmt.docData;
@@ -712,12 +758,12 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
         const q = query(collection(db, "agenda_sesiones"), where("id_cliente", "==", idCliFinal));
         const snap = await getDocs(q);
         snap.forEach(d => {
-          listaSesiones.push(formatearSesionAgenda(d.id, d.data()));
+          listaSesiones.push(formatearSesionAgenda(d.id, d.data(), mesesMargenReprog));
         });
       }
 
       const s = listaSesiones.find(x => x.id === idSesion) ||
-        (sesionesRaw[idSesion] ? formatearSesionAgenda(idSesion, sesionesRaw[idSesion].docData) : null);
+        (sesionesRaw[idSesion] ? formatearSesionAgenda(idSesion, sesionesRaw[idSesion].docData, mesesMargenReprog) : null);
 
       if (!s) {
         alert("No se encontró la sesión a reprogramar.");
@@ -743,7 +789,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     }
   };
 
-  const handleSeleccionarHuecoReprogramar = (fechaStr: string, horaStr: string) => {
+  const handleSeleccionarHuecoReprogramar = async (fechaStr: string, horaStr: string) => {
     if (!reprogSourceSessionId) return;
     const [y, m, d] = fechaStr.split('-');
     const [h, min] = horaStr.split(':');
@@ -762,264 +808,52 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     }
 
     const targetSession = sesionesDestino[0] || null;
-    const sessionsToPull = reprogAllSessions
-      .filter(s => !s.sin_fecha && s.fechaObj && s.fechaObj > nuevaFechaObj && s.id !== reprogSourceSessionId)
-      .sort((a, b) => a.fechaObj.getTime() - b.fechaObj.getTime());
-    const autor = localStorage.getItem('gym_user_name') || 'Usuario';
+    const autor = localStorage.getItem('gym_user_name') || 'Entrenador';
 
-    const diaDestinoNombre = nuevaFechaObj
-      .toLocaleDateString('es-ES', { weekday: 'long', timeZone: 'UTC' })
-      .replace(/^\w/, c => c.toUpperCase());
-
-    setReprogPendingData({
-      sourceSession,
-      targetSession,
-      sessionsToPull,
-      autor,
-      nuevaFechaObj,
-      targetFechaStr,
-      horaStr,
-      diaDestinoNombre
-    });
-    setReprogStep(2);
-  };
-
-  const handleEjecutarSustitucion = async () => {
-    if (!reprogPendingData) return;
-    const { sourceSession, targetSession, autor, nuevaFechaObj } = reprogPendingData;
     try {
-      const undoOps: FirestoreOp[] = [
-        { type: 'set', collection: 'agenda_sesiones', id: sourceSession.id, data: sourceSession.docData, merge: false }
-      ];
-      const redoOps: FirestoreOp[] = [];
+      if (sourceSession.sin_fecha) {
+        const res = await asignarFechaASesionSinFechaConCascadaAtras({
+          idSesionSinFecha: sourceSession.id,
+          nuevaFechaUTC: nuevaFechaObj,
+          idHuecoExistente: targetSession?.id,
+          usuario: autor
+        });
 
-      if (targetSession) {
-        undoOps.push({ type: 'set', collection: 'agenda_sesiones', id: targetSession.id, data: targetSession.docData, merge: false });
-        const newTargetData = {
-          ejercicios: sourceSession.ejercicios || [],
-          fecha_hora_inicio: nuevaFechaObj,
-          sin_fecha: false,
-          estado: "Pendiente",
-          estado_sesion: "Pendiente",
-          ultimo_modificado_por: autor,
-          fecha_modificacion: new Date(),
-          utc_migrado: true
-        };
-        await setDoc(doc(db, "agenda_sesiones", targetSession.id), newTargetData, { merge: true });
-        await deleteDoc(doc(db, "agenda_sesiones", sourceSession.id));
+        setReprogModalOpen(false);
+        await loadAgenda();
 
-        redoOps.push({ type: 'set', collection: 'agenda_sesiones', id: targetSession.id, data: newTargetData, merge: true });
-        redoOps.push({ type: 'delete', collection: 'agenda_sesiones', id: sourceSession.id });
-      } else {
-        const newSourceData = {
-          fecha_hora_inicio: nuevaFechaObj,
-          sin_fecha: false,
-          estado: "Pendiente",
-          estado_sesion: "Pendiente",
-          ultimo_modificado_por: autor,
-          fecha_modificacion: new Date(),
-          utc_migrado: true
-        };
-        await setDoc(doc(db, "agenda_sesiones", sourceSession.id), newSourceData, { merge: true });
-        redoOps.push({ type: 'set', collection: 'agenda_sesiones', id: sourceSession.id, data: newSourceData, merge: true });
-      }
-
-      setReprogModalOpen(false);
-      await loadAgenda();
-
-      pushAction({
-        label: sourceSession.sin_fecha ? `Asignar fecha a sesión` : `Reprogramar sesión (${sourceSession.fechaStr})`,
-        undoOps,
-        redoOps,
-        showToast: true,
-        toastMessage: sourceSession.sin_fecha ? `📅 Fecha asignada a la sesión` : `📅 Sesión reprogramada`
-      });
-    } catch (err) {
-      console.error(err);
-      alert("Error al sustituir la rutina.");
-    }
-  };
-
-  const handleEjecutarDesplazamiento = async () => {
-    if (!reprogPendingData) return;
-    const { sourceSession, targetSession, autor, nuevaFechaObj } = reprogPendingData;
-    try {
-      const batch = writeBatch(db);
-      let prevExercises = sourceSession.ejercicios || [];
-      let lastAffectedSession: any = null;
-      const undoOps: FirestoreOp[] = [
-        { type: 'set', collection: 'agenda_sesiones', id: sourceSession.id, data: sourceSession.docData, merge: false }
-      ];
-      const redoOps: FirestoreOp[] = [];
-
-      if (targetSession) {
-        const futureAndTarget = reprogAllSessions
-          .filter(s => !s.sin_fecha && s.fechaObj && s.fechaObj >= targetSession.fechaObj && s.id !== sourceSession.id)
-          .sort((a, b) => a.fechaObj.getTime() - b.fechaObj.getTime());
-
-        for (let i = 0; i < futureAndTarget.length; i++) {
-          const s = futureAndTarget[i];
-          undoOps.push({ type: 'set', collection: 'agenda_sesiones', id: s.id, data: s.docData, merge: false });
-          const currentExercises = s.ejercicios || [];
-          const sUpdate: any = {
-            ejercicios: prevExercises,
-            ultimo_modificado_por: autor,
-            fecha_modificacion: new Date(),
-            ...(s.id === targetSession.id ? { fecha_hora_inicio: nuevaFechaObj, sin_fecha: false, estado: "Pendiente", estado_sesion: "Pendiente", utc_migrado: true } : {})
-          };
-          batch.update(doc(db, "agenda_sesiones", s.id), sUpdate);
-          redoOps.push({ type: 'set', collection: 'agenda_sesiones', id: s.id, data: sUpdate, merge: true });
-          prevExercises = currentExercises;
-          lastAffectedSession = s;
+        if (res) {
+          pushAction({
+            label: `Asignar sesión sin fecha (${reprogNombreCliente})`,
+            undoOps: res.undoOps,
+            redoOps: res.redoOps,
+            showToast: true,
+            toastMessage: res.toastMessage
+          });
         }
-
-        batch.delete(doc(db, "agenda_sesiones", sourceSession.id));
-        redoOps.push({ type: 'delete', collection: 'agenda_sesiones', id: sourceSession.id });
       } else {
-        const futureSessions = reprogAllSessions
-          .filter(s => !s.sin_fecha && s.fechaObj && s.fechaObj > nuevaFechaObj && s.id !== sourceSession.id)
-          .sort((a, b) => a.fechaObj.getTime() - b.fechaObj.getTime());
+        const res = await reprogramarSesionConFechaOrdenCronologico({
+          idSesion: sourceSession.id,
+          nuevaFechaUTC: nuevaFechaObj,
+          usuario: autor
+        });
 
-        const sourceUpdate = {
-          fecha_hora_inicio: nuevaFechaObj,
-          sin_fecha: false,
-          estado: "Pendiente",
-          estado_sesion: "Pendiente",
-          ejercicios: futureSessions.length > 0 ? [] : prevExercises,
-          ultimo_modificado_por: autor,
-          fecha_modificacion: new Date(),
-          utc_migrado: true
-        };
-        batch.set(doc(db, "agenda_sesiones", sourceSession.id), sourceUpdate, { merge: true });
-        redoOps.push({ type: 'set', collection: 'agenda_sesiones', id: sourceSession.id, data: sourceUpdate, merge: true });
+        setReprogModalOpen(false);
+        await loadAgenda();
 
-        for (let i = 0; i < futureSessions.length; i++) {
-          const s = futureSessions[i];
-          undoOps.push({ type: 'set', collection: 'agenda_sesiones', id: s.id, data: s.docData, merge: false });
-          const currentExercises = s.ejercicios || [];
-          const sUpdate = {
-            ejercicios: prevExercises,
-            ultimo_modificado_por: autor,
-            fecha_modificacion: new Date()
-          };
-          batch.update(doc(db, "agenda_sesiones", s.id), sUpdate);
-          redoOps.push({ type: 'set', collection: 'agenda_sesiones', id: s.id, data: sUpdate, merge: true });
-          prevExercises = currentExercises;
-          lastAffectedSession = s;
+        if (res) {
+          pushAction({
+            label: `Reprogramar sesión (${reprogNombreCliente})`,
+            undoOps: res.undoOps,
+            redoOps: res.redoOps,
+            showToast: true,
+            toastMessage: res.toastMessage
+          });
         }
       }
-
-      if (lastAffectedSession && prevExercises && prevExercises.length > 0) {
-        const fechaUltima = (targetSession && lastAffectedSession.id === targetSession.id)
-          ? nuevaFechaObj
-          : lastAffectedSession.fechaObj;
-        const nuevaFechaExtra = obtenerSiguienteDiaHabilUTC(fechaUltima);
-
-        const newDocId = `SES-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-        const codeCli = reprogIdCliente || sourceSession.docData?.id_cliente || sourceSession.docData?.ID_Cliente || '';
-        const aliasCli = reprogNombreCliente || sourceSession.docData?.alias || sourceSession.docData?.nombre_cliente || 'Sin nombre';
-
-        const extraDocData = {
-          id_sesion_global: newDocId,
-          id_cliente: codeCli,
-          alias: aliasCli,
-          nombre_cliente: sourceSession.docData?.nombre_cliente || aliasCli,
-          estado: "Pendiente",
-          estado_sesion: "Pendiente",
-          sin_fecha: false,
-          tipo_sesion: lastAffectedSession.tipo_sesion || "Individual",
-          fecha_hora_inicio: nuevaFechaExtra,
-          ejercicios: prevExercises,
-          orden_customizado: true,
-          creado_por: autor,
-          programado_por: autor,
-          ultimo_modificado_por: autor,
-          fecha_creacion: new Date(),
-          fecha_modificacion: new Date(),
-          utc_migrado: true
-        };
-
-        batch.set(doc(db, "agenda_sesiones", newDocId), extraDocData);
-        undoOps.push({ type: 'delete', collection: 'agenda_sesiones', id: newDocId });
-        redoOps.push({ type: 'set', collection: 'agenda_sesiones', id: newDocId, data: extraDocData, merge: false });
-      }
-
-      await batch.commit();
-      setReprogModalOpen(false);
-      await loadAgenda();
-
-      pushAction({
-        label: "Reprogramación en cascada (adelante)",
-        undoOps,
-        redoOps,
-        showToast: true,
-        toastMessage: "📅 Rutinas desplazadas hacia adelante"
-      });
     } catch (err) {
-      console.error(err);
-      alert("Error al desplazar las rutinas en cascada.");
-    }
-  };
-
-  const handleEjecutarRecogidaCascada = async () => {
-    if (!reprogPendingData) return;
-    const { sourceSession, targetSession, sessionsToPull, autor, nuevaFechaObj } = reprogPendingData;
-    try {
-      const batch = writeBatch(db);
-      let anchorSessionId = sourceSession.id;
-      const undoOps: FirestoreOp[] = [
-        { type: 'set', collection: 'agenda_sesiones', id: sourceSession.id, data: sourceSession.docData, merge: false }
-      ];
-      const redoOps: FirestoreOp[] = [];
-
-      if (targetSession) {
-        undoOps.push({ type: 'set', collection: 'agenda_sesiones', id: targetSession.id, data: targetSession.docData, merge: false });
-        anchorSessionId = targetSession.id;
-        batch.delete(doc(db, "agenda_sesiones", sourceSession.id));
-        redoOps.push({ type: 'delete', collection: 'agenda_sesiones', id: sourceSession.id });
-      }
-
-      const anchorUpdate = {
-        fecha_hora_inicio: nuevaFechaObj,
-        sin_fecha: false,
-        estado: "Pendiente",
-        estado_sesion: "Pendiente",
-        ultimo_modificado_por: autor,
-        fecha_modificacion: new Date(),
-        utc_migrado: true,
-        ejercicios: sessionsToPull.length > 0 ? (sessionsToPull[0].ejercicios || []) : []
-      };
-      batch.set(doc(db, "agenda_sesiones", anchorSessionId), anchorUpdate, { merge: true });
-      redoOps.push({ type: 'set', collection: 'agenda_sesiones', id: anchorSessionId, data: anchorUpdate, merge: true });
-
-      for (let i = 0; i < sessionsToPull.length; i++) {
-        const currentSess = sessionsToPull[i];
-        undoOps.push({ type: 'set', collection: 'agenda_sesiones', id: currentSess.id, data: currentSess.docData, merge: false });
-        const nextSess = sessionsToPull[i + 1];
-
-        const pullUpdate = {
-          ejercicios: nextSess ? (nextSess.ejercicios || []) : [],
-          ultimo_modificado_por: autor,
-          fecha_modificacion: new Date()
-        };
-        batch.set(doc(db, "agenda_sesiones", currentSess.id), pullUpdate, { merge: true });
-        redoOps.push({ type: 'set', collection: 'agenda_sesiones', id: currentSess.id, data: pullUpdate, merge: true });
-      }
-
-      await batch.commit();
-      setReprogModalOpen(false);
-      await loadAgenda();
-
-      pushAction({
-        label: "Reprogramación en cascada (atrás)",
-        undoOps,
-        redoOps,
-        showToast: true,
-        toastMessage: "📅 Rutinas recogidas en cascada"
-      });
-    } catch (err) {
-      console.error(err);
-      alert("Error al recoger las rutinas en cascada.");
+      console.error("Error al reprogramar sesión:", err);
+      alert("Error al reprogramar la sesión.");
     }
   };
 
@@ -1125,7 +959,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
       .then(snap => {
         const sessions: any[] = [];
         snap.forEach(d => {
-          sessions.push(formatearSesionAgenda(d.id, d.data()));
+          sessions.push(formatearSesionAgenda(d.id, d.data(), mesesMargenReprog));
         });
         sessions.sort((a, b) => {
           if (a.sin_fecha && !b.sin_fecha) return -1;
@@ -1169,34 +1003,45 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
 
     setSavingAsig(true);
     try {
-      const undoOps: FirestoreOp[] = [
-        { type: 'set', collection: 'agenda_sesiones', id: sesionElegida.id, data: sesionElegida.docData, merge: false }
-      ];
-      const updatedSourceData = {
-        fecha_hora_inicio: nuevaFechaObj,
-        sin_fecha: false,
-        estado: "Pendiente",
-        estado_sesion: "Pendiente",
-        ultimo_modificado_por: autor,
-        fecha_modificacion: new Date(),
-        utc_migrado: true
-      };
+      if (sesionElegida.sin_fecha) {
+        const res = await asignarFechaASesionSinFechaConCascadaAtras({
+          idSesionSinFecha: sesionElegida.id,
+          nuevaFechaUTC: nuevaFechaObj,
+          usuario: autor
+        });
 
-      await setDoc(doc(db, "agenda_sesiones", sesionElegida.id), updatedSourceData, { merge: true });
-      const redoOps: FirestoreOp[] = [
-        { type: 'set', collection: 'agenda_sesiones', id: sesionElegida.id, data: updatedSourceData, merge: true }
-      ];
+        setAsigModalOpen(false);
+        await loadAgenda();
 
-      setAsigModalOpen(false);
-      await loadAgenda();
+        if (res) {
+          pushAction({
+            label: `Asignar sesión sin fecha (${d}/${m}/${y} ${asigHora})`,
+            undoOps: res.undoOps,
+            redoOps: res.redoOps,
+            showToast: true,
+            toastMessage: res.toastMessage
+          });
+        }
+      } else {
+        const res = await reprogramarSesionConFechaOrdenCronologico({
+          idSesion: sesionElegida.id,
+          nuevaFechaUTC: nuevaFechaObj,
+          usuario: autor
+        });
 
-      pushAction({
-        label: `Asignar sesión existente (${d}/${m}/${y} ${asigHora})`,
-        undoOps,
-        redoOps,
-        showToast: true,
-        toastMessage: `📌 Sesión asignada al ${d}/${m}/${y} a las ${asigHora}`
-      });
+        setAsigModalOpen(false);
+        await loadAgenda();
+
+        if (res) {
+          pushAction({
+            label: `Reprogramar sesión (${d}/${m}/${y} ${asigHora})`,
+            undoOps: res.undoOps,
+            redoOps: res.redoOps,
+            showToast: true,
+            toastMessage: res.toastMessage
+          });
+        }
+      }
     } catch (error) {
       console.error("Error asignando sesión existente:", error);
       alert("Hubo un error al asignar la sesión.");
@@ -1768,13 +1613,14 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                                             <span
                                               data-session-menu-trigger="true"
                                               style={{
-                                                color: c.isPending ? '#dc2626' : 'inherit',
+                                                color: c.isCompleted ? '#15803d' : c.isPending ? '#dc2626' : 'inherit',
+                                                fontWeight: c.isCompleted ? 700 : undefined,
                                                 cursor: 'pointer',
                                                 textDecoration: 'none',
                                                 transition: 'opacity 0.2s'
                                               }}
                                               onClick={(e) => handleOpenSessionMenu(e, c.idSesion)}
-                                              title={c.isPending ? 'Pendiente de programar · Clic para opciones' : 'Clic para opciones de sesión y ficha'}
+                                              title={c.isCompleted ? 'Completada · Clic para opciones' : c.isPending ? 'Pendiente de programar · Clic para opciones' : 'Clic para opciones de sesión y ficha'}
                                             >
                                               {c.nombre}
                                             </span>
@@ -1827,7 +1673,11 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                                                     {cIdx > 0 && <br />}
                                                     <span
                                                       data-session-menu-trigger="true"
-                                                      style={{ color: 'var(--text-main)', fontWeight: 500, cursor: 'pointer' }}
+                                                      style={{
+                                                        color: c.isCompleted ? '#15803d' : 'var(--text-main)',
+                                                        fontWeight: c.isCompleted ? 700 : 500,
+                                                        cursor: 'pointer'
+                                                      }}
                                                       onClick={(e) => handleOpenSessionMenu(e, c.idSesion)}
                                                     >
                                                       {c.nombre}
@@ -1986,7 +1836,8 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                                     <span
                                       data-session-menu-trigger="true"
                                       style={{
-                                        color: c.isPending ? '#dc2626' : 'inherit',
+                                        color: c.isCompleted ? '#15803d' : c.isPending ? '#dc2626' : 'inherit',
+                                        fontWeight: c.isCompleted ? 700 : undefined,
                                         cursor: 'pointer',
                                         textDecoration: 'none',
                                         transition: 'opacity 0.2s'
@@ -2000,7 +1851,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                                         e.currentTarget.style.textDecoration = 'none';
                                         e.currentTarget.style.opacity = '1';
                                       }}
-                                      title={c.isPending ? 'Pendiente de programar · Clic para opciones' : 'Clic para opciones de sesión y ficha'}
+                                      title={c.isCompleted ? 'Completada · Clic para opciones' : c.isPending ? 'Pendiente de programar · Clic para opciones' : 'Clic para opciones de sesión y ficha'}
                                     >
                                       {c.nombre}
                                     </span>
@@ -2065,7 +1916,11 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                                                 {cIdx > 0 && <br />}
                                                 <span
                                                   data-session-menu-trigger="true"
-                                                  style={{ color: 'var(--text-main)', fontWeight: 500, cursor: 'pointer' }}
+                                                  style={{
+                                                    color: c.isCompleted ? '#15803d' : 'var(--text-main)',
+                                                    fontWeight: c.isCompleted ? 700 : 500,
+                                                    cursor: 'pointer'
+                                                  }}
                                                   onClick={(e) => handleOpenSessionMenu(e, c.idSesion)}
                                                   onMouseOver={(e) => {
                                                     e.currentTarget.style.textDecoration = 'underline';
@@ -2073,7 +1928,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                                                   }}
                                                   onMouseOut={(e) => {
                                                     e.currentTarget.style.textDecoration = 'none';
-                                                    e.currentTarget.style.color = 'var(--text-main)';
+                                                    e.currentTarget.style.color = c.isCompleted ? '#15803d' : 'var(--text-main)';
                                                   }}
                                                   title={`Clic para opciones y ficha de ${c.nombre}`}
                                                 >
@@ -2190,26 +2045,22 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
               </button>
             )}
 
-            {(activeMenu.acciones.puedeProgramar || activeMenu.acciones.ejercicios.length > 0) && (
-              <button
-                type="button"
-                className="session-action-item"
-                onClick={() => {
-                  const id = activeMenu.idSesion;
-                  setActiveMenu(null);
-                  onNavigate('programar_sesion', id);
-                }}
-              >
-                <span>🏋️</span>
-                <span>
-                  {activeMenu.acciones.puedeProgramar
-                    ? activeMenu.acciones.ejercicios.length > 0
-                      ? 'Ver / Editar programación'
-                      : 'Programar ejercicios'
-                    : 'Ver programación'}
-                </span>
-              </button>
-            )}
+            <button
+              type="button"
+              className="session-action-item"
+              onClick={() => {
+                const id = activeMenu.idSesion;
+                setActiveMenu(null);
+                onNavigate('programar_sesion', id);
+              }}
+            >
+              <span>🏋️</span>
+              <span>
+                {activeMenu.acciones.ejercicios.length > 0
+                  ? 'Entrar en programación (Ver / Editar)'
+                  : 'Entrar en programación (Programar ejercicios)'}
+              </span>
+            </button>
 
             {activeMenu.acciones.puedeReprogramar && (
               <button
@@ -2233,7 +2084,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                 onClick={() => handleCancelarSinFecha(activeMenu.idSesion, activeMenu.sFmt)}
               >
                 <span>📌</span>
-                <span>Cancelar sin fecha</span>
+                <span>Cancelar sesión</span>
               </button>
             )}
 
@@ -3225,120 +3076,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                   </button>
                 </div>
               </div>
-            ) : (
-              /* Step 2: Reprogramar Options */
-              <div className="conflict-options">
-                <div
-                  style={{
-                    background: '#fffbeb',
-                    border: '1px solid #fcd34d',
-                    padding: 15,
-                    borderRadius: 8,
-                    marginBottom: 20
-                  }}
-                >
-                  <h4 style={{ color: '#d97706', margin: '0 0 6px 0' }}>Opciones de Planificación</h4>
-                  <p style={{ margin: '0 0 6px 0', fontSize: '0.9rem', color: '#92400e' }}>
-                    {reprogPendingData?.sourceSession?.sin_fecha ? (
-                      <>
-                        Asignar <strong>Sesión sin fecha</strong> al{' '}
-                        <strong>
-                          {reprogPendingData.diaDestinoNombre} {reprogPendingData.targetFechaStr} a las{' '}
-                          {reprogPendingData.horaStr}
-                        </strong>
-                        .
-                      </>
-                    ) : (
-                      <>
-                        Mover del{' '}
-                        <strong>
-                          {reprogPendingData?.sourceSession?.diaStr} {reprogPendingData?.sourceSession?.fechaStr} (
-                          {reprogPendingData?.sourceSession?.horaStr?.split(' - ')[0]})
-                        </strong>{' '}
-                        al{' '}
-                        <strong>
-                          {reprogPendingData?.diaDestinoNombre} {reprogPendingData?.targetFechaStr} a las{' '}
-                          {reprogPendingData?.horaStr}
-                        </strong>
-                        .
-                      </>
-                    )}
-                  </p>
-                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#92400e' }}>
-                    ¿Cómo deseas organizar las rutinas de la línea temporal?
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  className="btn-primary"
-                  style={{
-                    width: '100%',
-                    marginBottom: 10,
-                    textAlign: 'left',
-                    padding: 12,
-                    background: '#0f172a',
-                    display: 'block'
-                  }}
-                  onClick={handleEjecutarSustitucion}
-                >
-                  <strong>Mantener / Sustituir rutina</strong>
-                  <br />
-                  <span style={{ fontSize: '0.8rem', fontWeight: 'normal' }}>
-                    Mueve la sesión a la nueva hora conservando su rutina original. Si hay otra sesión ese día, se sobrescribe.
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  className="btn-primary"
-                  style={{
-                    width: '100%',
-                    marginBottom: 10,
-                    textAlign: 'left',
-                    padding: 12,
-                    background: '#0284c7',
-                    display: 'block'
-                  }}
-                  onClick={handleEjecutarDesplazamiento}
-                >
-                  <strong>Mover rutinas hacia adelante (Cascada Adelante)</strong>
-                  <br />
-                  <span style={{ fontSize: '0.8rem', fontWeight: 'normal' }}>
-                    Empuja las rutinas siguientes una sesión hacia adelante y, si la última tiene programación, crea una nueva sesión el día hábil siguiente para no perderla.
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  className="btn-primary"
-                  style={{
-                    width: '100%',
-                    marginBottom: 10,
-                    textAlign: 'left',
-                    padding: 12,
-                    background: '#16a34a',
-                    display: 'block'
-                  }}
-                  onClick={handleEjecutarRecogidaCascada}
-                >
-                  <strong>Mover rutinas hacia atrás / Recoger (Cascada Atrás)</strong>
-                  <br />
-                  <span style={{ fontSize: '0.8rem', fontWeight: 'normal' }}>
-                    Ubica la sesión en la nueva hora y adelanta la rutina de la siguiente sesión a este hueco (la última quedará vacía).
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  style={{ width: '100%', textAlign: 'center', padding: 12 }}
-                  onClick={() => setReprogStep(1)}
-                >
-                  ⬅️ Volver al calendario
-                </button>
-              </div>
-            )}
+            ) : null}
           </div>
         </div>
       )}
