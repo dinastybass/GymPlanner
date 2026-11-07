@@ -16,12 +16,14 @@ import { CustomDropdown } from '../components/CustomDropdown';
 import { SendRoutineModal } from '../components/SendRoutineModal';
 import { useUndo } from '../context/UndoContext';
 import { FirestoreOp } from '../services/undoService';
-import { esSesionCompletada } from '../utils/helpers';
+import { esSesionCompletada, parsearFechaFirestore } from '../utils/helpers';
 import { confirmarDialogo } from '../utils/confirmDialog';
 import {
   cancelarSesionConCascadaAdelante,
   asignarFechaASesionSinFechaConCascadaAtras,
   reprogramarSesionConFechaOrdenCronologico,
+  buscarSesionMismoDiaCliente,
+  resolverColisionSesionMismoDia,
   revertirVencimientosAutomaticos,
   procesarCaducidadSesionesSinFechaPorMeses,
   limpiarSesionesAntiguasYEjerciciosHuerfanos
@@ -88,19 +90,18 @@ function obtenerSiguienteDiaHabilUTC(fechaBase: Date): Date {
 }
 
 function obtenerAccionesDisponiblesSesion(sesionRaw: any = {}, mesesMargen = 1) {
+  const parsedFecha =
+    sesionRaw.fechaObj instanceof Date
+      ? sesionRaw.fechaObj
+      : parsearFechaFirestore(sesionRaw.fecha_hora_inicio);
+
   const isSinFecha = Boolean(
     sesionRaw.sin_fecha ||
     sesionRaw.estado === 'Sin fecha' ||
-    (!sesionRaw.fechaObj && !sesionRaw.fecha_hora_inicio)
+    !parsedFecha
   );
 
-  const d: Date | null = isSinFecha
-    ? null
-    : sesionRaw.fechaObj instanceof Date
-      ? sesionRaw.fechaObj
-      : sesionRaw.fecha_hora_inicio?.toDate
-        ? sesionRaw.fecha_hora_inicio.toDate()
-        : new Date(sesionRaw.fecha_hora_inicio || Date.now());
+  const d: Date | null = isSinFecha ? null : parsedFecha;
 
   const now = new Date();
   const startOfTodayUTC = new Date(Date.UTC(
@@ -147,7 +148,7 @@ function formatearSesionAgenda(id: string, data: any = {}, mesesMargen = 1) {
   const info = obtenerAccionesDisponiblesSesion(data, mesesMargen);
   const d = info.fechaObj;
   const isSinFecha = info.sin_fecha;
-  const dAnt = data.fecha_hora_anterior?.toDate ? data.fecha_hora_anterior.toDate() : null;
+  const dAnt = parsearFechaFirestore(data.fecha_hora_anterior);
 
   return {
     id,
@@ -176,11 +177,39 @@ function formatearSesionAgenda(id: string, data: any = {}, mesesMargen = 1) {
 export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
   const { pushAction, registerChangeListener } = useUndo();
 
-  const [currentView, setCurrentView] = useState<'individuales' | 'sg'>('individuales');
+  const [currentView, setCurrentView] = useState<'individuales' | 'sg'>(() => {
+    try {
+      const saved = sessionStorage.getItem('gym_agenda_view');
+      if (saved === 'individuales' || saved === 'sg') return saved;
+    } catch {
+      // ignore
+    }
+    return 'individuales';
+  });
   const [currentMonthDate, setCurrentMonthDate] = useState<Date>(() => {
+    try {
+      const saved = sessionStorage.getItem('gym_agenda_month');
+      if (saved) {
+        const parsed = new Date(saved);
+        if (!isNaN(parsed.getTime())) {
+          return new Date(Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), 1));
+        }
+      }
+    } catch {
+      // ignore
+    }
     const now = new Date();
     return new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
   });
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('gym_agenda_view', currentView);
+      sessionStorage.setItem('gym_agenda_month', currentMonthDate.toISOString());
+    } catch {
+      // ignore
+    }
+  }, [currentView, currentMonthDate]);
 
   // Mobile calendar mode (Google Calendar style single-day view vs full week)
   const [mobileCalendarMode, setMobileCalendarMode] = useState<'dia' | 'semana'>('dia');
@@ -275,6 +304,35 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
   const [sendIntensidad, setSendIntensidad] = useState<'LOW' | 'MED' | 'HIGH'>('MED');
   const [sendClientId, setSendClientId] = useState<string>('');
   const [sendSessionId, setSendSessionId] = useState<string>('');
+
+  // Modal Colisión de Sesión en el Mismo Día (Machacar ejercicios vs. Cascada hacia delante)
+  const [colisionMismoDiaModal, setColisionMismoDiaModal] = useState<{
+    open: boolean;
+    idSesionOrigen?: string;
+    idSesionExistenteDia: string;
+    nombreCliente: string;
+    nuevaFechaUTC: Date | null;
+    horaExistenteStr: string;
+    horaNuevaStr: string;
+    fechaLabelStr: string;
+    numEjExistente: number;
+    numEjEntrante: number;
+    ejerciciosEntrantes?: any[];
+    saving: boolean;
+  }>({
+    open: false,
+    idSesionOrigen: undefined,
+    idSesionExistenteDia: '',
+    nombreCliente: '',
+    nuevaFechaUTC: null,
+    horaExistenteStr: '',
+    horaNuevaStr: '',
+    fechaLabelStr: '',
+    numEjExistente: 0,
+    numEjEntrante: 0,
+    ejerciciosEntrantes: undefined,
+    saving: false
+  });
 
   // Compute timeToRowMap and separatorRow
   const mananaSlots = timeSlots.filter(t => parseInt(t.split(':')[0], 10) < 14);
@@ -488,9 +546,9 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
   Object.values(sesionesRaw).forEach(info => {
     const data = info.docData;
     if (data.tipo_sesion === 'Small Group') return;
-    if (!data.fecha_hora_inicio?.toDate) return;
+    const fecha = parsearFechaFirestore(data.fecha_hora_inicio);
+    if (!fecha) return;
 
-    const fecha: Date = data.fecha_hora_inicio.toDate();
     const timeStr = fecha.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
     const dateStrID = fecha.toISOString().split('T')[0];
 
@@ -508,9 +566,8 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
   Object.values(sesionesRaw).forEach(info => {
     const data = info.docData;
     if (data.tipo_sesion === 'Small Group') return;
-    if (!data.fecha_hora_inicio?.toDate) return;
-
-    const fecha: Date = data.fecha_hora_inicio.toDate();
+    const fecha = parsearFechaFirestore(data.fecha_hora_inicio);
+    if (!fecha) return;
     const isCompleted = esSesionCompletada(data);
     const isPending = !isCompleted && (!data.ejercicios || data.ejercicios.length === 0);
     const timeStr = fecha.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
@@ -570,9 +627,8 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
   Object.values(sesionesRaw).forEach(info => {
     const data = info.docData;
     if (data.tipo_sesion !== 'Small Group') return;
-    if (!data.fecha_hora_inicio?.toDate) return;
-
-    const fecha: Date = data.fecha_hora_inicio.toDate();
+    const fecha = parsearFechaFirestore(data.fecha_hora_inicio);
+    if (!fecha) return;
     const isCompleted = esSesionCompletada(data);
     const dateStrID = fecha.toISOString().split('T')[0];
     const timeStr = fecha.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
@@ -808,6 +864,25 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     }
 
     const targetSession = sesionesDestino[0] || null;
+    if (targetSession) {
+      const horaExistStr = targetSession.horaStr ? targetSession.horaStr.split(' - ')[0] : '--:--';
+      setColisionMismoDiaModal({
+        open: true,
+        idSesionOrigen: sourceSession.id,
+        idSesionExistenteDia: targetSession.id,
+        nombreCliente: reprogNombreCliente || sourceSession.alias || 'Cliente',
+        nuevaFechaUTC: nuevaFechaObj,
+        horaExistenteStr: horaExistStr,
+        horaNuevaStr: horaStr,
+        fechaLabelStr: `${targetSession.diaStr || ''} ${targetFechaStr}`.trim(),
+        numEjExistente: Array.isArray(targetSession.ejercicios) ? targetSession.ejercicios.length : 0,
+        numEjEntrante: Array.isArray(sourceSession.ejercicios) ? sourceSession.ejercicios.length : 0,
+        ejerciciosEntrantes: undefined,
+        saving: false
+      });
+      return;
+    }
+
     const autor = localStorage.getItem('gym_user_name') || 'Entrenador';
 
     try {
@@ -815,7 +890,6 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
         const res = await asignarFechaASesionSinFechaConCascadaAtras({
           idSesionSinFecha: sourceSession.id,
           nuevaFechaUTC: nuevaFechaObj,
-          idHuecoExistente: targetSession?.id,
           usuario: autor
         });
 
@@ -854,6 +928,48 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     } catch (err) {
       console.error("Error al reprogramar sesión:", err);
       alert("Error al reprogramar la sesión.");
+    }
+  };
+
+  const handleEjecutarResolucionColisionMismoDia = async (modo: 'MACHACAR' | 'CASCADA_ADELANTE') => {
+    if (!colisionMismoDiaModal.nuevaFechaUTC || colisionMismoDiaModal.saving) return;
+    setColisionMismoDiaModal(prev => ({ ...prev, saving: true }));
+    const autor = localStorage.getItem('gym_user_name') || 'Entrenador';
+
+    try {
+      const res = await resolverColisionSesionMismoDia({
+        idSesionExistenteDia: colisionMismoDiaModal.idSesionExistenteDia,
+        nuevaFechaUTC: colisionMismoDiaModal.nuevaFechaUTC,
+        modo,
+        idSesionOrigen: colisionMismoDiaModal.idSesionOrigen,
+        ejerciciosEntrantes: colisionMismoDiaModal.ejerciciosEntrantes,
+        usuario: autor
+      });
+
+      setColisionMismoDiaModal(prev => ({ ...prev, open: false, saving: false }));
+      setReprogModalOpen(false);
+      setAsigModalOpen(false);
+      setPlanModalOpen(false);
+      setSavingAsig(false);
+      setSavingPlan(false);
+      await loadAgenda();
+
+      if (res) {
+        pushAction({
+          label:
+            modo === 'MACHACAR'
+              ? `Machacar sesión del mismo día (${colisionMismoDiaModal.nombreCliente})`
+              : `Actualizar sesión en cascada (${colisionMismoDiaModal.nombreCliente})`,
+          undoOps: res.undoOps,
+          redoOps: res.redoOps,
+          showToast: true,
+          toastMessage: res.toastMessage
+        });
+      }
+    } catch (err) {
+      console.error('Error resolviendo colisión en el mismo día:', err);
+      alert('No se pudo actualizar la sesión de ese día.');
+      setColisionMismoDiaModal(prev => ({ ...prev, saving: false }));
     }
   };
 
@@ -1003,6 +1119,42 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
 
     setSavingAsig(true);
     try {
+      const colisionDia = await buscarSesionMismoDiaCliente({
+        idCliente: asigClienteId,
+        fechaUTC: nuevaFechaObj,
+        excluirIdSesion: sesionElegida.id
+      });
+
+      if (colisionDia) {
+        if (esSesionCompletada(colisionDia.data)) {
+          alert('Operación bloqueada: El cliente ya tiene una sesión completada en ese día.');
+          setSavingAsig(false);
+          return;
+        }
+        const horaExistStr = `${String(colisionDia.fecha.getUTCHours()).padStart(2, '0')}:${String(
+          colisionDia.fecha.getUTCMinutes()
+        ).padStart(2, '0')}`;
+        const cliObj = globalClientes.find(c => c.id === asigClienteId);
+        const nombreCli = cliObj ? cliObj.alias : sesionElegida.alias || 'Cliente';
+
+        setSavingAsig(false);
+        setColisionMismoDiaModal({
+          open: true,
+          idSesionOrigen: sesionElegida.id,
+          idSesionExistenteDia: colisionDia.id,
+          nombreCliente: nombreCli,
+          nuevaFechaUTC: nuevaFechaObj,
+          horaExistenteStr: horaExistStr,
+          horaNuevaStr: asigHora,
+          fechaLabelStr: `${d}/${m}/${y}`,
+          numEjExistente: Array.isArray(colisionDia.data.ejercicios) ? colisionDia.data.ejercicios.length : 0,
+          numEjEntrante: Array.isArray(sesionElegida.ejercicios) ? sesionElegida.ejercicios.length : 0,
+          ejerciciosEntrantes: undefined,
+          saving: false
+        });
+        return;
+      }
+
       if (sesionElegida.sin_fecha) {
         const res = await asignarFechaASesionSinFechaConCascadaAtras({
           idSesionSinFecha: sesionElegida.id,
@@ -1123,6 +1275,40 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
       const [h, m] = horaIni.split(':');
       fechaGuardar.setUTCHours(parseInt(h, 10), parseInt(m, 10), 0, 0);
 
+      // Evitar duplicar sesión el mismo día para el mismo cliente
+      if (!isSG) {
+        const existenteDia = await buscarSesionMismoDiaCliente({
+          idCliente,
+          fechaUTC: fechaGuardar
+        });
+        if (existenteDia) {
+          if (esSesionCompletada(existenteDia.data)) {
+            continue;
+          }
+          undoOps.push({
+            type: 'set',
+            collection: 'agenda_sesiones',
+            id: existenteDia.id,
+            data: existenteDia.data,
+            merge: false
+          });
+          const updateExistente = {
+            fecha_hora_inicio: fechaGuardar,
+            ultimo_modificado_por: emailAutor,
+            fecha_modificacion: new Date()
+          };
+          batch.set(doc(db, 'agenda_sesiones', existenteDia.id), updateExistente, { merge: true });
+          redoOps.push({
+            type: 'set',
+            collection: 'agenda_sesiones',
+            id: existenteDia.id,
+            data: updateExistente,
+            merge: true
+          });
+          continue;
+        }
+      }
+
       const idDoc = `SES-${Date.now()}-${i}-${Math.floor(Math.random() * 1000)}`;
       const dataToSave = {
         id_sesion_global: idDoc,
@@ -1143,6 +1329,8 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
       redoOps.push({ type: 'set', collection: 'agenda_sesiones', id: idDoc, data: dataToSave, merge: false });
     }
     await batch.commit();
+
+    if (undoOps.length === 0) return;
 
     const numCitas = fechas.length;
     const labelAccion = numCitas === 1
@@ -1177,13 +1365,55 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
 
     setSavingPlan(true);
 
-    // If inserting 1 single Individual day, check if client has future sessions to offer cascade
+    // If inserting 1 single Individual day, check if client already has a session on that same day or future sessions
     if (fechasPlanCalculadas.length === 1 && !isSG) {
       const f = new Date(fechasPlanCalculadas[0]);
       const [h, m] = horaIni.split(':');
       f.setUTCHours(parseInt(h, 10), parseInt(m, 10), 0, 0);
 
       try {
+        const colisionMismoDia = await buscarSesionMismoDiaCliente({
+          idCliente: planClienteId,
+          fechaUTC: f
+        });
+
+        if (colisionMismoDia) {
+          if (esSesionCompletada(colisionMismoDia.data)) {
+            alert('Operación bloqueada: El cliente ya tiene una sesión completada en ese mismo día.');
+            setSavingPlan(false);
+            return;
+          }
+          const horaExistStr = `${String(colisionMismoDia.fecha.getUTCHours()).padStart(2, '0')}:${String(
+            colisionMismoDia.fecha.getUTCMinutes()
+          ).padStart(2, '0')}`;
+          const fechaLabelStr = f.toLocaleDateString('es-ES', {
+            weekday: 'short',
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            timeZone: 'UTC'
+          });
+
+          setSavingPlan(false);
+          setColisionMismoDiaModal({
+            open: true,
+            idSesionOrigen: undefined,
+            idSesionExistenteDia: colisionMismoDia.id,
+            nombreCliente: nombreCli,
+            nuevaFechaUTC: f,
+            horaExistenteStr: horaExistStr,
+            horaNuevaStr: horaIni,
+            fechaLabelStr,
+            numEjExistente: Array.isArray(colisionMismoDia.data.ejercicios)
+              ? colisionMismoDia.data.ejercicios.length
+              : 0,
+            numEjEntrante: 0,
+            ejerciciosEntrantes: [],
+            saving: false
+          });
+          return;
+        }
+
         const qFuture = query(
           collection(db, "agenda_sesiones"),
           where("id_cliente", "==", planClienteId),
@@ -1193,8 +1423,9 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
         const futureSessions: { id: string; fechaObj: Date; data: any }[] = [];
         futureSnap.forEach(d => {
           const data = d.data();
-          if (data.tipo_sesion !== 'Small Group' && data.fecha_hora_inicio?.toDate) {
-            futureSessions.push({ id: d.id, fechaObj: data.fecha_hora_inicio.toDate(), data });
+          const parsedF = parsearFechaFirestore(data.fecha_hora_inicio);
+          if (data.tipo_sesion !== 'Small Group' && parsedF) {
+            futureSessions.push({ id: d.id, fechaObj: parsedF, data });
           }
         });
         futureSessions.sort((a, b) => a.fechaObj.getTime() - b.fechaObj.getTime());
@@ -3092,6 +3323,117 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
         excludeSessionId={sendSessionId}
         onSuccess={loadAgenda}
       />
+
+      {/* MODAL COLISIÓN DE SESIÓN EN EL MISMO DÍA */}
+      {colisionMismoDiaModal.open && (
+        <div
+          className="modal-overlay"
+          style={{ display: 'flex', zIndex: 2300 }}
+          onClick={() => {
+            if (!colisionMismoDiaModal.saving) {
+              setColisionMismoDiaModal(prev => ({ ...prev, open: false }));
+            }
+          }}
+        >
+          <div
+            className="modal-content"
+            style={{ maxWidth: 520 }}
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="modal-close"
+              disabled={colisionMismoDiaModal.saving}
+              onClick={() => setColisionMismoDiaModal(prev => ({ ...prev, open: false }))}
+            >
+              &times;
+            </button>
+            <div className="modal-header" style={{ marginBottom: 14 }}>
+              <h2>⚠️ Ya existe una sesión ese día</h2>
+              <p>
+                <strong>{colisionMismoDiaModal.nombreCliente}</strong> ya tiene una sesión programada el{' '}
+                <strong>{colisionMismoDiaModal.fechaLabelStr}</strong> a las{' '}
+                <strong>{colisionMismoDiaModal.horaExistenteStr}</strong> (
+                {colisionMismoDiaModal.numEjExistente} ejercicio
+                {colisionMismoDiaModal.numEjExistente === 1 ? '' : 's'}).
+              </p>
+              <p style={{ marginTop: 8, fontSize: '0.86rem', color: '#475569' }}>
+                No se pueden tener dos sesiones el mismo día. La sesión de ese día se actualizará a la nueva hora elegida (
+                <strong>{colisionMismoDiaModal.horaNuevaStr}</strong>). ¿Qué deseas hacer con los ejercicios?
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                type="button"
+                className="btn-outline"
+                disabled={colisionMismoDiaModal.saving}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                  padding: '14px 16px',
+                  textAlign: 'left',
+                  borderColor: '#f59e0b',
+                  background: '#fffbeb',
+                  color: '#92400e',
+                  borderRadius: 10
+                }}
+                onClick={() => handleEjecutarResolucionColisionMismoDia('MACHACAR')}
+              >
+                <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>🔄</span>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 3 }}>
+                    Actualizar a las {colisionMismoDiaModal.horaNuevaStr} y machacar ejercicios
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: '#78350f', fontWeight: 400, lineHeight: 1.35 }}>
+                    Sustituye los ejercicios que había en ese día ({colisionMismoDiaModal.numEjExistente} ej.) por los de la sesión entrante ({colisionMismoDiaModal.numEjEntrante} ej.) sin desplazar el resto de sesiones.
+                  </div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                className="btn-outline"
+                disabled={colisionMismoDiaModal.saving}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                  padding: '14px 16px',
+                  textAlign: 'left',
+                  borderColor: '#38bdf8',
+                  background: '#f0f9ff',
+                  color: '#0369a1',
+                  borderRadius: 10
+                }}
+                onClick={() => handleEjecutarResolucionColisionMismoDia('CASCADA_ADELANTE')}
+              >
+                <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>⏩</span>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 3 }}>
+                    Actualizar a las {colisionMismoDiaModal.horaNuevaStr} y realizar cascada hacia delante
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: '#0c4a6e', fontWeight: 400, lineHeight: 1.35 }}>
+                    Coloca aquí los ejercicios de la sesión entrante ({colisionMismoDiaModal.numEjEntrante} ej.) y desplaza la rutina que estaba ese día hacia las siguientes sesiones futuras (la última pasará a "Sin fecha").
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            <div className="modal-footer" style={{ marginTop: 18 }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={colisionMismoDiaModal.saving}
+                onClick={() => setColisionMismoDiaModal(prev => ({ ...prev, open: false }))}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,91 +1,111 @@
-# Política de Límite Mensual de Reprogramación y Caducidad de Sesiones Sin Fecha
+# Persistencia al Refrescar, Reparación de Deshacer en Cascada y Gestión de Colisión en el Mismo Día
 
-Este plan implementa la política del gimnasio que restringe la reprogramación únicamente a las sesiones del mes en curso y los meses previos configurados en **Maestros > Agenda** (por defecto `1`, es decir, mes actual más el mes anterior), bloqueando las sesiones completadas y las vencidas fuera de plazo, y devolviendo automáticamente las sesiones **Sin fecha** caducadas a su fecha original como **Vencidas** no reprogramables.
+Este plan resuelve tres puntos clave de experiencia de usuario e integridad de datos en **GymPlanner**: mantener exactamente la vista y contexto de trabajo al recargar el navegador, reparar el sistema de **Deshacer (`Ctrl+Z`)** en operaciones de cascada y reprogramación para que restaure las fechas reales de las sesiones, e impedir sesiones duplicadas en un mismo día permitiendo machacar la sesión existente con opción de reemplazar ejercicios o desplazar en cascada hacia delante.
 
-## Revisión de Usuario y Decisiones Confirmadas
+---
+
+## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> Las siguientes decisiones han sido confirmadas e incorporadas en el diseño:
+> Se han incorporado tus respuestas de configuración para el comportamiento al coincidir dos sesiones de un mismo cliente en el mismo día:
 
-- **Comportamiento al caducar una sesión Sin fecha fuera de plazo**: Se mantienen intactas las rutinas de las sesiones futuras y la sesión **Sin fecha** se quita de la bolsa y vuelve a su fecha y hora original (`fecha_hora_anterior`) con sus ejercicios y con estado **Vencida** bloqueada para reprogramación.
-- **Interpretación del parámetro en Maestros > Agenda**: El valor numérico indica cuántos meses anteriores al mes actual están permitidos (por ejemplo, el valor por defecto `1` permite reprogramar sesiones del **mes actual + 1 mes anterior**; en noviembre son reprogramables noviembre y octubre, mientras que septiembre y meses anteriores quedan bloqueados).
-- **Trazabilidad en el Registro de Movimientos**: Cuando una sesión **Sin fecha** supera el plazo mensual y vuelve a su fecha original como **Vencida**, se añade automáticamente una entrada profesional en la pestaña **Registro de Movimientos** de la ficha del cliente.
-
----
-
-## 1. Visión General y Concepto Principal
-
-- **Qué hace**:
-  1. Incorpora en **Maestros > Agenda** el parámetro **"Meses de margen para reprogramar"** con valor inicial `1`.
-  2. Registra y muestra en cada sesión de la bolsa **Sin fecha** su fecha de origen (`fecha_hora_anterior`).
-  3. Al cargar la aplicación o cambiar de mes, evalúa todas las sesiones **Sin fecha**: aquellas cuya fecha original sea anterior al primer día del mes límite permitido (`mesActual - mesesMargen`) salen automáticamente de la bolsa **Sin fecha**, se reubican en su fecha y hora original como **Vencida** (sin alterar las sesiones futuras) y registran el movimiento en la ficha del cliente.
-  4. Bloquea las acciones de **Reprogramar**, **Cancelar a Sin fecha** y **Volcar en hueco** tanto en **Agenda** como en **Ficha de Cliente** para todas las sesiones **Completadas** y para todas las sesiones **Vencidas** cuya fecha sea anterior al límite de meses configurado.
-- **Valor clave**: Garantiza que las sesiones vencidas o sin fecha de más de dos meses (ej. septiembre o anteriores estando en noviembre) queden cerradas como **Vencidas** en su día original sin posibilidad de reprogramarse, automatizando el control administrativo del gimnasio.
+- **Detección y aviso en el mismo día**: Cuando se intente programar, asignar una sesión sin fecha o reprogramar una sesión para un cliente en un día en el que ya tiene otra sesión (salvo que esté *Completada*, la cual sigue protegida), el sistema avisará de la coincidencia y permitirá machacar la sesión de ese día en lugar de duplicarla.
+- **Actualización de hora y elección sobre los ejercicios**: Al machacar la sesión existente de ese día, se actualizará su hora a la nueva hora elegida y, si existe programación en juego, el usuario podrá elegir entre **Machacar los ejercicios** (reemplazar la rutina de ese día) o **Realizar cascada hacia delante** (desplazar la rutina desplazada hacia las siguientes sesiones del cliente y pasar la última a *Sesiones sin fecha*).
+- **Persistencia completa al refrescar (F5)**: El navegador conservará tanto la pantalla y ficha/sesión activa (mediante el hash de la URL y `sessionStorage`) como el contexto visual (pestaña activa dentro de la ficha de cliente, mes/día seleccionado en Agenda y Planificación, y posición de scroll).
 
 ---
 
-## 2. Experiencia de Usuario y Diseño Visual
+## 1. Overview & Core Concept
 
-- **Flujos de Usuario Clave**:
-  1. **Configuración en Maestros > Agenda**: El administrador accede a **Maestros**, selecciona la sección **Agenda** y edita la categoría **"Meses de margen para reprogramar"** (por defecto `1`).
-  2. **Visualización de fecha de origen en Sesiones Sin Fecha**: En la tabla de **Sesiones programadas sin fecha** dentro de la ficha del cliente, cada sesión muestra su fecha de origen (`Origen: DD/MM/AAAA HH:MM`) para identificar de qué mes proviene.
-  3. **Paso de mes y conversión a Vencida**: Si una sesión **Sin fecha** tiene fecha de origen anterior al mes límite (por ejemplo, septiembre estando en noviembre con margen `1`), desaparece de la bolsa **Sin fecha**, aparece ubicada en su mes y día original dentro del historial del cliente con estado **Vencida** y queda registrada en **Registro de Movimientos**.
-  4. **Bloqueo de acciones fuera de plazo**: En el listado de sesiones de **Ficha de Cliente** y en el menú contextual de **Agenda**, las sesiones **Completadas** y las sesiones **Vencidas** anteriores al mes límite solo permiten consultar su programación o enviar copia de ejercicios a sesiones futuras, ocultando los botones de reprogramación y cancelación.
-- **Identidad Visual y Jerarquía**:
-  - **Estética de Panel Operativo**: Superficies limpias en blanco (`#FFFFFF`) y gris pizarra (`#F8FAFC`) con bordes sutiles de `1px` (`#E2E8F0`), manteniendo la tipografía tabular (`tabular-nums`) en fechas, horas y contadores.
-  - **Semántica de Estados**:
-    - **Completada**: Texto e indicador en verde (`#15803D`), bloqueada para reprogramación.
-    - **Vencida (dentro de plazo, ej. mes anterior)**: Indicador en rojo (`#B91C1C`), con botones de reprogramación activos.
-    - **Vencida (fuera de plazo, ej. septiembre o anterior)**: Indicador en rojo (`#B91C1C`) acompañado de etiqueta sutil de plazo agotado, sin controles de reprogramación ni cancelación.
+- **What It Does**:
+  1. **Persistencia de estado al recargar**: Al pulsar `F5` o recargar la página en cualquier vista (por ejemplo, dentro de la ficha de un cliente en la pestaña *Registro de Movimientos*, programando una sesión concreta, o viendo una semana específica de la Agenda), la aplicación vuelve exactamente al mismo punto sin redirigir a la pantalla inicial.
+  2. **Restauración exacta al Deshacer (`Ctrl+Z`)**: Al deshacer una cancelación con cascada, una asignación de sesión sin fecha o una reprogramación, todas las sesiones involucradas recuperan sus objetos `Timestamp` / `Date` originales de Firestore (`fecha_hora_inicio`), evitando que queden marcadas erróneamente como *Sin fecha*.
+  3. **Control de sesión única por día con machaque o cascada**: Un cliente no tendrá dos sesiones individuales el mismo día. Si se agenda, asigna o reprograma sobre un día que ya tiene sesión para ese cliente, un diálogo interactivo permite actualizar la sesión de ese día a la nueva hora y elegir entre **machacar sus ejercicios** o **desplazar en cascada hacia delante**.
+- **Target Audience / Persona**: Entrenadores y coordinadores de **GO & train** que gestionan diariamente la agenda, fichas de clientes y programación de entrenamientos.
+- **Key Value**: Cero pérdida de contexto al refrescar el navegador, fiabilidad total al usar `Ctrl+Z` / `Ctrl+Y` en operaciones complejas de agenda, y prevención de sesiones duplicadas en un mismo día.
 
 ---
 
-## 3. Decisiones de Producto y Arquitectura
+## 2. User Experience & Visual Design
 
-- **Cálculo dinámico de la fecha de corte (`fechaLimiteReprogramacionUTC`)**:
-  - *Enfoque elegido*: Calcular el primer instante en UTC del mes permitido según el valor maestro `N` (`Date.UTC(añoActual, mesActual - N, 1, 0, 0, 0, 0)`).
-  - *Por qué*: Con `N = 1` en noviembre de 2026, la fecha de corte es el `01/10/2026 00:00 UTC`. Cualquier sesión con fecha `< 01/10/2026` pertenece a septiembre o meses anteriores y queda automáticamente bloqueada.
-- **Conservación de la fecha de origen en la bolsa Sin fecha**:
-  - *Enfoque elegido*: Al cancelar una sesión con cascada hacia delante, la sesión que pasa a **Sin fecha** conserva en `fecha_hora_anterior` la fecha y hora exacta de la cita cancelada que originó el movimiento. Si existiera alguna sesión sin fecha antigua sin `fecha_hora_anterior`, se toma `fecha_creacion_sin_fecha` o `fecha_creacion` como respaldo.
-  - *Por qué*: Permite saber con exactitud a qué día y hora debe regresar la sesión cuando supere el plazo mensual de reprogramación.
+- **Key User Flows**:
+  1. **Recarga de página (`F5`)**:
+     - El entrenador está en `#ficha_cliente/CLI-xxx` (o `#programar_sesion/SES-xxx`, `#agenda`, `#ejercicios`, etc.).
+     - Al refrescar el navegador, el sistema lee el hash inicial de la URL (con respaldo en `sessionStorage`), mantiene la vista activa, recuerda la sub-pestaña abierta y restaura la posición de scroll tras cargar los datos.
+  2. **Deshacer (`Ctrl+Z`) tras eliminar/cancelar en cascada o reprogramar**:
+     - El entrenador cancela una sesión a *Sin fecha* (desplazando las siguientes en cascada) o reprograma una sesión en el calendario.
+     - Si pulsa **Deshacer (`Ctrl+Z`)**, el lote de restauración reconstruye las fechas `Date` / `Timestamp` válidas en Firestore; todas las sesiones vuelven inmediatamente a su día y hora originales en los acordeones mensuales y en la Agenda.
+  3. **Colisión de sesión en el mismo día (Machacar vs. Cascada hacia delante)**:
+     - El entrenador intenta crear una cita, asignar una sesión sin fecha o reprogramar una sesión hacia un día (ej. *Miércoles 18/11 a las 18:00*) donde el cliente ya tenía una sesión (ej. *Miércoles 18/11 a las 10:00*).
+     - Si el cambio es solo de hora para la misma sesión o el hueco destino está vacío, se actualiza directamente a la nueva hora.
+     - Si ya existe otra sesión ese mismo día para el cliente, aparece un modal claro indicando la sesión existente de ese día y ofreciendo:
+       - **Opción A — Machacar ejercicios y actualizar hora**: La sesión de ese día pasa a la nueva hora indicada y adopta los ejercicios de la sesión entrante (eliminando la sesión origen si venía de otro día o de *Sin fecha* para no dejar duplicados).
+       - **Opción B — Actualizar hora y hacer cascada hacia delante**: La sesión de ese día pasa a la nueva hora con la rutina entrante, y la rutina que había en ese día se desplaza en cascada hacia delante a las siguientes sesiones pendientes del cliente (pasando la última a *Sesiones sin fecha*).
+- **Visual Identity & Theme**:
+  - Se mantiene la estética corporativa de **GO & train** (`--surface`, `--accent`, `--border`) utilizando modales limpios con tarjetas de opción diferenciadas por icono y descripción clara.
 
 ---
 
-## 4. Arquitectura Técnica y Flujo de Datos
+## 3. Key Product Decisions & Trade-Offs
+
+- **Decision 1: Clonado profundo preservando `Date` y `Timestamp` de Firestore**
+  - *Chosen Approach*: Sustituir `JSON.parse(JSON.stringify(obj))` por una función recursiva `clonarProfundoPreservandoFechas(obj)` junto con normalización de fechas en el servicio de `Undo/Redo`.
+  - *Why*: `JSON.stringify` convierte los objetos `Timestamp` de Firestore en mapas planos `{ seconds, nanoseconds }` sin método `.toDate()`. Al escribir ese mapa plano de vuelta en Firestore durante un `Undo`, Firestore lo guarda como un objeto genérico en lugar de un `Timestamp`, provocando que la aplicación interprete la sesión como carente de fecha válida (*Sin fecha*). Preservando instancias `Date` y `Timestamp` (y convirtiendo cualquier `{ seconds, nanoseconds }` serializado de nuevo a `Date`), el `Undo/Redo` restaura siempre fechas nativas de Firestore.
+- **Decision 2: Sincronización bidireccional URL Hash + `sessionStorage`**
+  - *Chosen Approach*: Inicializar `activeTab` y `routeParam` leyendo `window.location.hash` antes del primer render (en lugar de sobrescribirlo con `#planificacion`), y guardar en `sessionStorage` tanto la ruta como el estado de sub-vistas (mes de agenda, fecha de planificación, pestaña activa de ficha de cliente y filtros).
+  - *Why*: Garantiza que tanto el botón *Atrás/Adelante* del navegador como el refresco completo de página (`F5`) mantengan al usuario exactamente donde estaba.
+- **Decision 3: Resolución unificada de colisiones en el mismo día**
+  - *Chosen Approach*: Centralizar la detección de otra sesión del mismo cliente en la misma fecha UTC (`YYYY-MM-DD`) tanto al reprogramar como al asignar sin fecha o planificar días en Agenda, ofreciendo el diálogo de **Machacar ejercicios** vs. **Cascada hacia delante**.
+  - *Why*: Evita que un cliente acabe con dos sesiones el mismo día por cualquier vía de entrada y respeta la lógica de cascada del centro.
+
+---
+
+## 4. Technical Architecture & Data Strategy *(Technical Reference)*
+
+### Architecture & Component Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        Maestros > Agenda (Firestore)                    │
-│        "Meses de margen para reprogramar" (Valor por defecto: 1)        │
-└───────────────────────────────────┬─────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│             Cálculo de Corte: 1º día de (Mes Actual - N meses)          │
-│         Ej. Noviembre 2026 (N=1) ──► Corte = 01/10/2026 00:00 UTC       │
-└─────────────────┬─────────────────────────────────────┬─────────────────┘
-                  │                                     │
-                  ▼                                     ▼
-┌───────────────────────────────────┐ ┌───────────────────────────────────┐
-│   Procesador de Caducidad Mensual │ │   Reglas de UI (Agenda y Ficha)   │
-│   de Bolsa "Sin Fecha"            │ │                                   │
-│                                   │ │ • Si Completada:                  │
-│ • Detecta sesiones sin_fecha con  │ │   Bloquea Reprogramar y Cancelar  │
-│   fecha_hora_anterior < Corte     │ │ • Si Vencida y fecha < Corte:     │
-│ • Mantiene rutinas futuras        │ │   Bloquea Reprogramar, Cancelar   │
-│ • Pasa sesión a su fecha original │ │   y Volcar en hueco               │
-│   con estado = "Vencida"          │ │ • Si Vencida y fecha >= Corte:    │
-│ • Añade entrada en Registro de    │ │   Permite Reprogramar             │
-│   Movimientos del cliente         │ │                                   │
-└───────────────────────────────────┘ └───────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────┐
+│                        Navegador (URL Hash + Session)                     │
+│  #tab/param  ◄──►  sessionStorage (sub-tabs, mes/día activo, scrollY)     │
+└────────────────────────────────────┬──────────────────────────────────────┘
+                                     │
+                                     ▼
+┌───────────────────────────────────────────────────────────────────────────┐
+│                          Vistas de Usuario (React)                         │
+│  ┌─────────────────────┐  ┌─────────────────────┐  ┌───────────────────┐  │
+│  │   FichaClienteView  │  │     AgendaView      │  │ PlanificacionView │  │
+│  └──────────┬──────────┘  └──────────┬──────────┘  └───────────────────┘  │
+└─────────────┼────────────────────────┼────────────────────────────────────┘
+              │                        │
+              ▼                        ▼
+┌───────────────────────────────────────────────────────────────────────────┐
+│              Motor de Cascada y Colisión (sessionCascadeService)          │
+│  • Detectar sesión existente del cliente en el mismo día UTC (YYYY-MM-DD) │
+│  • Modo MACHACAR: actualiza hora + reemplaza ejercicios + absorbe origen  │
+│  • Modo CASCADA_ADELANTE: actualiza hora + desplaza rutinas + Sin Fecha   │
+└────────────────────────────────────┬──────────────────────────────────────┘
+                                     │
+                                     ▼
+┌───────────────────────────────────────────────────────────────────────────┐
+│                 Servicio Undo / Redo (undoService + clonar)               │
+│  • clonarProfundoPreservandoFechas(): conserva Date y Firestore Timestamp │
+│  • sanitizarDatosParaFirestore(): reconstruye Date desde {seconds, nanos} │
+└───────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Modelo de Datos y Estados Interactivos
-- **Catálogo de Maestros**:
-  - Se añade `"Meses de margen para reprogramar"` dentro de `ESTRUCTURA_MAESTROS["Agenda"]` con inicialización automática en `"1"` si no existe en Firestore, junto con una función auxiliar `getMesesMargenReprogramacion()` y `obtenerFechaLimiteReprogramacionUTC(mesesMargen)`.
-- **Proceso de Caducidad de Sesiones Sin Fecha**:
-  - Al cargar `Agenda`, `Ficha de Cliente` o `Hoy`, se verifica si existen sesiones `sin_fecha: true` cuya fecha de origen (`fecha_hora_anterior` o `fecha_creacion_sin_fecha`) sea `< fechaLimiteUTC`.
-  - Para cada sesión detectada, se actualiza su documento pasando `sin_fecha: false`, `fecha_hora_inicio: fechaOrigen`, `estado: 'Vencida'`, `estado_sesion: 'Vencida'` y se inserta un registro en `historial_movimientos` del cliente con el detalle de la caducidad por plazo superado.
-- **Controles en Ficha de Cliente y Agenda**:
-  - En `FichaClienteView`: los botones de **Reprogramar fecha/hora**, **Cancelar sesión** (`📌`) y **Asignar a hueco** (`📥`) solo se muestran cuando la sesión no está `Completada` y su fecha es `>= fechaLimiteUTC`. Además, el modal de asignar sesión existente a un hueco excluye sesiones vencidas anteriores a `fechaLimiteUTC`.
-  - En `AgendaView`: `obtenerAccionesDisponiblesSesion` utiliza el valor de `mesesMargen` leído de Maestros para calcular `limiteReprogramar` y deshabilitar tanto `puedeReprogramar` como `puedeCancelarSinFecha` en sesiones anteriores a `limiteReprogramar`.
+### Data Model & State
+- **Sanitización de Timestamps en `undoService` y `sessionCascadeService`**:
+  - Cualquier campo de fecha (`fecha_hora_inicio`, `fecha_hora_anterior`, `fecha_creacion_sin_fecha`, `fecha_ultima_edicion`, `fecha_modificacion`, `fecha_creacion`, `fecha`) se clona conservando su instancia `Date` / `Timestamp` real y se valida antes de enviarse en `ejecutarOperacionesFirestore`.
+- **Persistencia de Navegación**:
+  - `window.location.hash` parseado al iniciar la aplicación (`#ficha_cliente/CLI-...`, `#programar_sesion/SES-...`, `#agenda`, etc.).
+  - Claves ligeras en `sessionStorage` para recordar la pestaña activa de `FichaClienteView` (`sesiones` | `progreso` | `movimientos`), el filtro de estado, el mes visualizado en `AgendaView` y el día seleccionado en `PlanificacionView`.
+
+### Interactive Component & State Mapping
+- **En `FichaClienteView` y `AgendaView` (Reprogramar / Asignar sin fecha / Planificar)**:
+  - Al seleccionar un día y hora de destino, se comprueba si el cliente ya posee otra sesión en ese mismo día (`getUTCFullYear`, `getUTCMonth`, `getUTCDate`).
+  - Si la sesión existente en ese día está `Completada`, se mantiene bloqueada la operación con aviso.
+  - Si existe otra sesión pendiente/vencida en ese mismo día, se abre el modal de resolución de mismo día para que el entrenador confirme:
+    1. **Machacar los ejercicios** (actualizando la sesión de ese día a la nueva hora y reemplazando sus ejercicios).
+    2. **Realizar cascada hacia delante** (actualizando la sesión de ese día a la nueva hora con la rutina entrante y desplazando la rutina anterior hacia las siguientes sesiones del cliente, enviando la última a *Sin fecha*).
+    - Todas las operaciones quedan registradas en `pushAction` (`UndoContext`) con snapshots de fecha íntegros para poder deshacerse con `Ctrl+Z`.

@@ -14,19 +14,27 @@ import {
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
+import { clonarProfundoPreservandoFechas } from '../services/undoService';
 import {
   cargarCatalogoMaestros,
   extraerListaMaster,
   getListaProgramadores,
   obtenerFechaLimiteReprogramacionUTC
 } from '../services/maestrosService';
-import { normalizarIntensidad, renderIntensityBadge, esSesionCompletada, esSesionCancelada } from '../utils/helpers';
+import {
+  normalizarIntensidad,
+  renderIntensityBadge,
+  esSesionCompletada,
+  esSesionCancelada,
+  parsearFechaFirestore
+} from '../utils/helpers';
 import { confirmarDialogo } from '../utils/confirmDialog';
 import { SendRoutineModal } from '../components/SendRoutineModal';
 import {
   cancelarSesionConCascadaAdelante,
   asignarFechaASesionSinFechaConCascadaAtras,
   reprogramarSesionConFechaOrdenCronologico,
+  resolverColisionSesionMismoDia,
   revertirVencimientosAutomaticos,
   procesarCaducidadSesionesSinFechaPorMeses,
   obtenerFechaOrigenSesionSinFecha,
@@ -45,7 +53,7 @@ const mesesNombres = [
 ];
 const diasSemanaCortos = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
-const clonarProfundo = (obj: any) => (obj ? JSON.parse(JSON.stringify(obj)) : obj);
+const clonarProfundo = (obj: any) => clonarProfundoPreservandoFechas(obj);
 
 export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, onNavigate }) => {
   const { userName } = useAuth();
@@ -80,9 +88,36 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
   ]);
   const [mesesMargenReprog, setMesesMargenReprog] = useState<number>(1);
 
-  // Main view tabs
-  const [mainView, setMainView] = useState<'sesiones' | 'progreso' | 'movimientos'>('sesiones');
-  const [filtroActual, setFiltroActual] = useState<'Todas' | 'Completada' | 'Pendiente' | 'Vencida'>('Todas');
+  // Main view tabs (persisted per client across page refresh)
+  const [mainView, setMainView] = useState<'sesiones' | 'progreso' | 'movimientos'>(() => {
+    try {
+      const saved = sessionStorage.getItem(`gym_ficha_mainView_${clientId}`);
+      if (saved === 'sesiones' || saved === 'progreso' || saved === 'movimientos') return saved;
+    } catch {
+      // ignore
+    }
+    return 'sesiones';
+  });
+  const [filtroActual, setFiltroActual] = useState<'Todas' | 'Completada' | 'Pendiente' | 'Vencida'>(() => {
+    try {
+      const saved = sessionStorage.getItem(`gym_ficha_filtro_${clientId}`);
+      if (saved === 'Todas' || saved === 'Completada' || saved === 'Pendiente' || saved === 'Vencida') return saved;
+    } catch {
+      // ignore
+    }
+    return 'Todas';
+  });
+
+  useEffect(() => {
+    try {
+      if (clientId) {
+        sessionStorage.setItem(`gym_ficha_mainView_${clientId}`, mainView);
+        sessionStorage.setItem(`gym_ficha_filtro_${clientId}`, filtroActual);
+      }
+    } catch {
+      // ignore
+    }
+  }, [clientId, mainView, filtroActual]);
 
   // Expanded session rows & month accordions
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
@@ -179,6 +214,33 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
     saving: false
   });
 
+  // Modal Colisión de Sesión en el Mismo Día (Machacar ejercicios vs. Cascada hacia delante)
+  const [modalColisionDia, setModalColisionDia] = useState<{
+    open: boolean;
+    idSesionOrigen: string;
+    idSesionExistenteDia: string;
+    nuevaFechaUTC: Date | null;
+    horaExistenteStr: string;
+    horaNuevaStr: string;
+    fechaLabelStr: string;
+    numEjExistente: number;
+    numEjEntrante: number;
+    esOrigenSinFecha: boolean;
+    saving: boolean;
+  }>({
+    open: false,
+    idSesionOrigen: '',
+    idSesionExistenteDia: '',
+    nuevaFechaUTC: null,
+    horaExistenteStr: '',
+    horaNuevaStr: '',
+    fechaLabelStr: '',
+    numEjExistente: 0,
+    numEjEntrante: 0,
+    esOrigenSinFecha: false,
+    saving: false
+  });
+
   const cargarTodo = useCallback(async () => {
     if (!clientId) return;
     setLoading(true);
@@ -272,7 +334,8 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
       const sesList: any[] = [];
       sesDocsMap.forEach(d => {
         const data = d.data();
-        const esSinFecha = Boolean(data.sin_fecha === true || !data.fecha_hora_inicio);
+        const fechaParsed = parsearFechaFirestore(data.fecha_hora_inicio);
+        const esSinFecha = Boolean(data.sin_fecha === true || !fechaParsed);
 
         if (esSinFecha) {
           const fechaOrigen = obtenerFechaOrigenSesionSinFecha(data) || new Date(0);
@@ -287,9 +350,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
           return;
         }
 
-        const fechaObj = data.fecha_hora_inicio.toDate
-          ? data.fecha_hora_inicio.toDate()
-          : new Date(data.fecha_hora_inicio);
+        const fechaObj = fechaParsed!;
 
         const isComp = esSesionCompletada(data);
         if (isComp && (data.estado !== 'Completada' || data.estado_sesion !== 'Completada')) {
@@ -723,9 +784,8 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
       snap.forEach(d => {
         const data = d.data();
         if (!data.fecha_hora_inicio || esSesionCancelada(data)) return;
-        const f = data.fecha_hora_inicio.toDate
-          ? data.fecha_hora_inicio.toDate()
-          : new Date(data.fecha_hora_inicio);
+        const f = parsearFechaFirestore(data.fecha_hora_inicio);
+        if (!f) return;
         list.push({ id: d.id, ...data, fecha: f });
       });
       setModalReprog(prev => ({ ...prev, weekSessions: list, loadingWeek: false }));
@@ -785,6 +845,35 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
       return;
     }
 
+    // Si ya existe otra sesión pendiente/vencida en ese mismo día, avisar y permitir machacar o hacer cascada
+    if (sesionExistenteMismoDia) {
+      const fExist = sesionExistenteMismoDia.fechaObj as Date;
+      const horaExistStr = `${String(fExist.getUTCHours()).padStart(2, '0')}:${String(
+        fExist.getUTCMinutes()
+      ).padStart(2, '0')}`;
+      const fechaLabelStr = `${diasSemanaCortos[nuevaFechaUTC.getUTCDay()]} ${String(d).padStart(
+        2,
+        '0'
+      )}/${String(m + 1).padStart(2, '0')}/${y}`;
+
+      setModalColisionDia({
+        open: true,
+        idSesionOrigen: sesion.id,
+        idSesionExistenteDia: sesionExistenteMismoDia.id,
+        nuevaFechaUTC,
+        horaExistenteStr: horaExistStr,
+        horaNuevaStr: timeStr,
+        fechaLabelStr,
+        numEjExistente: Array.isArray(sesionExistenteMismoDia.ejercicios)
+          ? sesionExistenteMismoDia.ejercicios.length
+          : 0,
+        numEjEntrante: Array.isArray(sesion.ejercicios) ? sesion.ejercicios.length : 0,
+        esOrigenSinFecha: Boolean(sesion.sin_fecha),
+        saving: false
+      });
+      return;
+    }
+
     setModalReprog(prev => ({ ...prev, saving: true }));
     const editorActual = userName || 'Entrenador';
 
@@ -793,7 +882,6 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
         const res = await asignarFechaASesionSinFechaConCascadaAtras({
           idSesionSinFecha: sesion.id,
           nuevaFechaUTC,
-          idHuecoExistente: sesionExistenteMismoDia?.id,
           usuario: editorActual
         });
 
@@ -830,6 +918,43 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
       console.error('Error al reprogramar sesión:', e);
       alert('Hubo un error al reprogramar la sesión.');
       setModalReprog(prev => ({ ...prev, saving: false }));
+    }
+  };
+
+  const ejecutarResolucionColisionMismoDia = async (modo: 'MACHACAR' | 'CASCADA_ADELANTE') => {
+    if (!modalColisionDia.nuevaFechaUTC || modalColisionDia.saving) return;
+    setModalColisionDia(prev => ({ ...prev, saving: true }));
+    const editorActual = userName || 'Entrenador';
+
+    try {
+      const res = await resolverColisionSesionMismoDia({
+        idSesionExistenteDia: modalColisionDia.idSesionExistenteDia,
+        nuevaFechaUTC: modalColisionDia.nuevaFechaUTC,
+        modo,
+        idSesionOrigen: modalColisionDia.idSesionOrigen,
+        usuario: editorActual
+      });
+
+      if (res) {
+        pushAction({
+          label:
+            modo === 'MACHACAR'
+              ? 'Machacar sesión del mismo día'
+              : 'Actualizar sesión del mismo día (cascada hacia delante)',
+          undoOps: res.undoOps,
+          redoOps: res.redoOps,
+          showToast: true,
+          toastMessage: res.toastMessage
+        });
+      }
+
+      setModalColisionDia(prev => ({ ...prev, open: false, saving: false }));
+      setModalReprog(prev => ({ ...prev, open: false, saving: false }));
+      await cargarTodo();
+    } catch (e) {
+      console.error('Error resolviendo colisión en el mismo día:', e);
+      alert('Hubo un error al sobrescribir la sesión de ese día.');
+      setModalColisionDia(prev => ({ ...prev, saving: false }));
     }
   };
 
@@ -2933,6 +3058,105 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
           </div>
         );
       })()}
+
+      {/* Modal Colisión de Sesión en el Mismo Día */}
+      {modalColisionDia.open && (
+        <div className="modal-overlay" style={{ display: 'flex', zIndex: 2200 }}>
+          <div className="modal-content" style={{ maxWidth: 520 }}>
+            <button
+              type="button"
+              className="modal-close"
+              disabled={modalColisionDia.saving}
+              onClick={() => setModalColisionDia(prev => ({ ...prev, open: false }))}
+            >
+              ×
+            </button>
+            <div className="modal-header" style={{ marginBottom: 14 }}>
+              <h2>⚠️ Ya existe una sesión ese día</h2>
+              <p>
+                <strong>{alias || nom}</strong> ya tiene una sesión programada el{' '}
+                <strong>{modalColisionDia.fechaLabelStr}</strong> a las{' '}
+                <strong>{modalColisionDia.horaExistenteStr}</strong> (
+                {modalColisionDia.numEjExistente} ejercicio
+                {modalColisionDia.numEjExistente === 1 ? '' : 's'}).
+              </p>
+              <p style={{ marginTop: 8, fontSize: '0.86rem', color: '#475569' }}>
+                No se pueden tener dos sesiones el mismo día. La sesión de ese día se actualizará a la nueva hora elegida (
+                <strong>{modalColisionDia.horaNuevaStr}</strong>). ¿Qué deseas hacer con los ejercicios?
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                type="button"
+                className="btn-outline"
+                disabled={modalColisionDia.saving}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                  padding: '14px 16px',
+                  textAlign: 'left',
+                  borderColor: '#f59e0b',
+                  background: '#fffbeb',
+                  color: '#92400e',
+                  borderRadius: 10
+                }}
+                onClick={() => ejecutarResolucionColisionMismoDia('MACHACAR')}
+              >
+                <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>🔄</span>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 3 }}>
+                    Actualizar a las {modalColisionDia.horaNuevaStr} y machacar ejercicios
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: '#78350f', fontWeight: 400, lineHeight: 1.35 }}>
+                    Sustituye los ejercicios que había en ese día ({modalColisionDia.numEjExistente} ej.) por los de la sesión que estás moviendo ({modalColisionDia.numEjEntrante} ej.) sin desplazar el resto de sesiones.
+                  </div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                className="btn-outline"
+                disabled={modalColisionDia.saving}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                  padding: '14px 16px',
+                  textAlign: 'left',
+                  borderColor: '#38bdf8',
+                  background: '#f0f9ff',
+                  color: '#0369a1',
+                  borderRadius: 10
+                }}
+                onClick={() => ejecutarResolucionColisionMismoDia('CASCADA_ADELANTE')}
+              >
+                <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>⏩</span>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 3 }}>
+                    Actualizar a las {modalColisionDia.horaNuevaStr} y realizar cascada hacia delante
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: '#0c4a6e', fontWeight: 400, lineHeight: 1.35 }}>
+                    Coloca aquí los ejercicios de la sesión entrante ({modalColisionDia.numEjEntrante} ej.) y desplaza la rutina que estaba ese día hacia las siguientes sesiones futuras (la última pasará a "Sin fecha").
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            <div className="modal-footer" style={{ marginTop: 18 }}>
+              <button
+                type="button"
+                className="btn-outline"
+                disabled={modalColisionDia.saving}
+                onClick={() => setModalColisionDia(prev => ({ ...prev, open: false }))}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

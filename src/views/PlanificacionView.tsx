@@ -3,7 +3,7 @@ import { collection, getDocs, query, where, doc, updateDoc, addDoc } from 'fireb
 import { db } from '../firebase';
 import { cargarCatalogoMaestros, extraerListaMaster } from '../services/maestrosService';
 import { useUndo } from '../context/UndoContext';
-import { normalizarIntensidad, esSesionCompletada } from '../utils/helpers';
+import { normalizarIntensidad, esSesionCompletada, parsearFechaFirestore } from '../utils/helpers';
 import {
   revertirVencimientosAutomaticos,
   procesarCaducidadSesionesSinFechaPorMeses,
@@ -28,11 +28,28 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
   const { registerChangeListener } = useUndo();
 
   const [currentDate, setCurrentDate] = useState<Date>(() => {
+    try {
+      const saved = sessionStorage.getItem('gym_planificacion_date');
+      if (saved) {
+        const parsed = new Date(saved);
+        if (!isNaN(parsed.getTime())) return parsed;
+      }
+    } catch {
+      // Fallback below
+    }
     const d = new Date();
     if (d.getDay() === 0) d.setDate(d.getDate() + 1);
     else if (d.getDay() === 6) d.setDate(d.getDate() + 2);
     return d;
   });
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('gym_planificacion_date', currentDate.toISOString());
+    } catch {
+      // Ignore storage errors
+    }
+  }, [currentDate]);
 
   const [ordenBloques, setOrdenBloques] = useState<string[]>([
     'BLOQUE 1: MOVILIDAD - ACTIVACIÓN',
@@ -142,8 +159,8 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
       const list: any[] = [];
       snap.forEach(docSnap => {
         const data = docSnap.data();
-        if (!data.fecha_hora_inicio) return;
-        const fecha = data.fecha_hora_inicio.toDate ? data.fecha_hora_inicio.toDate() : new Date(data.fecha_hora_inicio);
+        const fecha = parsearFechaFirestore(data.fecha_hora_inicio);
+        if (!fecha) return;
         list.push({ id: docSnap.id, ...data, fecha });
       });
 
