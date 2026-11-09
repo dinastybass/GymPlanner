@@ -26,6 +26,9 @@ import {
 } from '../services/maestrosService';
 import {
   VersionBackupItem,
+  GoogleDriveBackupConfig,
+  cargarConfigGoogleDrive,
+  guardarConfigGoogleDrive,
   generarCopiaManual,
   listarVersionesBackup,
   restaurarVersionPorId
@@ -93,8 +96,17 @@ export const MaestrosView: React.FC = () => {
   const [versionSeleccionadaId, setVersionSeleccionadaId] = useState<string>('');
   const [generandoCopia, setGenerandoCopia] = useState(false);
   const [restaurandoCopia, setRestaurandoCopia] = useState(false);
+  const [cargandoListaDrive, setCargandoListaDrive] = useState(false);
   const [backupProgressMsg, setBackupProgressMsg] = useState('');
   const [backupSuccessMsg, setBackupSuccessMsg] = useState('');
+  const [driveConfig, setDriveConfig] = useState<GoogleDriveBackupConfig>({
+    folderId: '',
+    clientId: '',
+    clientSecret: '',
+    refreshToken: ''
+  });
+  const [mostrarConfigDrive, setMostrarConfigDrive] = useState(false);
+  const [guardandoConfigDrive, setGuardandoConfigDrive] = useState(false);
 
   const puedeEditarActual = () => {
     if (currentSection === 'Copias de Seguridad') return false;
@@ -126,15 +138,19 @@ export const MaestrosView: React.FC = () => {
     } catch (e) {
       console.warn('No se pudo inicializar roles/permisos por defecto:', e);
     }
-    const [maestros, matriz, users, listaBackups] = await Promise.all([
+    const [maestros, matriz, users, listaBackups, cfgDrive] = await Promise.all([
       cargarTodosLosMaestros(true),
       cargarMatrizPermisos(),
       cargarUsuariosAutenticacion(),
-      listarVersionesBackup()
+      listarVersionesBackup(),
+      cargarConfigGoogleDrive()
     ]);
     setMapaMaestros(maestros);
     setMatrizPermisosGlobal(matriz);
     setUsuariosAuthGlobal(users);
+    if (cfgDrive) {
+      setDriveConfig(cfgDrive);
+    }
     setVersionesBackup(listaBackups);
     setVersionSeleccionadaId(prev =>
       prev && listaBackups.some(v => v.id === prev)
@@ -694,6 +710,54 @@ export const MaestrosView: React.FC = () => {
     }
   };
 
+  const handleRefrescarListaDrive = async () => {
+    setCargandoListaDrive(true);
+    try {
+      const lista = await listarVersionesBackup();
+      setVersionesBackup(lista);
+      setVersionSeleccionadaId(prev =>
+        prev && lista.some(v => v.id === prev) ? prev : lista[0]?.id || ''
+      );
+    } catch (e) {
+      console.error('Error actualizando copias desde Google Drive:', e);
+    } finally {
+      setCargandoListaDrive(false);
+    }
+  };
+
+  const handleGuardarConfigDrive = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!esAdmin) return;
+    if (!driveConfig.folderId.trim()) {
+      alert('Indica el ID o enlace de la carpeta de Google Drive.');
+      return;
+    }
+    setGuardandoConfigDrive(true);
+    setBackupProgressMsg('Conectando con Google Drive y leyendo copias...');
+    setBackupSuccessMsg('');
+    try {
+      await guardarConfigGoogleDrive(driveConfig);
+      const cfg = await cargarConfigGoogleDrive();
+      if (cfg) setDriveConfig(cfg);
+      const lista = await listarVersionesBackup();
+      setVersionesBackup(lista);
+      setVersionSeleccionadaId(lista[0]?.id || '');
+      setMostrarConfigDrive(false);
+      setBackupProgressMsg('');
+      setBackupSuccessMsg(
+        `✓ Conectado a Google Drive (${lista.length} ${
+          lista.length === 1 ? 'copia encontrada' : 'copias encontradas'
+        })`
+      );
+    } catch (err: any) {
+      console.error('Error guardando configuración de Drive:', err);
+      alert(err?.message || 'No se pudo conectar con Google Drive.');
+      setBackupProgressMsg('');
+    } finally {
+      setGuardandoConfigDrive(false);
+    }
+  };
+
   const itemsActuales = getItemsActuales();
   const editable = puedeEditarActual();
   const esVistaPermisos =
@@ -1066,7 +1130,7 @@ export const MaestrosView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Bloque 2: Restaurar copia de seguridad */}
+              {/* Bloque 2: Restaurar copia de seguridad (lee de Google Drive) */}
               <div
                 style={{
                   background: '#ffffff',
@@ -1075,12 +1139,143 @@ export const MaestrosView: React.FC = () => {
                   padding: '20px'
                 }}
               >
-                <h3 style={{ margin: '0 0 6px 0', fontSize: '1.05rem' }}>
-                  Restaurar copia de seguridad
-                </h3>
-                <p style={{ margin: '0 0 16px 0', fontSize: '0.86rem', color: 'var(--text-muted)' }}>
-                  Selecciona una copia por su fecha y pulsa en Restaurar para recuperar los datos de ese momento.
-                </p>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    gap: 12,
+                    flexWrap: 'wrap',
+                    marginBottom: 14
+                  }}
+                >
+                  <div>
+                    <h3 style={{ margin: '0 0 6px 0', fontSize: '1.05rem' }}>
+                      Restaurar copia de seguridad
+                    </h3>
+                    <p style={{ margin: 0, fontSize: '0.86rem', color: 'var(--text-muted)' }}>
+                      Selecciona una copia de tu carpeta de Google Drive por su fecha y pulsa en Restaurar.
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {driveConfig.folderId && (
+                      <button
+                        type="button"
+                        className="btn-outline"
+                        disabled={cargandoListaDrive || generandoCopia || restaurandoCopia}
+                        onClick={handleRefrescarListaDrive}
+                        style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                        title="Volver a leer las copias de Google Drive"
+                      >
+                        {cargandoListaDrive ? '⏳ Leyendo Drive...' : '🔄 Actualizar lista'}
+                      </button>
+                    )}
+                    {esAdmin && (
+                      <button
+                        type="button"
+                        className="btn-outline"
+                        onClick={() => setMostrarConfigDrive(!mostrarConfigDrive)}
+                        style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                      >
+                        {driveConfig.folderId ? '⚙️ Ajustes Google Drive' : '☁️ Conectar Google Drive'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {mostrarConfigDrive && esAdmin && (
+                  <form
+                    onSubmit={handleGuardarConfigDrive}
+                    style={{
+                      background: '#f8fafc',
+                      border: '1px solid var(--border)',
+                      borderRadius: 10,
+                      padding: 16,
+                      marginBottom: 16
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 6 }}>
+                      ☁️ Conexión con carpeta de Google Drive
+                    </div>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 0, marginBottom: 12 }}>
+                      Introduce los mismos datos de tu carpeta de Google Drive para que la aplicación lea y liste directamente todos los archivos de copia de seguridad guardados en Drive.
+                    </p>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: 10,
+                        marginBottom: 12
+                      }}
+                    >
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <label style={{ fontSize: '0.78rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>
+                          ID o enlace de la carpeta de Google Drive (GDRIVE_FOLDER_ID) *
+                        </label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          required
+                          placeholder="Ej: 1AbC2dEfG3hIjK..."
+                          value={driveConfig.folderId}
+                          onChange={e => setDriveConfig(prev => ({ ...prev, folderId: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.78rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>
+                          Client ID (GDRIVE_CLIENT_ID)
+                        </label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          placeholder="OAuth Client ID..."
+                          value={driveConfig.clientId}
+                          onChange={e => setDriveConfig(prev => ({ ...prev, clientId: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.78rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>
+                          Client Secret (GDRIVE_CLIENT_SECRET)
+                        </label>
+                        <input
+                          type="password"
+                          className="form-control"
+                          placeholder="OAuth Client Secret..."
+                          value={driveConfig.clientSecret}
+                          onChange={e => setDriveConfig(prev => ({ ...prev, clientSecret: e.target.value }))}
+                        />
+                      </div>
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <label style={{ fontSize: '0.78rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>
+                          Refresh Token (GDRIVE_REFRESH_TOKEN)
+                        </label>
+                        <input
+                          type="password"
+                          className="form-control"
+                          placeholder="OAuth Refresh Token..."
+                          value={driveConfig.refreshToken}
+                          onChange={e => setDriveConfig(prev => ({ ...prev, refreshToken: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                      <button
+                        type="button"
+                        className="btn-outline"
+                        onClick={() => setMostrarConfigDrive(false)}
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        className="btn-primary"
+                        disabled={guardandoConfigDrive}
+                      >
+                        {guardandoConfigDrive ? 'Conectando...' : 'Guardar y leer copias de Drive'}
+                      </button>
+                    </div>
+                  </form>
+                )}
 
                 {versionesBackup.length === 0 ? (
                   <div
@@ -1093,7 +1288,17 @@ export const MaestrosView: React.FC = () => {
                       color: 'var(--text-muted)'
                     }}
                   >
-                    Todavía no hay copias registradas. Pulsa en <strong>"Generar copia manual"</strong> para guardar la primera versión.
+                    {!driveConfig.folderId ? (
+                      <>
+                        Para listar las copias que tienes en Google Drive, pulsa en{' '}
+                        <strong>"☁️ Conectar Google Drive"</strong> (o ejecuta una vez el flujo de GitHub Actions para que se vincule automáticamente).
+                      </>
+                    ) : (
+                      <>
+                        No se encontraron archivos de copia en la carpeta de Google Drive. Pulsa en{' '}
+                        <strong>"Generar copia manual"</strong> o en <strong>"🔄 Actualizar lista"</strong>.
+                      </>
+                    )}
                   </div>
                 ) : (
                   <div
@@ -1118,7 +1323,7 @@ export const MaestrosView: React.FC = () => {
                     >
                       {versionesBackup.map((v) => (
                         <option key={v.id} value={v.id}>
-                          {v.fechaFormateada} ({v.tipo === 'automatica' ? 'Copia diaria' : 'Copia manual'})
+                          {v.fechaFormateada}
                         </option>
                       ))}
                     </select>

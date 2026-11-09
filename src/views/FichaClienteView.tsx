@@ -925,12 +925,9 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
     });
 
     const renderFilaDetalle = (ej: any, keyStr: string) => {
-      const acronimo = ej.Acrónimo || ej.alias || '';
-      const nombre = ej.Nombre_Ejercicio || '';
-      const tituloEj =
-        acronimo && nombre && acronimo !== nombre
-          ? `${acronimo} · ${nombre}`
-          : acronimo || nombre || 'Ejercicio';
+      const acronimo = String(ej.Acrónimo || ej.alias || '').trim();
+      const nombre = String(ej.Nombre_Ejercicio || '').trim();
+      const tituloEj = acronimo || nombre || 'Ejercicio';
 
       const detallesArr: string[] = [];
       if (ej.Detalle && String(ej.Detalle).trim() !== '') detallesArr.push(ej.Detalle);
