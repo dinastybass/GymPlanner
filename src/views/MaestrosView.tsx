@@ -1177,7 +1177,7 @@ export const MaestrosView: React.FC = () => {
                         onClick={() => setMostrarConfigDrive(!mostrarConfigDrive)}
                         style={{ padding: '6px 12px', fontSize: '0.8rem' }}
                       >
-                        {driveConfig.folderId ? '⚙️ Ajustes Google Drive' : '☁️ Conectar Google Drive'}
+                        {driveConfig.folderId ? '⚙️ Conexión guardada' : '☁️ Conectar Google Drive'}
                       </button>
                     )}
                   </div>
@@ -1195,10 +1195,10 @@ export const MaestrosView: React.FC = () => {
                     }}
                   >
                     <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 6 }}>
-                      ☁️ Conexión con carpeta de Google Drive
+                      ☁️ Conexión con carpeta de Google Drive (guardada permanentemente)
                     </div>
                     <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 0, marginBottom: 12 }}>
-                      Introduce los mismos datos de tu carpeta de Google Drive para que la aplicación lea y liste directamente todos los archivos de copia de seguridad guardados en Drive.
+                      Estos datos quedan guardados en la base de datos: <strong>solo necesitas configurarlos una vez</strong> y se mantendrán en todos tus inicios de sesión y dispositivos.
                     </p>
                     <div
                       style={{

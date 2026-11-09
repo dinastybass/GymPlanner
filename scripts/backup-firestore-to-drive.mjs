@@ -296,6 +296,31 @@ async function main() {
     const uploaded = await uploadBackupToGoogleDrive(driveToken, folderId, fileName, fileBuffer);
     console.log(`☁️ Subido a Google Drive con éxito: ${uploaded.name} (ID: ${uploaded.id})`);
     await cleanupOldBackupsInDrive(driveToken, folderId, RETENTION_DAYS);
+
+    // Guardar/sincronizar la configuración de conexión en Firestore (maestros/config_gdrive_backup)
+    // para que la web nunca vuelva a pedir los datos aunque se cambie de navegador o sesión
+    try {
+      const cleanFolderId = extractDriveFolderId(folderId);
+      const cfgUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/maestros/config_gdrive_backup`;
+      await fetch(cfgUrl, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${firestoreToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fields: {
+            folderId: { stringValue: cleanFolderId },
+            clientId: { stringValue: clientId || '' },
+            clientSecret: { stringValue: clientSecret || '' },
+            refreshToken: { stringValue: refreshToken || '' },
+            updatedAt: { stringValue: new Date().toISOString() },
+          },
+        }),
+      });
+    } catch (syncErr) {
+      console.warn('⚠️ Aviso al sincronizar config_gdrive_backup en Firestore:', syncErr.message);
+    }
   }
 }
 

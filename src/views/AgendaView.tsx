@@ -2220,8 +2220,8 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                 <span>{activeMenu.acciones.estado === 'Completada' ? '⚪' : '🟢'}</span>
                 <span>
                   {activeMenu.acciones.estado === 'Completada'
-                    ? 'Marcar como Pendiente'
-                    : 'Marcar como Completada'}
+                    ? 'Marcar Como Pendiente'
+                    : 'Marcar Como Completada'}
                 </span>
               </button>
             )}
@@ -2236,11 +2236,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
               }}
             >
               <span>🏋️</span>
-              <span>
-                {activeMenu.acciones.ejercicios.length > 0
-                  ? 'Entrar en programación (Ver / Editar)'
-                  : 'Entrar en programación (Programar ejercicios)'}
-              </span>
+              <span>Programación</span>
             </button>
 
             {activeMenu.acciones.puedeReprogramar && (
@@ -2252,9 +2248,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                 }
               >
                 <span>📅</span>
-                <span>
-                  {activeMenu.acciones.sin_fecha ? 'Asignar fecha/hora' : 'Reprogramar fecha/hora'}
-                </span>
+                <span>Reprogramar</span>
               </button>
             )}
 
@@ -2278,7 +2272,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                 }}
               >
                 <span>➡️</span>
-                <span>Enviar ejercicios a...</span>
+                <span>Enviar Programación</span>
               </button>
             )}
 
@@ -2295,11 +2289,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                 }
               >
                 <span>🗑️</span>
-                <span>
-                  {activeMenu.acciones.puedeCancelarSinFecha
-                    ? 'Eliminar o enviar a sin fecha'
-                    : 'Eliminar sesión'}
-                </span>
+                <span>Cancelar o Eliminar</span>
               </button>
             )}
           </div>

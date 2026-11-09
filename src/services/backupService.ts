@@ -89,35 +89,78 @@ export function formatearFechaBackup(isoString: string): string {
   return `${dia}/${mes}/${anio} - ${hora}:${min}`;
 }
 
+const LOCAL_STORAGE_GDRIVE_KEY = 'gym_gdrive_config_v1';
+
 export async function cargarConfigGoogleDrive(): Promise<GoogleDriveBackupConfig | null> {
   try {
     const snap = await getDoc(doc(db, 'maestros', GDRIVE_CONFIG_DOC_ID));
-    if (!snap.exists()) return null;
-    const data = snap.data();
-    const folderId = extraerIdCarpetaDrive(String(data?.folderId || ''));
-    if (!folderId) return null;
-    return {
-      folderId,
-      clientId: String(data?.clientId || '').trim(),
-      clientSecret: String(data?.clientSecret || '').trim(),
-      refreshToken: String(data?.refreshToken || '').trim(),
-      updatedAt: String(data?.updatedAt || ''),
-    };
+    if (snap.exists()) {
+      const data = snap.data();
+      const folderId = extraerIdCarpetaDrive(String(data?.folderId || ''));
+      if (folderId) {
+        const cfg: GoogleDriveBackupConfig = {
+          folderId,
+          clientId: String(data?.clientId || '').trim(),
+          clientSecret: String(data?.clientSecret || '').trim(),
+          refreshToken: String(data?.refreshToken || '').trim(),
+          updatedAt: String(data?.updatedAt || ''),
+        };
+        try {
+          localStorage.setItem(LOCAL_STORAGE_GDRIVE_KEY, JSON.stringify(cfg));
+        } catch {
+          // ignore storage errors
+        }
+        return cfg;
+      }
+    }
   } catch (e) {
-    console.warn('No se pudo leer config_gdrive_backup:', e);
-    return null;
+    console.warn('No se pudo leer config_gdrive_backup de Firestore:', e);
   }
+
+  // Fallback local (por ejemplo si se cambia entre entorno DEV y PROD en el mismo navegador)
+  try {
+    const rawLocal = localStorage.getItem(LOCAL_STORAGE_GDRIVE_KEY);
+    if (rawLocal) {
+      const parsed = JSON.parse(rawLocal);
+      const folderId = extraerIdCarpetaDrive(String(parsed?.folderId || ''));
+      if (folderId) {
+        const cfg: GoogleDriveBackupConfig = {
+          folderId,
+          clientId: String(parsed?.clientId || '').trim(),
+          clientSecret: String(parsed?.clientSecret || '').trim(),
+          refreshToken: String(parsed?.refreshToken || '').trim(),
+          updatedAt: String(parsed?.updatedAt || new Date().toISOString()),
+        };
+        // Persistir automáticamente en la BBDD activa para que quede guardado para siempre
+        try {
+          await setDoc(doc(db, 'maestros', GDRIVE_CONFIG_DOC_ID), cfg);
+        } catch {
+          // ignore if readonly
+        }
+        return cfg;
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  return null;
 }
 
 export async function guardarConfigGoogleDrive(config: GoogleDriveBackupConfig): Promise<void> {
-  const folderId = extraerIdCarpetaDrive(config.folderId);
-  await setDoc(doc(db, 'maestros', GDRIVE_CONFIG_DOC_ID), {
-    folderId,
+  const payload: GoogleDriveBackupConfig = {
+    folderId: extraerIdCarpetaDrive(config.folderId),
     clientId: (config.clientId || '').trim(),
     clientSecret: (config.clientSecret || '').trim(),
     refreshToken: (config.refreshToken || '').trim(),
     updatedAt: new Date().toISOString(),
-  });
+  };
+  try {
+    localStorage.setItem(LOCAL_STORAGE_GDRIVE_KEY, JSON.stringify(payload));
+  } catch {
+    // ignore
+  }
+  await setDoc(doc(db, 'maestros', GDRIVE_CONFIG_DOC_ID), payload);
 }
 
 async function obtenerAccessTokenDrive(config: GoogleDriveBackupConfig): Promise<string | null> {
