@@ -1,4 +1,13 @@
-import { collection, doc, getDocs, Timestamp, writeBatch } from 'firebase/firestore';
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  Timestamp,
+  writeBatch,
+} from 'firebase/firestore';
 import { db, isProduction } from '../firebase';
 
 export const BACKUP_COLLECTIONS = [
@@ -28,6 +37,30 @@ export interface BackupMetadata {
 export interface GymPlannerBackupFile {
   metadata: BackupMetadata;
   collections: Record<string, Record<string, Record<string, any>>>;
+}
+
+export interface VersionBackupItem {
+  id: string;
+  createdAt: string;
+  fechaFormateada: string;
+  tipo: 'manual' | 'automatica';
+  chunkCount: number;
+  totalDocuments: number;
+}
+
+const BACKUP_INDEX_DOC_ID = 'backup_index_v1';
+const CHUNK_CHAR_SIZE = 350000; // ~350 KB por fragmento (límite Firestore: 1 MB)
+const MAX_STORED_VERSIONS = 30;
+
+export function formatearFechaBackup(isoString: string): string {
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return isoString;
+  const dia = String(d.getDate()).padStart(2, '0');
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  const anio = d.getFullYear();
+  const hora = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${dia}/${mes}/${anio} - ${hora}:${min}`;
 }
 
 /**
@@ -106,7 +139,7 @@ function deserializeFirestoreValue(value: any): any {
 }
 
 /**
- * Exports all Firestore collections into a single structured JSON object
+ * Exports all Firestore collections into a single structured object
  */
 export async function generarBackupCompletoJSON(
   onProgress?: (msg: string) => void
@@ -116,11 +149,15 @@ export async function generarBackupCompletoJSON(
   let totalDocuments = 0;
 
   for (const colName of BACKUP_COLLECTIONS) {
-    onProgress?.(`Exportando colección "${colName}"...`);
+    onProgress?.('Recopilando datos actuales...');
     const snap = await getDocs(collection(db, colName));
     const colDocs: Record<string, Record<string, any>> = {};
 
     snap.forEach((docSnap) => {
+      // No incluir los propios documentos internos de almacenamiento de copias dentro de maestros
+      if (colName === 'maestros' && docSnap.id.startsWith('backup_')) {
+        return;
+      }
       colDocs[docSnap.id] = serializeFirestoreValue(docSnap.data());
     });
 
@@ -151,110 +188,169 @@ export async function generarBackupCompletoJSON(
 }
 
 /**
- * Generates and triggers a browser download of the full JSON backup file
+ * Lists all available backup versions sorted from newest to oldest
  */
-export async function descargarBackupCompletoWeb(
-  onProgress?: (msg: string) => void
-): Promise<{ fileName: string; backup: GymPlannerBackupFile }> {
-  const backup = await generarBackupCompletoJSON(onProgress);
-  const envShort = isProduction ? 'prod' : 'dev';
-  const fileName = `backup-gymplanner-${envShort}-${backup.metadata.date}.json`;
-
-  const jsonString = JSON.stringify(backup, null, 2);
-  const blob = new Blob([jsonString], { type: 'application/json;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-
-  return { fileName, backup };
-}
-
-/**
- * Validates a parsed JSON backup file before restoring
- */
-export function analizarArchivoBackupJSON(rawText: string): GymPlannerBackupFile {
-  let parsed: any;
+export async function listarVersionesBackup(): Promise<VersionBackupItem[]> {
   try {
-    parsed = JSON.parse(rawText);
-  } catch {
-    throw new Error('El archivo seleccionado no es un JSON válido.');
+    const snap = await getDoc(doc(db, 'maestros', BACKUP_INDEX_DOC_ID));
+    if (!snap.exists()) return [];
+    const data = snap.data();
+    const versiones = Array.isArray(data?.versiones) ? data.versiones : [];
+    return versiones
+      .map((v: any) => ({
+        id: String(v.id || ''),
+        createdAt: String(v.createdAt || ''),
+        fechaFormateada: v.fechaFormateada || formatearFechaBackup(String(v.createdAt || '')),
+        tipo: (v.tipo === 'automatica' ? 'automatica' : 'manual') as 'manual' | 'automatica',
+        chunkCount: Number(v.chunkCount || 1),
+        totalDocuments: Number(v.totalDocuments || 0),
+      }))
+      .filter((v: VersionBackupItem) => Boolean(v.id))
+      .sort((a: VersionBackupItem, b: VersionBackupItem) =>
+        b.createdAt.localeCompare(a.createdAt)
+      );
+  } catch (e) {
+    console.warn('No se pudo cargar el listado de copias de seguridad:', e);
+    return [];
   }
-
-  if (!parsed || typeof parsed !== 'object' || !parsed.collections || typeof parsed.collections !== 'object') {
-    throw new Error('El archivo JSON no tiene la estructura de backup de GymPlanner (falta el nodo "collections").');
-  }
-
-  const counts: Record<string, number> = {};
-  let totalDocuments = 0;
-  const colNames = Object.keys(parsed.collections);
-
-  for (const col of colNames) {
-    const docsObj = parsed.collections[col] || {};
-    const count = Object.keys(docsObj).length;
-    counts[col] = count;
-    totalDocuments += count;
-  }
-
-  const metadata: BackupMetadata = {
-    app: parsed.metadata?.app || 'GymPlanner',
-    environment: parsed.metadata?.environment || 'unknown',
-    projectId: parsed.metadata?.projectId || 'unknown',
-    createdAt: parsed.metadata?.createdAt || new Date().toISOString(),
-    date: parsed.metadata?.date || new Date().toISOString().slice(0, 10),
-    version: parsed.metadata?.version || '1.0',
-    totalCollections: colNames.length,
-    totalDocuments,
-    counts,
-  };
-
-  return {
-    metadata,
-    collections: parsed.collections,
-  };
 }
 
 /**
- * Restores selected collections from a GymPlannerBackupFile into Firestore in batches of 400
+ * Creates a new manual backup version and stores it in the version history
  */
-export async function restaurarBackupJSON(
-  backup: GymPlannerBackupFile,
-  coleccionesSeleccionadas: string[],
+export async function generarCopiaManual(
   onProgress?: (msg: string) => void
-): Promise<{ coleccionesRestauradas: number; documentosRestaurados: number }> {
-  let documentosRestaurados = 0;
-  let coleccionesRestauradas = 0;
+): Promise<VersionBackupItem> {
+  const backupData = await generarBackupCompletoJSON(onProgress);
+  onProgress?.('Guardando copia de seguridad...');
 
-  for (const colName of coleccionesSeleccionadas) {
-    const colDocs = backup.collections[colName];
+  const jsonStr = JSON.stringify(backupData);
+  const chunks: string[] = [];
+  for (let i = 0; i < jsonStr.length; i += CHUNK_CHAR_SIZE) {
+    chunks.push(jsonStr.slice(i, i + CHUNK_CHAR_SIZE));
+  }
+  if (chunks.length === 0) {
+    chunks.push('{}');
+  }
+
+  const nowIso = new Date().toISOString();
+  const backupId = `bkp_${Date.now()}`;
+
+  for (let idx = 0; idx < chunks.length; idx++) {
+    await setDoc(doc(db, 'maestros', `backup_chunk_${backupId}_${idx}`), {
+      backupId,
+      chunkIndex: idx,
+      data: chunks[idx],
+      createdAt: nowIso,
+    });
+  }
+
+  const nuevaVersion: VersionBackupItem = {
+    id: backupId,
+    createdAt: nowIso,
+    fechaFormateada: formatearFechaBackup(nowIso),
+    tipo: 'manual',
+    chunkCount: chunks.length,
+    totalDocuments: backupData.metadata.totalDocuments,
+  };
+
+  const versionesActuales = await listarVersionesBackup();
+  const todasLasVersiones = [nuevaVersion, ...versionesActuales];
+
+  const versionesAConservar = todasLasVersiones.slice(0, MAX_STORED_VERSIONS);
+  const versionesAEliminar = todasLasVersiones.slice(MAX_STORED_VERSIONS);
+
+  // Limpiar fragmentos de versiones antiguas que superen las 30 copias
+  for (const oldVer of versionesAEliminar) {
+    for (let i = 0; i < oldVer.chunkCount; i++) {
+      try {
+        await deleteDoc(doc(db, 'maestros', `backup_chunk_${oldVer.id}_${i}`));
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  await setDoc(doc(db, 'maestros', BACKUP_INDEX_DOC_ID), {
+    updatedAt: nowIso,
+    versiones: versionesAConservar,
+  });
+
+  return nuevaVersion;
+}
+
+/**
+ * Restores all collections from a saved backup version by ID
+ */
+export async function restaurarVersionPorId(
+  backupId: string,
+  onProgress?: (msg: string) => void
+): Promise<void> {
+  onProgress?.('Cargando copia seleccionada...');
+  const versiones = await listarVersionesBackup();
+  const versionTarget = versiones.find((v) => v.id === backupId);
+  if (!versionTarget) {
+    throw new Error('No se encontró la copia de seguridad seleccionada.');
+  }
+
+  const chunkPromises = [];
+  for (let idx = 0; idx < versionTarget.chunkCount; idx++) {
+    chunkPromises.push(getDoc(doc(db, 'maestros', `backup_chunk_${backupId}_${idx}`)));
+  }
+
+  const chunkSnaps = await Promise.all(chunkPromises);
+  let jsonCompleto = '';
+  for (const snap of chunkSnaps) {
+    if (!snap.exists()) {
+      throw new Error('La copia de seguridad está incompleta o dañada.');
+    }
+    jsonCompleto += String(snap.data()?.data || '');
+  }
+
+  const parsedBackup = JSON.parse(jsonCompleto) as GymPlannerBackupFile;
+  if (!parsedBackup || !parsedBackup.collections) {
+    throw new Error('El formato de la copia de seguridad no es válido.');
+  }
+
+  onProgress?.('Restaurando datos...');
+  const colecciones = Object.keys(parsedBackup.collections);
+
+  for (const colName of colecciones) {
+    const colDocs = parsedBackup.collections[colName];
     if (!colDocs || typeof colDocs !== 'object') continue;
 
-    const entries = Object.entries(colDocs);
-    coleccionesRestauradas++;
+    // Sincronizar colección: eliminar documentos que no existían en la copia (salvo los docs de backups en maestros)
+    const currentSnap = await getDocs(collection(db, colName));
+    const idsEnBackup = new Set(Object.keys(colDocs));
+    const docsABorrar: string[] = [];
 
-    if (entries.length === 0) continue;
+    currentSnap.forEach((dSnap) => {
+      if (colName === 'maestros' && dSnap.id.startsWith('backup_')) return;
+      if (!idsEnBackup.has(dSnap.id)) {
+        docsABorrar.push(dSnap.id);
+      }
+    });
 
     const BATCH_SIZE = 400;
+    for (let i = 0; i < docsABorrar.length; i += BATCH_SIZE) {
+      const chunkIds = docsABorrar.slice(i, i + BATCH_SIZE);
+      const delBatch = writeBatch(db);
+      for (const idToDel of chunkIds) {
+        delBatch.delete(doc(db, colName, idToDel));
+      }
+      await delBatch.commit();
+    }
+
+    const entries = Object.entries(colDocs);
     for (let i = 0; i < entries.length; i += BATCH_SIZE) {
       const chunk = entries.slice(i, i + BATCH_SIZE);
-      onProgress?.(
-        `Restaurando "${colName}" (${Math.min(i + chunk.length, entries.length)} / ${entries.length} documentos)...`
-      );
-
       const batch = writeBatch(db);
       for (const [docId, rawData] of chunk) {
+        if (colName === 'maestros' && docId.startsWith('backup_')) continue;
         const deserializedData = deserializeFirestoreValue(rawData);
         batch.set(doc(db, colName, docId), deserializedData);
-        documentosRestaurados++;
       }
       await batch.commit();
     }
   }
-
-  return { coleccionesRestauradas, documentosRestaurados };
 }

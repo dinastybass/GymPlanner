@@ -43,7 +43,7 @@ export const ESTRUCTURA_MAESTROS: Record<string, string[]> = {
     "Permisos"
   ],
   "Copias de Seguridad": [
-    "Backups y Google Drive"
+    "Copias de Seguridad"
   ]
 };
 
@@ -343,6 +343,15 @@ export function esRolProyectorSala(nombreRol: string): boolean {
   return rNorm === 'proyector sala' || rNorm === 'proyector_sala' || rNorm === 'proyector' || rNorm === 'invitado';
 }
 
+export function esRolBasico(nombreRol: string): boolean {
+  const rNorm = String(nombreRol || '')
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  return rNorm === 'basico' || rNorm === 'rol basico';
+}
+
 export function normalizarPermisosAccion(
   val: any,
   defaultObj: PermisoAccion = { ver: false, editar: false, crear: false, borrar: false }
@@ -362,6 +371,7 @@ export function PermisosPorDefectoParaRol(nombreRol: string): Record<string, Per
   const rNorm = String(nombreRol || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   const isAdmin = esRolAdmin(nombreRol);
   const isProyector = esRolProyectorSala(nombreRol);
+  const isBasico = esRolBasico(nombreRol);
   const isLectura = rNorm === 'recepcion' || rNorm === 'consulta' || rNorm === 'lectura';
 
   const mapa: Record<string, PermisoAccion> = {};
@@ -370,6 +380,13 @@ export function PermisosPorDefectoParaRol(nombreRol: string): Record<string, Per
       mapa[p.id] = { ver: true, editar: true, crear: true, borrar: true };
     } else if (isProyector) {
       mapa[p.id] = { ver: p.id === 'pantalla_sala', editar: false, crear: false, borrar: false };
+    } else if (isBasico) {
+      // Rol Básico: solo ver la planificación de Hoy y marcar sesiones como completadas
+      if (p.id === 'planificacion') {
+        mapa[p.id] = { ver: true, editar: true, crear: false, borrar: false };
+      } else {
+        mapa[p.id] = { ver: false, editar: false, crear: false, borrar: false };
+      }
     } else if (isLectura) {
       if (['planificacion', 'pantalla_sala', 'clientes', 'ejercicios', 'plantillas'].includes(p.id)) {
         mapa[p.id] = { ver: true, editar: false, crear: false, borrar: false };
@@ -409,6 +426,7 @@ export async function asegurarRolesYPermisosIniciales(): Promise<{ roles: string
       const mesesReprogDocKey = limpiarNombreDoc("Meses de margen para reprogramar");
       const mesesReprogSnap = await getDoc(doc(db, "maestros", mesesReprogDocKey));
       if (!mesesReprogSnap.exists() || !mesesReprogSnap.data()?.valores || Object.keys(mesesReprogSnap.data().valores).length === 0) {
+        await guardarValorMaestro("Agenda", "Ocupación máxima", "6", 1);
         await guardarValorMaestro("Agenda", "Meses de margen para reprogramar", "1", 1);
       }
     } catch (errOcup) {
@@ -416,7 +434,16 @@ export async function asegurarRolesYPermisosIniciales(): Promise<{ roles: string
     }
 
     const rolesExistentes = await getValoresMaestro("Gestión de Perfiles", "Roles");
-    const rolesSet = new Set(['admin', 'programador', 'Proyector Sala', ...rolesExistentes]);
+    const tieneBasico = rolesExistentes.some(r => esRolBasico(r));
+    if (!tieneBasico) {
+      try {
+        await guardarValorMaestro("Gestión de Perfiles", "Roles", "Básico");
+      } catch (errRol) {
+        console.warn("No se pudo guardar rol Básico en maestros:", errRol);
+      }
+    }
+
+    const rolesSet = new Set(['admin', 'programador', 'Básico', 'Proyector Sala', ...rolesExistentes]);
 
     const matrizRef = doc(db, "maestros", "config_permisos_roles");
     const matrizSnap = await getDoc(matrizRef);
@@ -436,7 +463,7 @@ export async function asegurarRolesYPermisosIniciales(): Promise<{ roles: string
     return { roles: Array.from(rolesSet), matriz: matrizLimpia };
   } catch (e) {
     console.warn("Error en asegurarRolesYPermisosIniciales:", e);
-    const defaultRoles = ['admin', 'programador', 'Proyector Sala'];
+    const defaultRoles = ['admin', 'programador', 'Básico', 'Proyector Sala'];
     const defaultMatriz: MatrizPermisos = {};
     defaultRoles.forEach(r => defaultMatriz[r] = PermisosPorDefectoParaRol(r));
     return { roles: defaultRoles, matriz: defaultMatriz };
@@ -453,7 +480,9 @@ export async function cargarMatrizPermisos(): Promise<MatrizPermisos> {
     }
     const rolesRaw = snap.data().roles || {};
     const rolesNormalizados: MatrizPermisos = {};
-    for (const [rol, mapaRol] of Object.entries(rolesRaw as Record<string, any>)) {
+    const todosLosRoles = new Set(['admin', 'programador', 'Básico', 'Proyector Sala', ...Object.keys(rolesRaw)]);
+    for (const rol of todosLosRoles) {
+      const mapaRol = rolesRaw[rol];
       const defaultsRol = PermisosPorDefectoParaRol(rol);
       rolesNormalizados[rol] = {};
       CATALOGO_PERMISOS_APP.forEach(p => {

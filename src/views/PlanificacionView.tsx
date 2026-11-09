@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { collection, getDocs, query, where, doc, updateDoc, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { cargarCatalogoMaestros, extraerListaMaster } from '../services/maestrosService';
+import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
 import { normalizarIntensidad, esSesionCompletada, parsearFechaFirestore } from '../utils/helpers';
 import {
@@ -25,7 +26,15 @@ const diasSemanaMap: Record<number, string> = {
 };
 
 export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate }) => {
+  const { hasPermission } = useAuth();
   const { registerChangeListener } = useUndo();
+
+  const puedeEditarEstadoSesion = hasPermission('planificacion', 'editar');
+  const puedeProgramarSesiones = hasPermission('programar_sesiones', 'ver') && hasPermission('programar_sesiones', 'editar');
+  const puedeVerClientes = hasPermission('clientes', 'ver');
+  const puedeVerEjercicios = hasPermission('ejercicios', 'ver');
+  const puedeVerPantallaSala = hasPermission('pantalla_sala', 'ver');
+  const puedeRegistrarPR = hasPermission('progreso_pr', 'crear') || hasPermission('progreso_pr', 'editar');
 
   const [currentDate, setCurrentDate] = useState<Date>(() => {
     try {
@@ -209,6 +218,7 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
 
   const handleToggleStatus = async (e: React.MouseEvent, sesion: any) => {
     e.stopPropagation();
+    if (!puedeEditarEstadoSesion) return;
     const isCompleted = esSesionCompletada(sesion);
     const nextStatus = isCompleted ? 'Pendiente' : 'Completada';
     const nextManual = nextStatus === 'Pendiente';
@@ -384,7 +394,7 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
           <div className="preview-ex">
             <span>
               •{' '}
-              {idEj ? (
+              {idEj && puedeVerEjercicios ? (
                 <a
                   href={`#ficha_ejercicio/${idEj}`}
                   onClick={e => {
@@ -422,7 +432,7 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
               {intBadge}
             </span>
           </div>
-          {ej.guardar_progreso && (
+          {ej.guardar_progreso && puedeRegistrarPR && (
             <div style={{ textAlign: 'right', marginBottom: 6, marginTop: -2 }}>
               <button
                 type="button"
@@ -460,13 +470,14 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
       <div
         key={s.id}
         className="card"
+        style={{ cursor: s.id_cliente && puedeVerClientes ? 'pointer' : 'default' }}
         onClick={() => {
-          if (s.id_cliente) onNavigate('ficha_cliente', s.id_cliente);
+          if (s.id_cliente && puedeVerClientes) onNavigate('ficha_cliente', s.id_cliente);
         }}
       >
         <div className="card-header">
           <span>
-            {s.id_cliente ? (
+            {s.id_cliente && puedeVerClientes ? (
               <a
                 href={`#ficha_cliente/${s.id_cliente}`}
                 className="client-link"
@@ -542,22 +553,25 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
         <div className="card-footer">
           <div
             className={statusClass}
+            style={{ cursor: puedeEditarEstadoSesion ? 'pointer' : 'default' }}
             onClick={e => handleToggleStatus(e, s)}
-            title="Haz clic para cambiar estado"
+            title={puedeEditarEstadoSesion ? 'Haz clic para cambiar estado' : ''}
           >
             {statusContent}
           </div>
-          <a
-            href={`#programar_sesion/${s.id}`}
-            className="link"
-            onClick={e => {
-              e.preventDefault();
-              e.stopPropagation();
-              onNavigate('programar_sesion', s.id);
-            }}
-          >
-            + Añadir Ejercicio
-          </a>
+          {puedeProgramarSesiones && (
+            <a
+              href={`#programar_sesion/${s.id}`}
+              className="link"
+              onClick={e => {
+                e.preventDefault();
+                e.stopPropagation();
+                onNavigate('programar_sesion', s.id);
+              }}
+            >
+              + Añadir Ejercicio
+            </a>
+          )}
         </div>
       </div>
     );
@@ -575,15 +589,17 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
           <span className="desktop-text">Entrenamientos · Visión de Día</span>
           <span className="mobile-text">Entrenamientos</span>
         </h1>
-        <button
-          type="button"
-          className="btn-pantalla-sala"
-          onClick={() => onNavigate('pantalla_sala')}
-          title="Abrir vista optimizada para proyector de sala"
-        >
-          📺 <span className="desktop-text">Pantalla Sala</span>
-          <span className="mobile-text">Sala</span>
-        </button>
+        {puedeVerPantallaSala && (
+          <button
+            type="button"
+            className="btn-pantalla-sala"
+            onClick={() => onNavigate('pantalla_sala')}
+            title="Abrir vista optimizada para proyector de sala"
+          >
+            📺 <span className="desktop-text">Pantalla Sala</span>
+            <span className="mobile-text">Sala</span>
+          </button>
+        )}
       </div>
 
       <div className="date-bar">
@@ -740,7 +756,7 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
                       {clients.map((c, idx) => (
                         <React.Fragment key={idx}>
                           {idx > 0 && ' · '}
-                          {c.idCli ? (
+                          {c.idCli && puedeVerClientes ? (
                             <a
                               href={`#ficha_cliente/${c.idCli}`}
                               className="client-link"

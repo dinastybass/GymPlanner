@@ -16,7 +16,7 @@ import { EditarPlantillaView } from './views/EditarPlantillaView';
 import { MaestrosView } from './views/MaestrosView';
 import { ProgramacionesPendientesView } from './views/ProgramacionesPendientesView';
 import { PantallaSalaView } from './views/PantallaSalaView';
-import { esRolProyectorSala } from './services/maestrosService';
+import { esRolProyectorSala, esRolBasico } from './services/maestrosService';
 
 const VALID_TABS = new Set([
   'planificacion',
@@ -71,7 +71,8 @@ function guardarRutaActiva(tab: string, param: string) {
 }
 
 const AppContent: React.FC = () => {
-  const { user, isProyector, loading } = useAuth();
+  const { user, role, isProyector, loading } = useAuth();
+  const isBasico = esRolBasico(role);
   const [initialRoute] = useState<{ tab: string; param: string }>(() => leerRutaInicial());
   const [activeTab, setActiveTab] = useState<string>(initialRoute.tab);
   const [routeParam, setRouteParam] = useState<string>(initialRoute.param);
@@ -80,12 +81,16 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     if (isProyector) {
       setActiveTab('pantalla_sala');
+    } else if (isBasico && activeTab !== 'planificacion') {
+      setActiveTab('planificacion');
+      setRouteParam('');
+      guardarRutaActiva('planificacion', '');
     }
-  }, [isProyector]);
+  }, [isProyector, isBasico, activeTab]);
 
   useEffect(() => {
-    const tabInicial = isProyector ? 'pantalla_sala' : activeTab;
-    const paramInicial = isProyector ? '' : routeParam;
+    const tabInicial = isProyector ? 'pantalla_sala' : isBasico ? 'planificacion' : activeTab;
+    const paramInicial = isProyector || isBasico ? '' : routeParam;
     const hashInicial = paramInicial
       ? `#${tabInicial}/${encodeURIComponent(paramInicial)}`
       : `#${tabInicial}`;
@@ -96,6 +101,11 @@ const AppContent: React.FC = () => {
     const handlePopState = (event: PopStateEvent) => {
       if (isProyector) {
         setActiveTab('pantalla_sala');
+        return;
+      }
+      if (isBasico) {
+        setActiveTab('planificacion');
+        setRouteParam('');
         return;
       }
       if (event.state && event.state.tab && VALID_TABS.has(event.state.tab)) {
@@ -116,11 +126,16 @@ const AppContent: React.FC = () => {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [isProyector]);
+  }, [isProyector, isBasico]);
 
   const handleNavigate = (tab: string, param = '') => {
     if (isProyector && tab !== 'pantalla_sala') {
       setActiveTab('pantalla_sala');
+      return;
+    }
+    if (isBasico && tab !== 'planificacion') {
+      setActiveTab('planificacion');
+      setRouteParam('');
       return;
     }
     if (tab === activeTab && param === routeParam) return;
@@ -163,11 +178,15 @@ const AppContent: React.FC = () => {
   if (!user) {
     return (
       <LoginView
-        onSuccess={role => {
-          if (esRolProyectorSala(role)) {
+        onSuccess={loggedInRole => {
+          if (esRolProyectorSala(loggedInRole)) {
             setActiveTab('pantalla_sala');
             setRouteParam('');
             guardarRutaActiva('pantalla_sala', '');
+          } else if (esRolBasico(loggedInRole)) {
+            setActiveTab('planificacion');
+            setRouteParam('');
+            guardarRutaActiva('planificacion', '');
           } else {
             const rutaPrevia = leerRutaInicial();
             setActiveTab(rutaPrevia.tab);

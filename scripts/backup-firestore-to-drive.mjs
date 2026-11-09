@@ -2,12 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-/**
- * Automated Daily Backup of Production Firestore (gymapp-d8ae7) to Google Drive.
- * Uses native Node 20 APIs (crypto, fetch, fs) so it requires zero external npm dependencies in GitHub Actions.
- */
-
-const COLLECTIONS = [
+const DEFAULT_COLLECTIONS = [
   'clientes',
   'agenda_sesiones',
   'ejercicios',
@@ -21,16 +16,9 @@ const RETENTION_DAYS = Number(process.env.RETENTION_DAYS || '30');
 
 function base64UrlEncode(input) {
   const buf = Buffer.isBuffer(input) ? input : Buffer.from(input, 'utf8');
-  return buf
-    .toString('base64')
-    .replace(/=/g, '')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_');
+  return buf.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
 }
 
-/**
- * Generates an OAuth2 Access Token from a Google Cloud Service Account JSON
- */
 async function getServiceAccountAccessToken(serviceAccount, scopes) {
   const now = Math.floor(Date.now() / 1000);
   const header = { alg: 'RS256', typ: 'JWT' };
@@ -61,17 +49,12 @@ async function getServiceAccountAccessToken(serviceAccount, scopes) {
   });
 
   if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Error obteniendo token de Service Account (${res.status}): ${errText}`);
+    throw new Error(`Error token Service Account (${res.status}): ${await res.text()}`);
   }
-
   const data = await res.json();
   return data.access_token;
 }
 
-/**
- * Generates an OAuth2 Access Token from User Refresh Token (for personal Google Drive accounts)
- */
 async function getOAuthRefreshTokenAccessToken(clientId, clientSecret, refreshToken) {
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -85,17 +68,37 @@ async function getOAuthRefreshTokenAccessToken(clientId, clientSecret, refreshTo
   });
 
   if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Error obteniendo token OAuth2 de Google Drive (${res.status}): ${errText}`);
+    throw new Error(`Error token OAuth2 Google Drive (${res.status}): ${await res.text()}`);
   }
-
   const data = await res.json();
   return data.access_token;
 }
 
-/**
- * Converts Firestore REST Value format into the same JSON format used by the Web Backup Service
- */
+async function listAllFirestoreCollections(projectId, accessToken) {
+  try {
+    const res = await fetch(
+      `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:listCollectionIds`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ pageSize: 100 }),
+      }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.collectionIds) && data.collectionIds.length > 0) {
+        return Array.from(new Set([...DEFAULT_COLLECTIONS, ...data.collectionIds]));
+      }
+    }
+  } catch (e) {
+    console.warn('No se pudo listar colecciones automáticamente, usando lista base:', e);
+  }
+  return DEFAULT_COLLECTIONS;
+}
+
 function parseFirestoreRestValue(valObj) {
   if (!valObj || typeof valObj !== 'object') return null;
   if ('nullValue' in valObj) return null;
@@ -104,14 +107,10 @@ function parseFirestoreRestValue(valObj) {
   if ('doubleValue' in valObj) return Number(valObj.doubleValue);
   if ('stringValue' in valObj) return String(valObj.stringValue);
   if ('timestampValue' in valObj) {
-    return {
-      __datatype__: 'timestamp',
-      value: valObj.timestampValue,
-    };
+    return { __datatype__: 'timestamp', value: valObj.timestampValue };
   }
   if ('arrayValue' in valObj) {
-    const values = valObj.arrayValue?.values || [];
-    return values.map(parseFirestoreRestValue);
+    return (valObj.arrayValue?.values || []).map(parseFirestoreRestValue);
   }
   if ('mapValue' in valObj) {
     const fields = valObj.mapValue?.fields || {};
@@ -120,12 +119,6 @@ function parseFirestoreRestValue(valObj) {
       result[k] = parseFirestoreRestValue(v);
     }
     return result;
-  }
-  if ('geoPointValue' in valObj) {
-    return valObj.geoPointValue;
-  }
-  if ('referenceValue' in valObj) {
-    return valObj.referenceValue;
   }
   return null;
 }
@@ -139,50 +132,34 @@ function parseFirestoreDocument(doc) {
   return parsed;
 }
 
-/**
- * Fetches all documents in a collection via Firestore REST API (handles pagination)
- */
 async function exportCollection(projectId, accessToken, collectionName) {
   const documentsMap = {};
   let pageToken = '';
-
   do {
     const url = new URL(
       `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${encodeURIComponent(collectionName)}`
     );
     url.searchParams.set('pageSize', '300');
-    if (pageToken) {
-      url.searchParams.set('pageToken', pageToken);
-    }
+    if (pageToken) url.searchParams.set('pageToken', pageToken);
 
     const res = await fetch(url.toString(), {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-
     if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Error exportando colección "${collectionName}" (${res.status}): ${errText}`);
+      throw new Error(`Error exportando "${collectionName}" (${res.status}): ${await res.text()}`);
     }
-
     const data = await res.json();
-    const docs = data.documents || [];
-    for (const doc of docs) {
+    for (const doc of data.documents || []) {
       const segments = doc.name.split('/');
       const docId = segments[segments.length - 1];
       documentsMap[docId] = parseFirestoreDocument(doc);
     }
-
     pageToken = data.nextPageToken || '';
   } while (pageToken);
-
   return documentsMap;
 }
 
-/**
- * Uploads or updates a JSON file in Google Drive Folder
- */
 async function uploadBackupToGoogleDrive(driveToken, folderId, fileName, fileBuffer) {
-  // Check if a backup with the exact same fileName already exists today in the folder
   const searchQuery = `name = '${fileName.replace(/'/g, "\\'")}' and '${folderId}' in parents and trashed = false`;
   const searchUrl = new URL('https://www.googleapis.com/drive/v3/files');
   searchUrl.searchParams.set('q', searchQuery);
@@ -193,12 +170,9 @@ async function uploadBackupToGoogleDrive(driveToken, folderId, fileName, fileBuf
   const searchRes = await fetch(searchUrl.toString(), {
     headers: { Authorization: `Bearer ${driveToken}` },
   });
-
   if (!searchRes.ok) {
-    const errText = await searchRes.text();
-    throw new Error(`Error buscando archivos en Google Drive (${searchRes.status}): ${errText}`);
+    throw new Error(`Error buscando en Google Drive (${searchRes.status}): ${await searchRes.text()}`);
   }
-
   const searchData = await searchRes.json();
   const existingFile = searchData.files?.[0];
 
@@ -231,20 +205,14 @@ async function uploadBackupToGoogleDrive(driveToken, folderId, fileName, fileBuf
   });
 
   if (!uploadRes.ok) {
-    const errText = await uploadRes.text();
-    throw new Error(`Error subiendo backup a Google Drive (${uploadRes.status}): ${errText}`);
+    throw new Error(`Error subiendo a Google Drive (${uploadRes.status}): ${await uploadRes.text()}`);
   }
-
   return await uploadRes.json();
 }
 
-/**
- * Deletes backup files older than retentionDays inside the target Google Drive folder
- */
 async function cleanupOldBackupsInDrive(driveToken, folderId, retentionDays) {
   const cutoffDate = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
   const query = `'${folderId}' in parents and name contains 'backup-gymplanner-prod-' and createdTime < '${cutoffDate}' and trashed = false`;
-
   const listUrl = new URL('https://www.googleapis.com/drive/v3/files');
   listUrl.searchParams.set('q', query);
   listUrl.searchParams.set('fields', 'files(id, name, createdTime)');
@@ -254,71 +222,44 @@ async function cleanupOldBackupsInDrive(driveToken, folderId, retentionDays) {
   const res = await fetch(listUrl.toString(), {
     headers: { Authorization: `Bearer ${driveToken}` },
   });
-
-  if (!res.ok) {
-    console.warn(`⚠️ No se pudo listar backups antiguos para limpieza (${res.status})`);
-    return;
-  }
-
+  if (!res.ok) return;
   const data = await res.json();
-  const oldFiles = data.files || [];
-
-  if (oldFiles.length === 0) {
-    console.log(`🧹 Retención de ${retentionDays} días: no hay backups antiguos para eliminar.`);
-    return;
-  }
-
-  for (const file of oldFiles) {
+  for (const file of data.files || []) {
     const delRes = await fetch(
       `https://www.googleapis.com/drive/v3/files/${file.id}?supportsAllDrives=true`,
-      {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${driveToken}` },
-      }
+      { method: 'DELETE', headers: { Authorization: `Bearer ${driveToken}` } }
     );
-    if (delRes.ok) {
-      console.log(`🗑️ Backup antiguo eliminado: ${file.name} (${file.createdTime})`);
-    } else {
-      console.warn(`⚠️ No se pudo eliminar ${file.name} (${delRes.status})`);
-    }
+    if (delRes.ok) console.log(`🗑️ Eliminado backup antiguo: ${file.name}`);
   }
 }
 
 async function main() {
   const rawServiceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_PRO;
   if (!rawServiceAccount) {
-    throw new Error('Falta el secret FIREBASE_SERVICE_ACCOUNT_PRO en las variables de entorno.');
+    throw new Error('Falta el secret FIREBASE_SERVICE_ACCOUNT_PRO en GitHub Secrets.');
   }
-
-  let serviceAccount;
-  try {
-    serviceAccount = JSON.parse(rawServiceAccount);
-  } catch (e) {
-    throw new Error('El secret FIREBASE_SERVICE_ACCOUNT_PRO no contiene un JSON válido.');
-  }
-
+  const serviceAccount = JSON.parse(rawServiceAccount);
   const projectId = serviceAccount.project_id || 'gymapp-d8ae7';
   const todayStr = new Date().toISOString().slice(0, 10);
   const fileName = `backup-gymplanner-prod-${todayStr}.json`;
 
-  console.log(`🚀 Iniciando backup de Firestore Producción (${projectId}) - Fecha: ${todayStr}`);
-
+  console.log(`🚀 Exportando Firestore Producción (${projectId}) - ${todayStr}`);
   const firestoreToken = await getServiceAccountAccessToken(serviceAccount, [
     'https://www.googleapis.com/auth/datastore',
   ]);
 
+  const collectionsToExport = await listAllFirestoreCollections(projectId, firestoreToken);
   const collectionsData = {};
   const stats = {};
   let totalDocuments = 0;
 
-  for (const colName of COLLECTIONS) {
-    console.log(`📦 Exportando colección: ${colName}...`);
+  for (const colName of collectionsToExport) {
     const docs = await exportCollection(projectId, firestoreToken, colName);
     const count = Object.keys(docs).length;
     collectionsData[colName] = docs;
     stats[colName] = count;
     totalDocuments += count;
-    console.log(`   ✅ ${colName}: ${count} documentos`);
+    console.log(`✅ ${colName}: ${count} documentos`);
   }
 
   const backupPayload = {
@@ -329,7 +270,7 @@ async function main() {
       createdAt: new Date().toISOString(),
       date: todayStr,
       version: '1.0',
-      totalCollections: COLLECTIONS.length,
+      totalCollections: collectionsToExport.length,
       totalDocuments,
       counts: stats,
     },
@@ -338,43 +279,24 @@ async function main() {
 
   const outDir = path.resolve(process.cwd(), 'backups');
   fs.mkdirSync(outDir, { recursive: true });
-  const localFilePath = path.join(outDir, fileName);
   const fileBuffer = Buffer.from(JSON.stringify(backupPayload, null, 2), 'utf8');
-  fs.writeFileSync(localFilePath, fileBuffer);
-
-  console.log(
-    `💾 Backup guardado localmente en ${localFilePath} (${(fileBuffer.length / 1024).toFixed(1)} KB, ${totalDocuments} documentos totales).`
-  );
+  fs.writeFileSync(path.join(outDir, fileName), fileBuffer);
+  console.log(`💾 Guardado ${fileName} (${totalDocuments} documentos en ${collectionsToExport.length} colecciones)`);
 
   const folderId = process.env.GDRIVE_FOLDER_ID?.trim();
-  if (!folderId) {
-    console.log(
-      'ℹ️ No se definió GDRIVE_FOLDER_ID. El backup queda disponible en los Artifacts de GitHub Actions.'
-    );
-    return;
+  if (folderId) {
+    const clientId = process.env.GDRIVE_CLIENT_ID?.trim();
+    const clientSecret = process.env.GDRIVE_CLIENT_SECRET?.trim();
+    const refreshToken = process.env.GDRIVE_REFRESH_TOKEN?.trim();
+
+    const driveToken = (clientId && clientSecret && refreshToken)
+      ? await getOAuthRefreshTokenAccessToken(clientId, clientSecret, refreshToken)
+      : await getServiceAccountAccessToken(serviceAccount, ['https://www.googleapis.com/auth/drive']);
+
+    const uploaded = await uploadBackupToGoogleDrive(driveToken, folderId, fileName, fileBuffer);
+    console.log(`☁️ Subido a Google Drive con éxito: ${uploaded.name} (ID: ${uploaded.id})`);
+    await cleanupOldBackupsInDrive(driveToken, folderId, RETENTION_DAYS);
   }
-
-  const clientId = process.env.GDRIVE_CLIENT_ID?.trim();
-  const clientSecret = process.env.GDRIVE_CLIENT_SECRET?.trim();
-  const refreshToken = process.env.GDRIVE_REFRESH_TOKEN?.trim();
-
-  let driveToken;
-  if (clientId && clientSecret && refreshToken) {
-    console.log('🔑 Autenticando con Google Drive vía OAuth2 Refresh Token...');
-    driveToken = await getOAuthRefreshTokenAccessToken(clientId, clientSecret, refreshToken);
-  } else {
-    console.log('🔑 Autenticando con Google Drive vía Service Account...');
-    driveToken = await getServiceAccountAccessToken(serviceAccount, [
-      'https://www.googleapis.com/auth/drive',
-    ]);
-  }
-
-  console.log(`☁️ Subiendo ${fileName} a Google Drive (Carpeta: ${folderId})...`);
-  const uploaded = await uploadBackupToGoogleDrive(driveToken, folderId, fileName, fileBuffer);
-  console.log(`✅ Subido con éxito a Google Drive (File ID: ${uploaded.id}, Nombre: ${uploaded.name})`);
-
-  await cleanupOldBackupsInDrive(driveToken, folderId, RETENTION_DAYS);
-  console.log('🎉 Proceso de backup diario finalizado correctamente.');
 }
 
 main().catch((err) => {
