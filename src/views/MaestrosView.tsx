@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, isProduction } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
 import { confirmarDialogo } from '../utils/confirmDialog';
@@ -23,6 +23,13 @@ import {
   esRolAdmin,
   esRolProyectorSala
 } from '../services/maestrosService';
+import {
+  BACKUP_COLLECTIONS,
+  GymPlannerBackupFile,
+  analizarArchivoBackupJSON,
+  descargarBackupCompletoWeb,
+  restaurarBackupJSON
+} from '../services/backupService';
 import { PermisoAccion } from '../types';
 
 const clonarProfundo = (obj: any) => (obj ? JSON.parse(JSON.stringify(obj)) : obj);
@@ -81,7 +88,24 @@ export const MaestrosView: React.FC = () => {
 
   const esAdmin = esRolAdmin(role);
 
+  // Backups & Restore state
+  const [backupDownloading, setBackupDownloading] = useState(false);
+  const [backupProgressMsg, setBackupProgressMsg] = useState('');
+  const [lastBackupInfo, setLastBackupInfo] = useState<{
+    fileName: string;
+    totalDocs: number;
+    timestamp: string;
+  } | null>(null);
+
+  const [restoreParsedFile, setRestoreParsedFile] = useState<GymPlannerBackupFile | null>(null);
+  const [restoreFileName, setRestoreFileName] = useState('');
+  const [restoreSelectedCols, setRestoreSelectedCols] = useState<string[]>([...BACKUP_COLLECTIONS]);
+  const [restoringBackup, setRestoringBackup] = useState(false);
+  const [showGDriveGuide, setShowGDriveGuide] = useState(false);
+  const fileInputBackupRef = useRef<HTMLInputElement | null>(null);
+
   const puedeEditarActual = () => {
+    if (currentSection === 'Copias de Seguridad') return false;
     if (currentSection === 'Gestión de Perfiles' && currentKey === 'Permisos') return false;
     if (esAdmin) return true;
     return currentSection === 'Ejercicios';
@@ -603,11 +627,111 @@ export const MaestrosView: React.FC = () => {
     }
   };
 
+  const handleDescargarBackupAhora = async () => {
+    if (!esAdmin) {
+      alert('Solo los usuarios con rol Administrador pueden generar o restaurar copias de seguridad.');
+      return;
+    }
+    setBackupDownloading(true);
+    setBackupProgressMsg('Iniciando lectura de colecciones...');
+    try {
+      const { fileName, backup } = await descargarBackupCompletoWeb((msg) =>
+        setBackupProgressMsg(msg)
+      );
+      setLastBackupInfo({
+        fileName,
+        totalDocs: backup.metadata.totalDocuments,
+        timestamp: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+      });
+      setBackupProgressMsg('');
+    } catch (e: any) {
+      console.error('Error generando backup:', e);
+      alert('Error al generar el backup: ' + (e?.message || 'Error desconocido'));
+      setBackupProgressMsg('');
+    } finally {
+      setBackupDownloading(false);
+    }
+  };
+
+  const handleSeleccionarArchivoBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const rawText = await file.text();
+      const parsed = analizarArchivoBackupJSON(rawText);
+      setRestoreParsedFile(parsed);
+      setRestoreFileName(file.name);
+      setRestoreSelectedCols(Object.keys(parsed.collections));
+    } catch (err: any) {
+      alert(err?.message || 'El archivo seleccionado no es un backup válido.');
+      setRestoreParsedFile(null);
+      setRestoreFileName('');
+    } finally {
+      if (fileInputBackupRef.current) {
+        fileInputBackupRef.current.value = '';
+      }
+    }
+  };
+
+  const toggleColeccionRestore = (colName: string) => {
+    setRestoreSelectedCols((prev) =>
+      prev.includes(colName) ? prev.filter((c) => c !== colName) : [...prev, colName]
+    );
+  };
+
+  const handleConfirmarRestauracion = async () => {
+    if (!esAdmin || !restoreParsedFile) return;
+    if (restoreSelectedCols.length === 0) {
+      alert('Selecciona al menos una colección para restaurar.');
+      return;
+    }
+
+    const entornoActualNombre = isProduction ? 'PRODUCCIÓN (gymapp-d8ae7)' : 'DESARROLLO (gymplanner-dev-574ea)';
+    const totalDocsSel = restoreSelectedCols.reduce(
+      (acc, col) => acc + (restoreParsedFile.metadata.counts[col] || 0),
+      0
+    );
+
+    const ok = await confirmarDialogo(
+      `¿Estás seguro de restaurar ${totalDocsSel} documentos (${restoreSelectedCols.length} colecciones) del archivo "${restoreFileName}" sobre la base de datos actual de ${entornoActualNombre}?\n\nLos documentos con el mismo ID se sobrescribirán con los datos del backup.`,
+      {
+        titulo: 'Restaurar Copia de Seguridad',
+        textoConfirmar: 'Sí, restaurar backup',
+        danger: isProduction
+      }
+    );
+    if (!ok) return;
+
+    setRestoringBackup(true);
+    setBackupProgressMsg('Preparando restauración...');
+    try {
+      const res = await restaurarBackupJSON(
+        restoreParsedFile,
+        restoreSelectedCols,
+        (msg) => setBackupProgressMsg(msg)
+      );
+      limpiarCacheMaestros();
+      await recargarTodo();
+      alert(
+        `✅ Restauración completada con éxito:\n• ${res.coleccionesRestauradas} colecciones procesadas\n• ${res.documentosRestaurados} documentos restaurados`
+      );
+      setRestoreParsedFile(null);
+      setRestoreFileName('');
+    } catch (err: any) {
+      console.error('Error restaurando backup:', err);
+      alert('Error durante la restauración: ' + (err?.message || 'Error desconocido'));
+    } finally {
+      setRestoringBackup(false);
+      setBackupProgressMsg('');
+    }
+  };
+
   const itemsActuales = getItemsActuales();
   const editable = puedeEditarActual();
   const esVistaPermisos =
     currentSection === 'Gestión de Perfiles' && currentKey === 'Permisos';
   const esVistaRoles = currentSection === 'Gestión de Perfiles' && currentKey === 'Roles';
+  const esVistaBackups = currentSection === 'Copias de Seguridad';
   const rolesDisponibles = getRolesDisponibles();
 
   const descPorAccion: Record<string, { categoria: string; descripcion: string }> = {};
@@ -641,6 +765,7 @@ export const MaestrosView: React.FC = () => {
               {claves.map(clv => {
                 const count = mapaMaestros[seccion]?.[clv]?.length || 0;
                 const isActive = seccion === currentSection && clv === currentKey;
+                const esItemBackup = seccion === 'Copias de Seguridad';
                 return (
                   <button
                     key={clv}
@@ -649,7 +774,7 @@ export const MaestrosView: React.FC = () => {
                     onClick={() => seleccionarClave(seccion, clv)}
                   >
                     <span>{clv}</span>
-                    <span className="key-count">{count}</span>
+                    <span className="key-count">{esItemBackup ? '💾' : count}</span>
                   </button>
                 );
               })}
@@ -674,9 +799,18 @@ export const MaestrosView: React.FC = () => {
               </div>
               <h2>{currentKey}</h2>
             </div>
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              {itemsActuales.length} {itemsActuales.length === 1 ? 'valor' : 'valores'}
-            </span>
+            {esVistaBackups ? (
+              <span
+                className="pill status-activo"
+                style={{ fontSize: '0.78rem', fontWeight: 700 }}
+              >
+                {isProduction ? '🟢 Entorno: PRODUCCIÓN' : '🟠 Entorno: DESARROLLO'}
+              </span>
+            ) : (
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                {itemsActuales.length} {itemsActuales.length === 1 ? 'valor' : 'valores'}
+              </span>
+            )}
           </div>
 
           {!esAdmin && currentSection !== 'Ejercicios' && (
@@ -703,7 +837,7 @@ export const MaestrosView: React.FC = () => {
             </div>
           )}
 
-          {!esVistaPermisos && editable && (
+          {!esVistaPermisos && !esVistaBackups && editable && (
             <div className="add-item-bar">
               <input
                 type={
@@ -755,15 +889,16 @@ export const MaestrosView: React.FC = () => {
             </div>
           )}
 
-          <div className="table-responsive">
-            <table className="maestros-table">
-              <thead>
-                <tr>
-                  <th style={{ width: 80 }}>Orden</th>
-                  <th>Valor</th>
-                  <th style={{ width: 120, textAlign: 'right' }}>Acciones</th>
-                </tr>
-              </thead>
+          {!esVistaBackups && (
+            <div className="table-responsive">
+              <table className="maestros-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: 80 }}>Orden</th>
+                    <th>Valor</th>
+                    <th style={{ width: 120, textAlign: 'right' }}>Acciones</th>
+                  </tr>
+                </thead>
               <tbody>
                 {itemsActuales.length === 0 ? (
                   <tr>
@@ -892,6 +1027,437 @@ export const MaestrosView: React.FC = () => {
               </tbody>
             </table>
           </div>
+          )}
+
+          {/* Extra Panel: Copias de Seguridad (Backups y Google Drive) */}
+          {esVistaBackups && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {/* Card 1: Automatización GitHub Actions -> Google Drive */}
+              <div
+                style={{
+                  background: '#f0fdfa',
+                  border: '1px solid #99f6e4',
+                  borderRadius: 12,
+                  padding: '16px 18px'
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    gap: 12,
+                    flexWrap: 'wrap'
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontSize: '0.74rem',
+                        fontWeight: 800,
+                        color: '#0f766e',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}
+                    >
+                      ☁️ AUTOMATIZACIÓN CON GITHUB ACTIONS + GOOGLE DRIVE
+                    </div>
+                    <h3 style={{ margin: '4px 0 6px 0', fontSize: '1.05rem', color: '#134e4a' }}>
+                      Backup Diario Automático de Producción (03:00 AM · Retención 30 días)
+                    </h3>
+                    <p style={{ margin: 0, fontSize: '0.84rem', color: '#115e59', lineHeight: 1.5 }}>
+                      El flujo <code>.github/workflows/backup-prod-drive.yml</code> exporta cada
+                      madrugada a las <strong>03:00 (hora de España)</strong> todas las colecciones
+                      de la BBDD de Producción (<code>gymapp-d8ae7</code>) en un único archivo{' '}
+                      <code>backup-gymplanner-prod-YYYY-MM-DD.json</code>, lo sube a tu carpeta de
+                      Google Drive y elimina automáticamente los backups de más de 30 días.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-outline"
+                    style={{
+                      background: '#ffffff',
+                      borderColor: '#0d9488',
+                      color: '#0f766e',
+                      fontWeight: 700,
+                      fontSize: '0.82rem',
+                      whiteSpace: 'nowrap'
+                    }}
+                    onClick={() => setShowGDriveGuide((prev) => !prev)}
+                  >
+                    {showGDriveGuide
+                      ? '▲ Ocultar guía de configuración'
+                      : '⚙️ Ver pasos para conectar Google Drive en GitHub'}
+                  </button>
+                </div>
+
+                {showGDriveGuide && (
+                  <div
+                    style={{
+                      marginTop: 14,
+                      paddingTop: 14,
+                      borderTop: '1px solid #99f6e4',
+                      fontSize: '0.83rem',
+                      color: '#134e4a',
+                      lineHeight: 1.55
+                    }}
+                  >
+                    <div style={{ fontWeight: 800, marginBottom: 8 }}>
+                      📋 Pasos para activar la subida a tu Google Drive en GitHub:
+                    </div>
+                    <ol style={{ margin: '0 0 12px 18px', padding: 0 }}>
+                      <li style={{ marginBottom: 6 }}>
+                        <strong>Crea una carpeta en tu Google Drive</strong> (por ejemplo{' '}
+                        <code>Backups GymPlanner PRO</code>) y entra en ella. Copia el ID que
+                        aparece al final de la URL del navegador:{' '}
+                        <code>drive.google.com/drive/folders/<strong>ID_DE_LA_CARPETA</strong></code>.
+                      </li>
+                      <li style={{ marginBottom: 6 }}>
+                        <strong>Obtén las credenciales OAuth2 para tu Google Drive personal:</strong>{' '}
+                        En{' '}
+                        <a
+                          href="https://console.cloud.google.com/apis/library/drive.googleapis.com?project=gymapp-d8ae7"
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ color: '#0d9488', fontWeight: 700 }}
+                        >
+                          Google Cloud Console (gymapp-d8ae7)
+                        </a>
+                        , habilita la <strong>Google Drive API</strong>. En{' '}
+                        <em>APIs y Servicios → Credenciales</em>, crea un{' '}
+                        <strong>ID de cliente OAuth 2.0</strong> (tipo Aplicación web) y añade{' '}
+                        <code>https://developers.google.com/oauthplayground</code> en{' '}
+                        <em>URI de redireccionamiento autorizados</em>.
+                      </li>
+                      <li style={{ marginBottom: 6 }}>
+                        <strong>Genera el Refresh Token:</strong> Entra en{' '}
+                        <a
+                          href="https://developers.google.com/oauthplayground"
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ color: '#0d9488', fontWeight: 700 }}
+                        >
+                          OAuth 2.0 Playground
+                        </a>
+                        , pulsa el icono de engranaje ⚙️ arriba a la derecha, marca{' '}
+                        <em>"Use your own OAuth credentials"</em> y pega tu{' '}
+                        <code>Client ID</code> y <code>Client Secret</code>. En el Paso 1 escribe el
+                        scope <code>https://www.googleapis.com/auth/drive</code>, autoriza con tu
+                        cuenta de Google y en el Paso 2 pulsa{' '}
+                        <strong>Exchange authorization code for tokens</strong> para copiar el{' '}
+                        <code>Refresh token</code>.
+                      </li>
+                      <li>
+                        <strong>Añade los Secrets en tu repositorio de GitHub</strong> (
+                        <em>Settings → Secrets and variables → Actions → New repository secret</em>
+                        ):
+                        <ul style={{ marginTop: 4, marginBottom: 4 }}>
+                          <li>
+                            <code>FIREBASE_SERVICE_ACCOUNT_PRO</code>: <em>(Ya lo tienes configurado del despliegue a PRO)</em>
+                          </li>
+                          <li>
+                            <code>GDRIVE_FOLDER_ID</code>: El ID de la carpeta de Google Drive.
+                          </li>
+                          <li>
+                            <code>GDRIVE_CLIENT_ID</code>: El Client ID de OAuth2.
+                          </li>
+                          <li>
+                            <code>GDRIVE_CLIENT_SECRET</code>: El Client Secret de OAuth2.
+                          </li>
+                          <li>
+                            <code>GDRIVE_REFRESH_TOKEN</code>: El Refresh Token obtenido.
+                          </li>
+                        </ul>
+                      </li>
+                    </ol>
+                    <div
+                      style={{
+                        background: '#ccfbf1',
+                        padding: '8px 12px',
+                        borderRadius: 8,
+                        fontSize: '0.79rem',
+                        fontWeight: 600
+                      }}
+                    >
+                      💡 <strong>Ejecución manual en cualquier momento:</strong> En tu repositorio de
+                      GitHub ve a la pestaña <strong>Actions → Backup Diario BBDD Producción a Google Drive</strong> y pulsa el botón <strong>Run workflow</strong>. Además, cada ejecución guarda también el JSON en los <em>Artifacts</em> de GitHub durante 30 días.
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {backupProgressMsg && (
+                <div
+                  style={{
+                    background: '#eff6ff',
+                    border: '1px solid #bfdbfe',
+                    color: '#1e40af',
+                    padding: '12px 16px',
+                    borderRadius: 10,
+                    fontWeight: 700,
+                    fontSize: '0.86rem'
+                  }}
+                >
+                  ⏳ {backupProgressMsg}
+                </div>
+              )}
+
+              {/* Card 2: Descarga directa de Backup JSON desde la Web */}
+              <div
+                style={{
+                  background: '#ffffff',
+                  border: '1px solid var(--border)',
+                  borderRadius: 12,
+                  padding: '18px'
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 14,
+                    flexWrap: 'wrap'
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontSize: '0.74rem',
+                        fontWeight: 800,
+                        color: 'var(--accent-dark)',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}
+                    >
+                      📥 DESCARGA MANUAL INMEDIATA
+                    </div>
+                    <h3 style={{ margin: '4px 0 6px 0', fontSize: '1.05rem' }}>
+                      Descargar Backup JSON Completo Ahora
+                    </h3>
+                    <p style={{ margin: 0, fontSize: '0.84rem', color: 'var(--text-muted)' }}>
+                      Genera al instante un archivo JSON con las{' '}
+                      <strong>{BACKUP_COLLECTIONS.length} colecciones</strong> completas de la base
+                      de datos actual ({BACKUP_COLLECTIONS.join(', ')}), incluyendo todas las fechas
+                      y marcas de tiempo exactas.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={!esAdmin || backupDownloading || restoringBackup}
+                    onClick={handleDescargarBackupAhora}
+                    style={{ whiteSpace: 'nowrap', padding: '10px 18px' }}
+                  >
+                    {backupDownloading
+                      ? '⏳ Generando backup...'
+                      : '💾 Descargar Backup JSON Completo'}
+                  </button>
+                </div>
+
+                {lastBackupInfo && (
+                  <div
+                    style={{
+                      marginTop: 12,
+                      padding: '8px 12px',
+                      background: '#f8fafc',
+                      border: '1px solid var(--border)',
+                      borderRadius: 8,
+                      fontSize: '0.8rem',
+                      color: 'var(--text-main)'
+                    }}
+                  >
+                    ✅ Última descarga en esta sesión: <strong>{lastBackupInfo.fileName}</strong> (
+                    {lastBackupInfo.totalDocs} documentos exportados a las {lastBackupInfo.timestamp}
+                    )
+                  </div>
+                )}
+              </div>
+
+              {/* Card 3: Restaurar / Importar desde archivo JSON */}
+              <div
+                style={{
+                  background: '#ffffff',
+                  border: '1px solid var(--border)',
+                  borderRadius: 12,
+                  padding: '18px'
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 14,
+                    flexWrap: 'wrap'
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontSize: '0.74rem',
+                        fontWeight: 800,
+                        color: '#b45309',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}
+                    >
+                      🔄 RESTAURACIÓN E IMPORTACIÓN DE COPIAS DE SEGURIDAD
+                    </div>
+                    <h3 style={{ margin: '4px 0 6px 0', fontSize: '1.05rem' }}>
+                      Restaurar Base de Datos desde un Archivo de Backup (.json)
+                    </h3>
+                    <p style={{ margin: 0, fontSize: '0.84rem', color: 'var(--text-muted)' }}>
+                      Compatible tanto con los archivos descargados desde esta web como con los
+                      generados automáticamente en Google Drive por GitHub Actions. Puedes elegir
+                      qué colecciones restaurar.
+                    </p>
+                  </div>
+                  <div>
+                    <input
+                      ref={fileInputBackupRef}
+                      type="file"
+                      accept=".json,application/json"
+                      style={{ display: 'none' }}
+                      onChange={handleSeleccionarArchivoBackup}
+                    />
+                    <button
+                      type="button"
+                      className="btn-outline"
+                      disabled={!esAdmin || backupDownloading || restoringBackup}
+                      onClick={() => fileInputBackupRef.current?.click()}
+                      style={{ whiteSpace: 'nowrap' }}
+                    >
+                      📂 Seleccionar archivo .json
+                    </button>
+                  </div>
+                </div>
+
+                {restoreParsedFile && (
+                  <div
+                    style={{
+                      marginTop: 16,
+                      padding: 16,
+                      background: '#fffbeb',
+                      border: '1px solid #fde68a',
+                      borderRadius: 10
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: 8,
+                        marginBottom: 12
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#92400e' }}>
+                          📄 Archivo cargado: {restoreFileName}
+                        </div>
+                        <div style={{ fontSize: '0.79rem', color: '#b45309', marginTop: 2 }}>
+                          Fecha del backup: <strong>{restoreParsedFile.metadata.date}</strong> ·
+                          Origen: <strong>{restoreParsedFile.metadata.projectId}</strong> · Total:{' '}
+                          <strong>{restoreParsedFile.metadata.totalDocuments} documentos</strong>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-outline"
+                        style={{ padding: '4px 10px', fontSize: '0.78rem' }}
+                        onClick={() => {
+                          setRestoreParsedFile(null);
+                          setRestoreFileName('');
+                        }}
+                      >
+                        ✕ Cancelar archivo
+                      </button>
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        color: '#78350f',
+                        marginBottom: 8
+                      }}
+                    >
+                      Selecciona las colecciones que deseas restaurar:
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))',
+                        gap: 8,
+                        marginBottom: 14
+                      }}
+                    >
+                      {Object.keys(restoreParsedFile.collections).map((colName) => {
+                        const count = restoreParsedFile.metadata.counts[colName] || 0;
+                        const checked = restoreSelectedCols.includes(colName);
+                        return (
+                          <label
+                            key={colName}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: 8,
+                              padding: '8px 10px',
+                              background: checked ? '#ffffff' : '#fef3c7',
+                              border: checked ? '1.5px solid #d97706' : '1px solid #fde68a',
+                              borderRadius: 8,
+                              cursor: 'pointer',
+                              fontSize: '0.82rem'
+                            }}
+                          >
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 }}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleColeccionRestore(colName)}
+                              />
+                              {colName}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: '0.74rem',
+                                background: '#fef3c7',
+                                color: '#92400e',
+                                padding: '2px 6px',
+                                borderRadius: 6,
+                                fontWeight: 700
+                              }}
+                            >
+                              {count} docs
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        disabled={restoringBackup || restoreSelectedCols.length === 0}
+                        onClick={handleConfirmarRestauracion}
+                        style={{ background: '#d97706', borderColor: '#d97706' }}
+                      >
+                        {restoringBackup
+                          ? '⏳ Restaurando colecciones...'
+                          : `🔄 Restaurar ${restoreSelectedCols.length} colecciones seleccionadas`}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Extra Panel: Roles */}
           {esVistaRoles && (
