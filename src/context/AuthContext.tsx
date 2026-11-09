@@ -180,10 +180,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const rNorm = role.trim().toLowerCase();
     if (rNorm === 'admin' || rNorm === 'administrador' || rNorm === 'direccion') return true;
     if (esRolProyectorSala(role)) {
-      return moduloId === 'pantalla_sala';
+      return moduloId === 'pantalla_sala' && action === 'ver';
     }
-    const moduloPerm = permissions[moduloId];
-    if (!moduloPerm) return true; // Si no está explícito, permitir por defecto para trainers
+    const moduloPerm = permissions[moduloId] || PermisosPorDefectoParaRol(role)[moduloId];
+    if (!moduloPerm) return false;
     return Boolean(moduloPerm[action]);
   };
 

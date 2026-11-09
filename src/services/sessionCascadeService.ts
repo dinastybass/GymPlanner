@@ -2503,5 +2503,282 @@ export async function eliminarEjercicioConCascada(params: {
   };
 }
 
+/**
+ * CREAR NUEVA(S) SESIÓN(ES) CON OPCIÓN DE CASCADA HACIA ATRÁS DE LAS SESIONES PROGRAMADAS POSTERIORES
+ * - Si `conCascadaAtras` es true y el cliente tiene sesiones pendientes posteriores con ejercicios programados,
+ *   trae la programación de la sesión posterior a la nueva sesión creada, y sucesivamente hacia atrás
+ *   con las siguientes sesiones programadas (dejando libre la última sesión que estaba programada).
+ */
+export async function crearSesionesConCascadaAtras(params: {
+  idCliente: string;
+  nombreCli: string;
+  fechasUTC: Date[];
+  isSG: boolean;
+  conCascadaAtras: boolean;
+  usuario: string;
+}): Promise<{
+  ok: boolean;
+  undoOps: FirestoreOp[];
+  redoOps: FirestoreOp[];
+  toastMessage: string;
+}> {
+  const { idCliente, nombreCli, fechasUTC, isSG, conCascadaAtras, usuario } = params;
+  if (!fechasUTC || fechasUTC.length === 0) {
+    return { ok: false, undoOps: [], redoOps: [], toastMessage: 'No hay fechas para crear.' };
+  }
+
+  const fechasOrdenadas = [...fechasUTC].sort((a, b) => a.getTime() - b.getTime());
+  const clienteInfo = await resolverDocumentoCliente(idCliente);
+  const todasSesiones = await cargarSesionesDeCliente(
+    clienteInfo.allClientIds.length > 0 ? clienteInfo.allClientIds : [idCliente]
+  );
+
+  const batch = writeBatch(db);
+  const undoOps: FirestoreOp[] = [];
+  const redoOps: FirestoreOp[] = [];
+  const ahora = new Date();
+
+  if (isSG || !conCascadaAtras) {
+    for (let i = 0; i < fechasOrdenadas.length; i++) {
+      const fechaGuardar = fechasOrdenadas[i];
+
+      if (!isSG) {
+        const existenteDia = todasSesiones.find(
+          s =>
+            !s.sin_fecha &&
+            s.fechaObj &&
+            !esSmallGroupTipo(s.tipo_sesion) &&
+            !esSesionCancelada(s) &&
+            esMismoDiaUTC(s.fechaObj, fechaGuardar)
+        );
+        if (existenteDia) {
+          if (esSesionCompletada(existenteDia)) continue;
+          const updateExistente = {
+            fecha_hora_inicio: fechaGuardar,
+            ultimo_modificado_por: usuario,
+            fecha_modificacion: ahora
+          };
+          batch.set(doc(db, 'agenda_sesiones', existenteDia.id), updateExistente, { merge: true });
+          undoOps.push({
+            type: 'set',
+            collection: 'agenda_sesiones',
+            id: existenteDia.id,
+            data: existenteDia.raw,
+            merge: false
+          });
+          redoOps.push({
+            type: 'set',
+            collection: 'agenda_sesiones',
+            id: existenteDia.id,
+            data: { ...existenteDia.raw, ...updateExistente },
+            merge: false
+          });
+          continue;
+        }
+      }
+
+      const idDoc = `SES-${Date.now()}-${i}-${Math.floor(Math.random() * 1000)}`;
+      const dataToSave = {
+        id_sesion_global: idDoc,
+        id_cliente: idCliente,
+        alias: nombreCli,
+        nombre_cliente: nombreCli,
+        estado: 'Pendiente',
+        estado_sesion: 'Pendiente',
+        tipo_sesion: isSG ? 'Small Group' : 'Individual',
+        fecha_hora_inicio: fechaGuardar,
+        ejercicios: [],
+        creado_por: usuario,
+        fecha_creacion: ahora,
+        utc_migrado: true
+      };
+      batch.set(doc(db, 'agenda_sesiones', idDoc), dataToSave);
+      undoOps.push({ type: 'delete', collection: 'agenda_sesiones', id: idDoc });
+      redoOps.push({
+        type: 'set',
+        collection: 'agenda_sesiones',
+        id: idDoc,
+        data: dataToSave,
+        merge: false
+      });
+    }
+
+    await batch.commit();
+    const numCitas = fechasOrdenadas.length;
+    const horaTxt = `${String(fechasOrdenadas[0].getUTCHours()).padStart(2, '0')}:${String(
+      fechasOrdenadas[0].getUTCMinutes()
+    ).padStart(2, '0')}`;
+    const labelAccion =
+      numCitas === 1
+        ? `Agendar sesión de ${nombreCli} (${horaTxt})`
+        : `Planificar ${numCitas} sesiones de ${nombreCli}`;
+
+    return {
+      ok: true,
+      undoOps,
+      redoOps,
+      toastMessage: `📅 ${labelAccion}`
+    };
+  }
+
+  // Modo Individual CON CASCADA HACIA ATRÁS de las sesiones posteriores programadas
+  interface NodoCreacion {
+    id: string;
+    esNueva: boolean;
+    modificada: boolean;
+    fechaObj: Date;
+    rawOriginal: any;
+    payloadActual: ReturnType<typeof extraerPayloadProgramacion>;
+  }
+
+  const nodos: NodoCreacion[] = todasSesiones
+    .filter(
+      s =>
+        !s.sin_fecha &&
+        s.fechaObj &&
+        !esSmallGroupTipo(s.tipo_sesion) &&
+        !esSesionCompletada(s) &&
+        !esSesionCancelada(s)
+    )
+    .map(s => ({
+      id: s.id,
+      esNueva: false,
+      modificada: false,
+      fechaObj: s.fechaObj,
+      rawOriginal: s.raw,
+      payloadActual: extraerPayloadProgramacion(s)
+    }))
+    .sort((a, b) => a.fechaObj.getTime() - b.fechaObj.getTime());
+
+  for (let idxFecha = 0; idxFecha < fechasOrdenadas.length; idxFecha++) {
+    const fechaGuardar = fechasOrdenadas[idxFecha];
+    const existenteIdx = nodos.findIndex(n => esMismoDiaUTC(n.fechaObj, fechaGuardar));
+
+    if (existenteIdx !== -1) {
+      nodos[existenteIdx].fechaObj = fechaGuardar;
+      nodos[existenteIdx].modificada = true;
+      continue;
+    }
+
+    const newDocId = `SES-${Date.now()}-${idxFecha}-${Math.floor(Math.random() * 1000)}`;
+    const nuevoNodo: NodoCreacion = {
+      id: newDocId,
+      esNueva: true,
+      modificada: true,
+      fechaObj: fechaGuardar,
+      rawOriginal: null,
+      payloadActual: crearPayloadVacio()
+    };
+
+    nodos.push(nuevoNodo);
+    nodos.sort((a, b) => a.fechaObj.getTime() - b.fechaObj.getTime());
+
+    const idxNew = nodos.findIndex(n => n.id === newDocId);
+    let lastProgIdx = -1;
+    for (let i = nodos.length - 1; i > idxNew; i--) {
+      if (tieneEjercicios(nodos[i].payloadActual)) {
+        lastProgIdx = i;
+        break;
+      }
+    }
+
+    if (lastProgIdx > idxNew) {
+      for (let i = idxNew; i < lastProgIdx; i++) {
+        nodos[i].payloadActual = clonarProfundo(nodos[i + 1].payloadActual);
+        nodos[i].modificada = true;
+      }
+      nodos[lastProgIdx].payloadActual = crearPayloadVacio();
+      nodos[lastProgIdx].modificada = true;
+    }
+  }
+
+  for (const nodo of nodos) {
+    if (!nodo.esNueva && !nodo.modificada) continue;
+
+    if (nodo.esNueva) {
+      const newDocData = {
+        id_sesion_global: nodo.id,
+        id_cliente: idCliente,
+        alias: nombreCli,
+        nombre_cliente: nombreCli,
+        estado: 'Pendiente',
+        estado_sesion: 'Pendiente',
+        tipo_sesion: 'Individual',
+        sin_fecha: false,
+        fecha_hora_inicio: nodo.fechaObj,
+        ejercicios: nodo.payloadActual.ejercicios,
+        intensidad_sesion: nodo.payloadActual.intensidad_sesion,
+        orden_customizado: nodo.payloadActual.orden_customizado,
+        creado_por: usuario,
+        fecha_creacion: ahora,
+        ultimo_editor: usuario,
+        fecha_ultima_edicion: ahora,
+        ultimo_modificado_por: usuario,
+        fecha_modificacion: ahora,
+        utc_migrado: true
+      };
+      batch.set(doc(db, 'agenda_sesiones', nodo.id), newDocData);
+      undoOps.push({ type: 'delete', collection: 'agenda_sesiones', id: nodo.id });
+      redoOps.push({
+        type: 'set',
+        collection: 'agenda_sesiones',
+        id: nodo.id,
+        data: newDocData,
+        merge: false
+      });
+    } else {
+      const updateData = {
+        sin_fecha: false,
+        fecha_hora_inicio: nodo.fechaObj,
+        ejercicios: nodo.payloadActual.ejercicios,
+        intensidad_sesion: nodo.payloadActual.intensidad_sesion,
+        orden_customizado: nodo.payloadActual.orden_customizado,
+        ultimo_editor: usuario,
+        fecha_ultima_edicion: ahora,
+        ultimo_modificado_por: usuario,
+        fecha_modificacion: ahora,
+        utc_migrado: true
+      };
+      batch.set(doc(db, 'agenda_sesiones', nodo.id), updateData, { merge: true });
+      undoOps.push({
+        type: 'set',
+        collection: 'agenda_sesiones',
+        id: nodo.id,
+        data: nodo.rawOriginal,
+        merge: false
+      });
+      redoOps.push({
+        type: 'set',
+        collection: 'agenda_sesiones',
+        id: nodo.id,
+        data: { ...nodo.rawOriginal, ...updateData },
+        merge: false
+      });
+    }
+  }
+
+  const primeraFechaTxt = formatearFechaHoraHumanaUTC(fechasOrdenadas[0]);
+  const logEntry: MovimientoLogCliente = {
+    id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    id_cliente: clienteInfo.docId || idCliente,
+    tipo: 'REPROGRAMACION',
+    titulo: 'Sesión creada con cascada hacia atrás',
+    detalle: `Se creó sesión el ${primeraFechaTxt} adelantando en cascada hacia atrás la programación de las sesiones posteriores.`,
+    fecha_registro: ahora.toISOString(),
+    usuario
+  };
+  prepararOperacionLogCliente(batch, undoOps, redoOps, clienteInfo, logEntry);
+
+  await batch.commit();
+
+  return {
+    ok: true,
+    undoOps,
+    redoOps,
+    toastMessage: `📅 Sesión creada de ${nombreCli} (programación adelantada en cascada hacia atrás)`
+  };
+}
+
+
 
 

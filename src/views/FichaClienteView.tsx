@@ -925,12 +925,9 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
     });
 
     const renderFilaDetalle = (ej: any, keyStr: string) => {
-      const acronimo = ej.Acrónimo || ej.alias || '';
-      const nombre = ej.Nombre_Ejercicio || '';
-      const tituloEj =
-        acronimo && nombre && acronimo !== nombre
-          ? `${acronimo} · ${nombre}`
-          : acronimo || nombre || 'Ejercicio';
+      const acronimo = String(ej.Acrónimo || ej.alias || '').trim();
+      const nombre = String(ej.Nombre_Ejercicio || '').trim();
+      const tituloEj = acronimo || nombre || 'Ejercicio';
 
       const detallesArr: string[] = [];
       if (ej.Detalle && String(ej.Detalle).trim() !== '') detallesArr.push(ej.Detalle);
@@ -1277,17 +1274,8 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                     onClick={() => setOpenSinFecha(!openSinFecha)}
                   >
                     <div className="sin-fecha-title-group">
-                      <strong>📌 Sesiones programadas sin fecha</strong>
-                      <span
-                        style={{
-                          background: '#fde68a',
-                          color: '#78350f',
-                          fontWeight: 700,
-                          padding: '2px 10px',
-                          borderRadius: 12,
-                          fontSize: '0.78rem'
-                        }}
-                      >
+                      📌 Sesiones Sin Fecha{' '}
+                      <span style={{ color: '#b45309', marginLeft: 4 }}>
                         {sesionesSinFecha.length} {sesionesSinFecha.length === 1 ? 'sesión' : 'sesiones'}
                       </span>
                     </div>
@@ -1298,10 +1286,15 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                       <button
                         type="button"
                         className="btn-primary"
-                        style={{ padding: '6px 12px', fontSize: '0.78rem', background: '#d97706' }}
+                        style={{
+                          padding: '5px 10px',
+                          fontSize: '0.78rem',
+                          background: '#d97706',
+                          whiteSpace: 'nowrap'
+                        }}
                         onClick={crearNuevaSesionSinFecha}
                       >
-                        ➕ Nueva sin fecha
+                        + Nueva
                       </button>
                       <span
                         className="chevron-icon"
@@ -1339,7 +1332,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                           }}
                         >
                           No hay sesiones pendientes sin fecha asignada. Pulsa{' '}
-                          <strong>"➕ Nueva sin fecha"</strong> para dejar una rutina lista o cancela una sesión de la agenda con la opción{' '}
+                          <strong>"+ Nueva"</strong> para dejar una rutina lista o cancela una sesión de la agenda con la opción{' '}
                           <em>"Cancelar sin fecha"</em>.
                         </div>
                       ) : (
@@ -1449,7 +1442,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                                         <button
                                           type="button"
                                           className="action-btn"
-                                          title="Programar / Editar ejercicios"
+                                          title="Programación"
                                           onClick={() => onNavigate('programar_sesion', s.id)}
                                         >
                                           <svg
@@ -1469,7 +1462,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                                         <button
                                           type="button"
                                           className="action-btn"
-                                          title="Asignar día y hora en el calendario semanal"
+                                          title="Reprogramar"
                                           onClick={() => abrirModalReprogramar(s.id)}
                                         >
                                           <svg
@@ -1492,7 +1485,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                                           <button
                                             type="button"
                                             className="action-btn send"
-                                            title="Enviar copia de ejercicios a otra sesión"
+                                            title="Enviar Programación"
                                             onClick={() => abrirModalEnviar(s.id)}
                                           >
                                             ➡️
@@ -1501,7 +1494,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                                         <button
                                           type="button"
                                           className="action-btn del"
-                                          title="Eliminar sesión sin fecha"
+                                          title="Cancelar o Eliminar"
                                           onClick={() => borrarSesion(s.id)}
                                         >
                                           <svg
@@ -1618,7 +1611,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                                     <span
                                       className="pill pill-pendiente"
                                       style={{ cursor: 'pointer' }}
-                                      title="Pendiente · Haz clic para marcar como Completada"
+                                      title="Marcar Como Completada"
                                       onClick={e => {
                                         e.stopPropagation();
                                         toggleEstadoCompletada(s);
@@ -1632,7 +1625,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                                       <span
                                         className="pill pill-completada"
                                         style={{ cursor: 'pointer' }}
-                                        title="Completada · Haz clic para volver a Pendiente"
+                                        title="Marcar Como Pendiente"
                                         onClick={e => {
                                           e.stopPropagation();
                                           toggleEstadoCompletada(s);
@@ -1646,7 +1639,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                                       <span
                                         className="pill pill-vencida"
                                         style={{ cursor: 'pointer' }}
-                                        title="Vencida · Haz clic para marcar como Completada"
+                                        title="Marcar Como Completada"
                                         onClick={e => {
                                           e.stopPropagation();
                                           toggleEstadoCompletada(s);
@@ -1725,7 +1718,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                                             <button
                                               type="button"
                                               className="action-btn"
-                                              title="Programar / Editar ejercicios"
+                                              title="Programación"
                                               onClick={() => onNavigate('programar_sesion', s.id)}
                                             >
                                               <svg
@@ -1746,7 +1739,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                                               <button
                                                 type="button"
                                                 className="action-btn"
-                                                title="Reprogramar fecha/hora"
+                                                title="Reprogramar"
                                                 onClick={() => abrirModalReprogramar(s.id)}
                                               >
                                                 <svg
@@ -1770,7 +1763,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                                               <button
                                                 type="button"
                                                 className="action-btn send"
-                                                title="Enviar ejercicios a..."
+                                                title="Enviar Programación"
                                                 onClick={() => abrirModalEnviar(s.id)}
                                               >
                                                 ➡️
@@ -1779,7 +1772,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                                             <button
                                               type="button"
                                               className="action-btn del"
-                                              title="Eliminar o enviar a sin fecha"
+                                              title="Cancelar o Eliminar"
                                               onClick={() =>
                                                 abrirModalPapeleraSesion(
                                                   s.id,

@@ -36,7 +36,7 @@ jobs:
           import fs from 'node:fs';
           import path from 'node:path';
 
-          const COLLECTIONS = [
+          const DEFAULT_COLLECTIONS = [
             'clientes',
             'agenda_sesiones',
             'ejercicios',
@@ -106,6 +106,31 @@ jobs:
             }
             const data = await res.json();
             return data.access_token;
+          }
+
+          async function listAllFirestoreCollections(projectId, accessToken) {
+            try {
+              const res = await fetch(
+                `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:listCollectionIds`,
+                {
+                  method: 'POST',
+                  headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({ pageSize: 100 }),
+                }
+              );
+              if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data.collectionIds) && data.collectionIds.length > 0) {
+                  return Array.from(new Set([...DEFAULT_COLLECTIONS, ...data.collectionIds]));
+                }
+              }
+            } catch (e) {
+              console.warn('No se pudo listar colecciones automáticamente, usando lista base:', e);
+            }
+            return DEFAULT_COLLECTIONS;
           }
 
           function parseFirestoreRestValue(valObj) {
@@ -256,11 +281,12 @@ jobs:
             'https://www.googleapis.com/auth/datastore',
           ]);
 
+          const collectionsToExport = await listAllFirestoreCollections(projectId, firestoreToken);
           const collectionsData = {};
           const stats = {};
           let totalDocuments = 0;
 
-          for (const colName of COLLECTIONS) {
+          for (const colName of collectionsToExport) {
             const docs = await exportCollection(projectId, firestoreToken, colName);
             const count = Object.keys(docs).length;
             collectionsData[colName] = docs;
@@ -277,7 +303,7 @@ jobs:
               createdAt: new Date().toISOString(),
               date: todayStr,
               version: '1.0',
-              totalCollections: COLLECTIONS.length,
+              totalCollections: collectionsToExport.length,
               totalDocuments,
               counts: stats,
             },
@@ -288,7 +314,7 @@ jobs:
           fs.mkdirSync(outDir, { recursive: true });
           const fileBuffer = Buffer.from(JSON.stringify(backupPayload, null, 2), 'utf8');
           fs.writeFileSync(path.join(outDir, fileName), fileBuffer);
-          console.log(`💾 Guardado ${fileName} (${totalDocuments} documentos)`);
+          console.log(`💾 Guardado ${fileName} (${totalDocuments} documentos en ${collectionsToExport.length} colecciones)`);
 
           const folderId = process.env.GDRIVE_FOLDER_ID?.trim();
           if (folderId) {
@@ -303,6 +329,29 @@ jobs:
             const uploaded = await uploadBackupToGoogleDrive(driveToken, folderId, fileName, fileBuffer);
             console.log(`☁️ Subido a Google Drive con éxito: ${uploaded.name} (ID: ${uploaded.id})`);
             await cleanupOldBackupsInDrive(driveToken, folderId, RETENTION_DAYS);
+
+            // Sincronizar configuración de Google Drive en Firestore (maestros/config_gdrive_backup) para que la web pueda listar y restaurar directamente desde Drive
+            try {
+              const cfgUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/maestros/config_gdrive_backup`;
+              await fetch(cfgUrl, {
+                method: 'PATCH',
+                headers: {
+                  Authorization: `Bearer ${firestoreToken}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  fields: {
+                    folderId: { stringValue: folderId },
+                    clientId: { stringValue: clientId || '' },
+                    clientSecret: { stringValue: clientSecret || '' },
+                    refreshToken: { stringValue: refreshToken || '' },
+                    updatedAt: { stringValue: new Date().toISOString() },
+                  },
+                }),
+              });
+            } catch (errCfg) {
+              console.warn('Aviso al sincronizar config_gdrive_backup:', errCfg);
+            }
           }
           EOF
 

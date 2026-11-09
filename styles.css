@@ -836,33 +836,45 @@ textarea.form-control {
   border: 1px solid #ccfbf1;
   border-left: 3px solid var(--accent-dark);
   border-radius: 8px;
-  padding: 6px 10px;
+  padding: 6px 8px;
   margin-bottom: 8px;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .subgrupo-header {
   display: flex;
+  flex-wrap: nowrap;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 4px;
   padding-bottom: 3px;
   border-bottom: 1px dashed #99f6e4;
   gap: 6px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .subgrupo-title {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 800;
   color: #0e7490;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .subgrupo-reps {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 700;
   color: var(--accent-dark);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  text-align: right;
 }
 
 /* --- Sistema Global de Deshacer / Rehacer (Toast + Barra Historial) --- */
@@ -1980,7 +1992,7 @@ textarea.form-control {
 .calendar-grid {
   display: grid;
   grid-template-columns: 60px repeat(5, 1fr);
-  grid-template-rows: auto repeat(10, 40px) 20px repeat(9, 40px);
+  grid-template-rows: auto repeat(10, 54px) 20px repeat(9, 54px);
   background: var(--surface);
   position: relative;
   min-width: 900px;
@@ -2438,17 +2450,19 @@ textarea.form-control {
   font-size: 0.8rem;
   color: var(--text-main);
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: space-between;
   align-items: baseline;
   margin-bottom: 4px;
   font-weight: 500;
-  gap: 2px 8px;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .preview-ex span:first-child {
-  flex: 1 1 55%;
-  min-width: 140px;
+  flex: 1 1 0%;
+  min-width: 0;
   overflow-wrap: break-word;
   word-break: normal;
   line-height: 1.35;
@@ -2458,10 +2472,8 @@ textarea.form-control {
   font-weight: bold;
   color: var(--text-muted);
   font-size: 0.75rem;
-  flex: 0 1 auto;
-  max-width: 100%;
-  white-space: normal;
-  overflow-wrap: break-word;
+  flex: 0 0 auto;
+  white-space: nowrap;
   text-align: right;
   margin-left: auto;
   line-height: 1.25;
@@ -2839,16 +2851,19 @@ textarea.form-control {
 
 .sin-fecha-title-group {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .sin-fecha-actions-group {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 10px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 
 @media (max-width: 1080px) {
@@ -3329,27 +3344,26 @@ textarea.form-control {
     text-align: center;
   }
 
-  /* Bloque sesiones sin fecha en móvil */
+  /* Bloque sesiones sin fecha en móvil (en una sola línea igual que los meses) */
   .sin-fecha-header {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-    padding: 12px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 11px 14px;
   }
 
   .sin-fecha-title-group {
-    justify-content: space-between;
-    width: 100%;
+    width: auto;
   }
 
   .sin-fecha-actions-group {
-    width: 100%;
-    justify-content: space-between;
+    width: auto;
+    justify-content: flex-end;
   }
 
   .sin-fecha-actions-group button {
-    flex: 1;
-    justify-content: center;
+    flex: 0 0 auto;
   }
 
   /* Acordeón de meses y tarjetas de sesión en móvil (sin scroll horizontal) */
@@ -4777,7 +4791,10 @@ textarea.form-control {
   font-weight: 800;
   color: var(--accent-dark);
   white-space: nowrap;
-  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  text-align: right;
 }
 
 .sala-ex-row {

@@ -25,6 +25,7 @@ import {
   reprogramarSesionConFechaOrdenCronologico,
   buscarSesionMismoDiaCliente,
   resolverColisionSesionMismoDia,
+  crearSesionesConCascadaAtras,
   revertirVencimientosAutomaticos,
   procesarCaducidadSesionesSinFechaPorMeses,
   limpiarSesionesAntiguasYEjerciciosHuerfanos
@@ -272,6 +273,10 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
   const [planHoraIni, setPlanHoraIni] = useState('17:00');
   const [planHoraFin, setPlanHoraFin] = useState('18:00');
   const [planHoraSG, setPlanHoraSG] = useState('');
+  const [planCascadaAtras, setPlanCascadaAtras] = useState(true);
+  const [planClientSessions, setPlanClientSessions] = useState<
+    { id: string; fechaObj: Date; numEj: number }[]
+  >([]);
   const [pendingCreationData, setPendingCreationData] = useState<any>(null);
   const [savingPlan, setSavingPlan] = useState(false);
 
@@ -1066,6 +1071,33 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
       .finally(() => setAsigLoadingSessions(false));
   }, [asigClienteId, asigModalOpen]);
 
+  // Load sessions for selected client in Planificar Días modal to detect subsequent programmed sessions
+  useEffect(() => {
+    if (!planModalOpen || !planClienteId) {
+      setPlanClientSessions([]);
+      return;
+    }
+    const q = query(collection(db, 'agenda_sesiones'), where('id_cliente', '==', planClienteId));
+    getDocs(q)
+      .then(snap => {
+        const list: { id: string; fechaObj: Date; numEj: number }[] = [];
+        snap.forEach(d => {
+          const data = d.data();
+          if (data.sin_fecha) return;
+          const tipo = String(data.tipo_sesion || '').toLowerCase();
+          if (tipo.includes('small') || tipo.includes('group') || tipo === 'sg') return;
+          if (esSesionCompletada(data)) return;
+          const parsedF = parsearFechaFirestore(data.fecha_hora_inicio);
+          if (!parsedF) return;
+          const numEj = Array.isArray(data.ejercicios) ? data.ejercicios.length : 0;
+          list.push({ id: d.id, fechaObj: parsedF, numEj });
+        });
+        list.sort((a, b) => a.fechaObj.getTime() - b.fechaObj.getTime());
+        setPlanClientSessions(list);
+      })
+      .catch(() => setPlanClientSessions([]));
+  }, [planModalOpen, planClienteId]);
+
   const handleSubmitAsignarExistente = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!asigClienteId) {
@@ -1219,6 +1251,20 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
 
   const fechasPlanCalculadas = calcularFechasGeneradas();
 
+  // Detect subsequent programmed sessions of the selected client after the earliest target date
+  const sesionesPosterioresProgramadas = (() => {
+    if (planTipo !== 'Individual' || !planClienteId || fechasPlanCalculadas.length === 0) {
+      return [];
+    }
+    const [hStr, mStr] = (planHoraIni || '08:00').split(':');
+    const primeraFechaUTC = new Date(fechasPlanCalculadas[0]);
+    primeraFechaUTC.setUTCHours(parseInt(hStr, 10) || 0, parseInt(mStr, 10) || 0, 0, 0);
+
+    return planClientSessions.filter(
+      s => s.fechaObj.getTime() > primeraFechaUTC.getTime() && s.numEj > 0
+    );
+  })();
+
   // Check overbooking in Planificar modal
   let hasOverbooking = false;
   if (planTipo === 'Individual') {
@@ -1241,86 +1287,34 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     emailAutor: string,
     idCliente: string,
     nombreCli: string,
-    horaIni: string
+    horaIni: string,
+    conCascadaAtras = false
   ) => {
-    const batch = writeBatch(db);
-    const undoOps: FirestoreOp[] = [];
-    const redoOps: FirestoreOp[] = [];
-
-    for (let i = 0; i < fechas.length; i++) {
-      const fechaGuardar = new Date(fechas[i]);
+    const fechasConHora = fechas.map(fOrig => {
+      const fechaGuardar = new Date(fOrig);
       const [h, m] = horaIni.split(':');
       fechaGuardar.setUTCHours(parseInt(h, 10), parseInt(m, 10), 0, 0);
-
-      // Evitar duplicar sesión el mismo día para el mismo cliente
-      if (!isSG) {
-        const existenteDia = await buscarSesionMismoDiaCliente({
-          idCliente,
-          fechaUTC: fechaGuardar
-        });
-        if (existenteDia) {
-          if (esSesionCompletada(existenteDia.data)) {
-            continue;
-          }
-          undoOps.push({
-            type: 'set',
-            collection: 'agenda_sesiones',
-            id: existenteDia.id,
-            data: existenteDia.data,
-            merge: false
-          });
-          const updateExistente = {
-            fecha_hora_inicio: fechaGuardar,
-            ultimo_modificado_por: emailAutor,
-            fecha_modificacion: new Date()
-          };
-          batch.set(doc(db, 'agenda_sesiones', existenteDia.id), updateExistente, { merge: true });
-          redoOps.push({
-            type: 'set',
-            collection: 'agenda_sesiones',
-            id: existenteDia.id,
-            data: updateExistente,
-            merge: true
-          });
-          continue;
-        }
-      }
-
-      const idDoc = `SES-${Date.now()}-${i}-${Math.floor(Math.random() * 1000)}`;
-      const dataToSave = {
-        id_sesion_global: idDoc,
-        id_cliente: idCliente,
-        alias: nombreCli,
-        nombre_cliente: nombreCli,
-        estado: "Pendiente",
-        estado_sesion: "Pendiente",
-        tipo_sesion: isSG ? "Small Group" : "Individual",
-        fecha_hora_inicio: fechaGuardar,
-        ejercicios: [],
-        creado_por: emailAutor,
-        fecha_creacion: new Date(),
-        utc_migrado: true
-      };
-      batch.set(doc(db, "agenda_sesiones", idDoc), dataToSave);
-      undoOps.push({ type: 'delete', collection: 'agenda_sesiones', id: idDoc });
-      redoOps.push({ type: 'set', collection: 'agenda_sesiones', id: idDoc, data: dataToSave, merge: false });
-    }
-    await batch.commit();
-
-    if (undoOps.length === 0) return;
-
-    const numCitas = fechas.length;
-    const labelAccion = numCitas === 1
-      ? `Agendar sesión de ${nombreCli} (${horaIni})`
-      : `Planificar ${numCitas} sesiones de ${nombreCli}`;
-
-    pushAction({
-      label: labelAccion,
-      undoOps,
-      redoOps,
-      showToast: true,
-      toastMessage: `📅 ${labelAccion}`
+      return fechaGuardar;
     });
+
+    const res = await crearSesionesConCascadaAtras({
+      idCliente,
+      nombreCli,
+      fechasUTC: fechasConHora,
+      isSG,
+      conCascadaAtras: !isSG && conCascadaAtras,
+      usuario: emailAutor
+    });
+
+    if (res && res.undoOps.length > 0) {
+      pushAction({
+        label: res.toastMessage,
+        undoOps: res.undoOps,
+        redoOps: res.redoOps,
+        showToast: true,
+        toastMessage: res.toastMessage
+      });
+    }
   };
 
   const handleSubmitPlanificar = async (e: React.FormEvent) => {
@@ -1342,7 +1336,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
 
     setSavingPlan(true);
 
-    // If inserting 1 single Individual day, check if client already has a session on that same day or future sessions
+    // If inserting 1 single Individual day, check if client already has a session on that same day
     if (fechasPlanCalculadas.length === 1 && !isSG) {
       const f = new Date(fechasPlanCalculadas[0]);
       const [h, m] = horaIni.split(':');
@@ -1390,44 +1384,23 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
           });
           return;
         }
-
-        const qFuture = query(
-          collection(db, "agenda_sesiones"),
-          where("id_cliente", "==", planClienteId),
-          where("fecha_hora_inicio", ">", f)
-        );
-        const futureSnap = await getDocs(qFuture);
-        const futureSessions: { id: string; fechaObj: Date; data: any }[] = [];
-        futureSnap.forEach(d => {
-          const data = d.data();
-          const parsedF = parsearFechaFirestore(data.fecha_hora_inicio);
-          if (data.tipo_sesion !== 'Small Group' && parsedF) {
-            futureSessions.push({ id: d.id, fechaObj: parsedF, data });
-          }
-        });
-        futureSessions.sort((a, b) => a.fechaObj.getTime() - b.fechaObj.getTime());
-
-        if (futureSessions.length > 0) {
-          setPendingCreationData({
-            fechas: [f],
-            isSG: false,
-            emailAutor,
-            idCliente: planClienteId,
-            nombreCli,
-            horaIni,
-            futureSessions
-          });
-          setPlanStep(2);
-          setSavingPlan(false);
-          return;
-        }
       } catch (err) {
-        console.error("Error comprobando sesiones futuras:", err);
+        console.error("Error comprobando colisión en el mismo día:", err);
       }
     }
 
     try {
-      await ejecutarGuardadoNormal(fechasPlanCalculadas, isSG, emailAutor, planClienteId, nombreCli, horaIni);
+      const aplicarCascada =
+        !isSG && sesionesPosterioresProgramadas.length > 0 && planCascadaAtras;
+      await ejecutarGuardadoNormal(
+        fechasPlanCalculadas,
+        isSG,
+        emailAutor,
+        planClienteId,
+        nombreCli,
+        horaIni,
+        aplicarCascada
+      );
       setPlanModalOpen(false);
       await loadAgenda();
     } catch (error) {
@@ -1759,7 +1732,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                                   className="calendar-grid mobile-single-grid"
                                   style={{
                                     gridTemplateColumns: '55px 1fr',
-                                    gridTemplateRows: `auto repeat(${mananaSlots.length}, 42px) 20px repeat(${tardeSlots.length}, 42px)`
+                                    gridTemplateRows: `auto repeat(${mananaSlots.length}, 54px) 20px repeat(${tardeSlots.length}, 54px)`
                                   }}
                                 >
                                   <div className="day-header" style={{ gridColumn: 1, gridRow: 1, borderRight: '2px solid #64748b' }}>
@@ -1936,7 +1909,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                           className={`calendar-grid ${mobileCalendarMode === 'dia' ? 'hide-on-mobile-dia' : ''}`}
                           style={{
                             gridTemplateColumns: `60px repeat(${numDias}, 1fr)`,
-                            gridTemplateRows: `auto repeat(${mananaSlots.length}, 40px) 20px repeat(${tardeSlots.length}, 40px)`
+                            gridTemplateRows: `auto repeat(${mananaSlots.length}, 54px) 20px repeat(${tardeSlots.length}, 54px)`
                           }}
                         >
                           {/* Top-left Hora Header */}
@@ -2247,8 +2220,8 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                 <span>{activeMenu.acciones.estado === 'Completada' ? '⚪' : '🟢'}</span>
                 <span>
                   {activeMenu.acciones.estado === 'Completada'
-                    ? 'Marcar como Pendiente'
-                    : 'Marcar como Completada'}
+                    ? 'Marcar Como Pendiente'
+                    : 'Marcar Como Completada'}
                 </span>
               </button>
             )}
@@ -2263,11 +2236,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
               }}
             >
               <span>🏋️</span>
-              <span>
-                {activeMenu.acciones.ejercicios.length > 0
-                  ? 'Entrar en programación (Ver / Editar)'
-                  : 'Entrar en programación (Programar ejercicios)'}
-              </span>
+              <span>Programación</span>
             </button>
 
             {activeMenu.acciones.puedeReprogramar && (
@@ -2279,9 +2248,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                 }
               >
                 <span>📅</span>
-                <span>
-                  {activeMenu.acciones.sin_fecha ? 'Asignar fecha/hora' : 'Reprogramar fecha/hora'}
-                </span>
+                <span>Reprogramar</span>
               </button>
             )}
 
@@ -2305,7 +2272,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                 }}
               >
                 <span>➡️</span>
-                <span>Enviar ejercicios a...</span>
+                <span>Enviar Programación</span>
               </button>
             )}
 
@@ -2322,11 +2289,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                 }
               >
                 <span>🗑️</span>
-                <span>
-                  {activeMenu.acciones.puedeCancelarSinFecha
-                    ? 'Eliminar o enviar a sin fecha'
-                    : 'Eliminar sesión'}
-                </span>
+                <span>Cancelar o Eliminar</span>
               </button>
             )}
           </div>
@@ -2632,6 +2595,51 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                     {hasOverbooking && (
                       <div className="warning-msg" style={{ display: 'flex' }}>
                         <span>⚠️ Atención: Hay un conflicto de overbooking ({ocupacionMaxima} o más clientes).</span>
+                      </div>
+                    )}
+
+                    {planTipo === 'Individual' && sesionesPosterioresProgramadas.length > 0 && (
+                      <div
+                        style={{
+                          gridColumn: '1 / -1',
+                          background: '#f0fdfa',
+                          border: '1px solid #5eead4',
+                          borderRadius: 10,
+                          padding: '12px 14px',
+                          marginTop: 4
+                        }}
+                      >
+                        <label
+                          style={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: 10,
+                            cursor: 'pointer',
+                            margin: 0
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={planCascadaAtras}
+                            onChange={e => setPlanCascadaAtras(e.target.checked)}
+                            style={{ width: 18, height: 18, marginTop: 2, accentColor: '#0d9488' }}
+                          />
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f766e' }}>
+                              Hacer cascada hacia atrás de la sesión posterior a esta y siguientes
+                            </div>
+                            <div style={{ fontSize: '0.8rem', color: '#115e59', marginTop: 3, lineHeight: 1.4 }}>
+                              Este cliente tiene{' '}
+                              <strong>
+                                {sesionesPosterioresProgramadas.length}{' '}
+                                {sesionesPosterioresProgramadas.length === 1
+                                  ? 'sesión programada posterior'
+                                  : 'sesiones programadas posteriores'}
+                              </strong>
+                              . Si marcas esta casilla, esta nueva sesión tomará la rutina de la siguiente sesión posterior, y así sucesivamente hacia atrás.
+                            </div>
+                          </div>
+                        </label>
                       </div>
                     )}
                   </div>
