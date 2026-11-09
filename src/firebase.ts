@@ -46,5 +46,7 @@ try {
 
 const auth = getAuth(app);
 
-export { app, db, auth, isDev };
+const isProduction = !isDev;
+
+export { app, db, auth, isDev, isProduction };
 

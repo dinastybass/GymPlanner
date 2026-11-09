@@ -19,6 +19,11 @@
 </head>
 <body>
   <div id="root"></div>
+  <script>
+    window.$RefreshReg$ = window.$RefreshReg$ || function () {};
+    window.$RefreshSig$ = window.$RefreshSig$ || function () { return function (type) { return type; }; };
+    window.__vite_plugin_react_preamble_installed__ = true;
+  </script>
   <script type="module" src="/src/main.tsx"></script>
 </body>
 </html>

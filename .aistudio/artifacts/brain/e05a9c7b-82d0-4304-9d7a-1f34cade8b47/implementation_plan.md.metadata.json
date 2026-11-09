@@ -1,6 +1,6 @@
 {
-  "summary":  "Plan de implementación para: (1) Persistencia de ruta y punto exacto de navegación al refrescar la página, (2) Corrección de serialización de Timestamps en el sistema Deshacer/Rehacer (Ctrl+Z) para evitar que las sesiones pasen a sin fecha al deshacer cascadas o reprogramaciones, y (3) Regla de sesión única por día con aviso de conflicto, actualización de hora y elección entre machacar ejercicios o realizar cascada hacia delante.",
-  "updatedAt":  "2026-11-07T11:27:08.234292085Z",
+  "summary":  "Plan de implementación para backups diarios automáticos de Firestore Producción a las 03:00 (hora España) hacia Google Drive mediante GitHub Actions con retención de 30 días, junto con un panel de descarga y restauración de backups en Maestros dentro de la aplicación web.",
+  "updatedAt":  "2026-11-08T16:36:58.679527713Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

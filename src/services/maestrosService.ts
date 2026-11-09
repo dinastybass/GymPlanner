@@ -41,6 +41,9 @@ export const ESTRUCTURA_MAESTROS: Record<string, string[]> = {
   "Gestión de Perfiles": [
     "Roles",
     "Permisos"
+  ],
+  "Copias de Seguridad": [
+    "Backups y Google Drive"
   ]
 };
 
