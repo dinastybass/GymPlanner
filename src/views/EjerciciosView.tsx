@@ -65,11 +65,7 @@ export const EjerciciosView: React.FC<EjerciciosViewProps> = () => {
   const [seriesList, setSeriesList] = useState<string[]>(['3 x 10']);
 
   // Modal state
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [activeDropdown, setActiveDropdown] = useState<MultiFieldKey | null>(null);
-  const [dropdownSearch, setDropdownSearch] = useState<Record<MultiFieldKey, string>>({
+  const emptyDropdownSearch = (): Record<MultiFieldKey, string> => ({
     patrones: '',
     musculos: '',
     bloques: '',
@@ -79,6 +75,19 @@ export const EjerciciosView: React.FC<EjerciciosViewProps> = () => {
     zonas: '',
     posiciones: ''
   });
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [activeDropdown, setActiveDropdown] = useState<MultiFieldKey | null>(null);
+  const [dropdownSearch, setDropdownSearch] = useState<Record<MultiFieldKey, string>>(
+    emptyDropdownSearch
+  );
+
+  useEffect(() => {
+    setActiveDropdown(null);
+    setDropdownSearch(emptyDropdownSearch());
+  }, [modalOpen, editingId]);
 
   const [formEj, setFormEj] = useState({
     nombre: '',
@@ -202,6 +211,7 @@ export const EjerciciosView: React.FC<EjerciciosViewProps> = () => {
   const abrirModalNuevo = () => {
     setEditingId(null);
     setActiveDropdown(null);
+    setDropdownSearch(emptyDropdownSearch());
     setFormEj({
       nombre: '',
       acronimo: '',
@@ -225,6 +235,7 @@ export const EjerciciosView: React.FC<EjerciciosViewProps> = () => {
     if (!ej) return;
     setEditingId(id);
     setActiveDropdown(null);
+    setDropdownSearch(emptyDropdownSearch());
     setFormEj({
       nombre: ej.nombre !== 'Sin nombre' ? ej.nombre : '',
       acronimo: ej.acronimo !== '-' ? ej.acronimo : '',
@@ -433,7 +444,10 @@ export const EjerciciosView: React.FC<EjerciciosViewProps> = () => {
         <div className="custom-dropdown">
           <div
             className="dropdown-trigger"
-            onClick={() => setActiveDropdown(isOpen ? null : field)}
+            onClick={() => {
+              setDropdownSearch(emptyDropdownSearch());
+              setActiveDropdown(isOpen ? null : field);
+            }}
           >
             <span
               style={{
@@ -490,7 +504,10 @@ export const EjerciciosView: React.FC<EjerciciosViewProps> = () => {
                 <button
                   type="button"
                   className="btn-listo"
-                  onClick={() => setActiveDropdown(null)}
+                  onClick={() => {
+                    setDropdownSearch(emptyDropdownSearch());
+                    setActiveDropdown(null);
+                  }}
                 >
                   Listo
                 </button>
