@@ -4,10 +4,10 @@ import {
   getDoc,
   getDocs,
   query,
-  where,
-  writeBatch
+  where
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { writeBatch } from './offlineSyncService';
 import { FirestoreOp, clonarProfundoPreservandoFechas } from './undoService';
 import { esSesionCompletada, esSesionCancelada, parsearFechaFirestore } from '../utils/helpers';
 import {
@@ -2778,6 +2778,492 @@ export async function crearSesionesConCascadaAtras(params: {
     toastMessage: `📅 Sesión creada de ${nombreCli} (programación adelantada en cascada hacia atrás)`
   };
 }
+
+export interface SesionPendienteElegible {
+  id: string;
+  fechaObj: Date;
+  fechaHumana: string;
+  tieneEjercicios: boolean;
+  numEjercicios: number;
+  intensidad: string;
+}
+
+/**
+ * Lista todas las sesiones individuales pendientes con fecha de un cliente (excluyendo la sesión actual)
+ * ordenadas cronológicamente para poder elegir dónde ubicar la programación (Opción 3).
+ */
+export async function listarSesionesPendientesConFechaDeCliente(params: {
+  idCliente: string;
+  excluirIdSesion?: string;
+}): Promise<SesionPendienteElegible[]> {
+  const { idCliente, excluirIdSesion } = params;
+  if (!idCliente) return [];
+
+  const clienteInfo = await resolverDocumentoCliente(idCliente);
+  const todasSesiones = await cargarSesionesDeCliente(
+    clienteInfo.allClientIds.length > 0 ? clienteInfo.allClientIds : [idCliente]
+  );
+
+  return todasSesiones
+    .filter(
+      s =>
+        s.id !== excluirIdSesion &&
+        !s.sin_fecha &&
+        s.fechaObj &&
+        !esSmallGroupTipo(s.tipo_sesion) &&
+        !esSesionCompletada(s) &&
+        !esSesionCancelada(s)
+    )
+    .sort((a, b) => a.fechaObj.getTime() - b.fechaObj.getTime())
+    .map(s => {
+      const numEj = Array.isArray(s.ejercicios) ? s.ejercicios.length : 0;
+      return {
+        id: s.id,
+        fechaObj: s.fechaObj,
+        fechaHumana: formatearFechaHoraHumanaUTC(s.fechaObj),
+        tieneEjercicios: numEj > 0,
+        numEjercicios: numEj,
+        intensidad: s.intensidad_sesion || s.intensidad || 'MED'
+      };
+    });
+}
+
+/**
+ * OPCIÓN 1: BORRAR DEFINITIVAMENTE (ELIMINAR)
+ * - Elimina por completo la sesión del calendario sin desplazar ni modificar ninguna otra sesión.
+ */
+export async function eliminarSesionDefinitivamente(params: {
+  idSesion: string;
+  usuario?: string;
+}): Promise<{
+  ok: boolean;
+  undoOps: FirestoreOp[];
+  redoOps: FirestoreOp[];
+  toastMessage: string;
+}> {
+  const { idSesion } = params;
+  const sesSnap = await getDoc(doc(db, 'agenda_sesiones', idSesion));
+  if (!sesSnap.exists()) {
+    return { ok: false, undoOps: [], redoOps: [], toastMessage: 'La sesión ya no existe.' };
+  }
+
+  const rawData = clonarProfundo(sesSnap.data());
+  const fechaObj = parsearFechaFirestore(rawData.fecha_hora_inicio);
+  const esSinFecha = Boolean(rawData.sin_fecha || !fechaObj);
+  const fechaLabel = esSinFecha ? 'sin fecha' : formatearFechaHoraHumanaUTC(fechaObj);
+
+  const batch = writeBatch(db);
+  batch.delete(doc(db, 'agenda_sesiones', idSesion));
+  await batch.commit();
+
+  return {
+    ok: true,
+    undoOps: [
+      {
+        type: 'set',
+        collection: 'agenda_sesiones',
+        id: idSesion,
+        data: rawData,
+        merge: false
+      }
+    ],
+    redoOps: [
+      {
+        type: 'delete',
+        collection: 'agenda_sesiones',
+        id: idSesion
+      }
+    ],
+    toastMessage: `🗑️ Sesión ${fechaLabel} eliminada definitivamente`
+  };
+}
+
+/**
+ * OPCIÓN 4: UBICAR EN SIN FECHA (SIN CASCADA)
+ * - Libera el hueco de la agenda pasando directamente esta sesión con su programación
+ *   a la sección "Sesiones Sin Fecha", sin desplazar ni alterar el resto de sesiones.
+ */
+export async function enviarSesionDirectamenteASinFecha(params: {
+  idSesion: string;
+  usuario?: string;
+}): Promise<{
+  ok: boolean;
+  undoOps: FirestoreOp[];
+  redoOps: FirestoreOp[];
+  toastMessage: string;
+  logEntry?: MovimientoLogCliente;
+}> {
+  const { idSesion, usuario = 'Entrenador' } = params;
+
+  const sesSnap = await getDoc(doc(db, 'agenda_sesiones', idSesion));
+  if (!sesSnap.exists()) {
+    return { ok: false, undoOps: [], redoOps: [], toastMessage: 'La sesión no existe.' };
+  }
+
+  const rawOrig = clonarProfundo(sesSnap.data());
+  const idCliente = rawOrig.id_cliente || rawOrig.ID_Cliente || '';
+  const fechaAnterior = parsearFechaFirestore(rawOrig.fecha_hora_inicio);
+  const fechaTexto = formatearFechaHoraHumanaUTC(fechaAnterior);
+
+  const clienteInfo = await resolverDocumentoCliente(idCliente);
+  const batch = writeBatch(db);
+  const undoOps: FirestoreOp[] = [];
+  const redoOps: FirestoreOp[] = [];
+  const ahora = new Date();
+
+  const updateFields: any = {
+    sin_fecha: true,
+    fecha_hora_inicio: null,
+    fecha_hora_anterior: rawOrig.fecha_hora_inicio || null,
+    fecha_creacion_sin_fecha: ahora,
+    estado: 'Sin fecha',
+    estado_sesion: 'Pendiente',
+    ultimo_editor: usuario,
+    fecha_ultima_edicion: ahora,
+    ultimo_modificado_por: usuario,
+    fecha_modificacion: ahora,
+    utc_migrado: true
+  };
+
+  batch.set(doc(db, 'agenda_sesiones', idSesion), updateFields, { merge: true });
+  undoOps.push({
+    type: 'set',
+    collection: 'agenda_sesiones',
+    id: idSesion,
+    data: rawOrig,
+    merge: false
+  });
+  redoOps.push({
+    type: 'set',
+    collection: 'agenda_sesiones',
+    id: idSesion,
+    data: { ...rawOrig, ...updateFields },
+    merge: false
+  });
+
+  const logEntry: MovimientoLogCliente = {
+    id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    id_cliente: clienteInfo.docId || idCliente,
+    tipo: 'CANCELACION',
+    titulo: 'Sesión enviada a Sin Fecha',
+    detalle: `La sesión del ${fechaTexto} se ubicó directamente en Sesiones Sin Fecha liberando su hueco en agenda sin desplazar el resto de sesiones.`,
+    fecha_registro: ahora.toISOString(),
+    usuario
+  };
+
+  prepararOperacionLogCliente(batch, undoOps, redoOps, clienteInfo, logEntry);
+  await batch.commit();
+
+  return {
+    ok: true,
+    undoOps,
+    redoOps,
+    toastMessage: `📌 Sesión del ${fechaTexto} ubicada en "Sesiones Sin Fecha"`,
+    logEntry
+  };
+}
+
+/**
+ * OPCIÓN 3: UBICAR PROGRAMACIÓN EN SESIÓN EXISTENTE A ELEGIR
+ * - Elimina la cita cancelada del calendario para liberar su hueco.
+ * - Mantiene intactas las sesiones intermedias entre la sesión cancelada y la sesión elegida.
+ * - En la sesión destino elegida:
+ *   - Modo 'MACHACAR': reemplaza los ejercicios de la sesión elegida por los de la sesión cancelada.
+ *   - Modo 'CASCADA_ADELANTE': coloca los ejercicios en la sesión elegida y desplaza en cascada hacia delante
+ *     la programación que hubiera desde esa sesión elegida en adelante (llevando la última a la primera vacía
+ *     del bloque final o a Sesiones Sin Fecha).
+ */
+export async function ubicarProgramacionDeSesionCanceladaEnExistente(params: {
+  idSesionOrigen: string;
+  idSesionDestino: string;
+  modo: 'MACHACAR' | 'CASCADA_ADELANTE';
+  usuario?: string;
+}): Promise<{
+  ok: boolean;
+  undoOps: FirestoreOp[];
+  redoOps: FirestoreOp[];
+  toastMessage: string;
+  logEntry?: MovimientoLogCliente;
+}> {
+  const { idSesionOrigen, idSesionDestino, modo, usuario = 'Entrenador' } = params;
+
+  if (!idSesionOrigen || !idSesionDestino || idSesionOrigen === idSesionDestino) {
+    return {
+      ok: false,
+      undoOps: [],
+      redoOps: [],
+      toastMessage: 'Selecciona una sesión destino válida.'
+    };
+  }
+
+  const [origSnap, destSnap] = await Promise.all([
+    getDoc(doc(db, 'agenda_sesiones', idSesionOrigen)),
+    getDoc(doc(db, 'agenda_sesiones', idSesionDestino))
+  ]);
+
+  if (!origSnap.exists()) {
+    return { ok: false, undoOps: [], redoOps: [], toastMessage: 'La sesión de origen no existe.' };
+  }
+  if (!destSnap.exists()) {
+    return { ok: false, undoOps: [], redoOps: [], toastMessage: 'La sesión destino seleccionada no existe.' };
+  }
+
+  const origRaw = clonarProfundo(origSnap.data());
+  const destRaw = clonarProfundo(destSnap.data());
+
+  const idCliente =
+    origRaw.id_cliente ||
+    origRaw.ID_Cliente ||
+    destRaw.id_cliente ||
+    destRaw.ID_Cliente ||
+    '';
+  const nombreCli =
+    origRaw.cliente_nombre ||
+    origRaw.alias ||
+    origRaw.Alias ||
+    origRaw.nombre_cliente ||
+    destRaw.cliente_nombre ||
+    destRaw.alias ||
+    'Cliente';
+
+  const fechaOrigen = parsearFechaFirestore(origRaw.fecha_hora_inicio);
+  const fechaDestino = parsearFechaFirestore(destRaw.fecha_hora_inicio);
+
+  const clienteInfo = await resolverDocumentoCliente(idCliente);
+  const todasSesiones = await cargarSesionesDeCliente(
+    clienteInfo.allClientIds.length > 0 ? clienteInfo.allClientIds : [idCliente]
+  );
+
+  const payloadOrigen = extraerPayloadProgramacion(origRaw);
+  const payloadDestinoPrevio = extraerPayloadProgramacion(destRaw);
+
+  const batch = writeBatch(db);
+  const undoOps: FirestoreOp[] = [];
+  const redoOps: FirestoreOp[] = [];
+  const ahora = new Date();
+
+  // 1. Eliminar la sesión origen para liberar su hueco
+  batch.delete(doc(db, 'agenda_sesiones', idSesionOrigen));
+  undoOps.push({
+    type: 'set',
+    collection: 'agenda_sesiones',
+    id: idSesionOrigen,
+    data: origRaw,
+    merge: false
+  });
+  redoOps.push({
+    type: 'delete',
+    collection: 'agenda_sesiones',
+    id: idSesionOrigen
+  });
+
+  // 2. Colocar la programación de la sesión origen en la sesión destino elegida
+  const updateDestinoFields: any = {
+    ejercicios: payloadOrigen.ejercicios,
+    intensidad_sesion: payloadOrigen.intensidad_sesion,
+    orden_customizado: payloadOrigen.orden_customizado,
+    ultimo_editor: usuario,
+    fecha_ultima_edicion: ahora,
+    ultimo_modificado_por: usuario,
+    fecha_modificacion: ahora
+  };
+
+  batch.set(doc(db, 'agenda_sesiones', idSesionDestino), updateDestinoFields, { merge: true });
+  undoOps.push({
+    type: 'set',
+    collection: 'agenda_sesiones',
+    id: idSesionDestino,
+    data: destRaw,
+    merge: false
+  });
+  redoOps.push({
+    type: 'set',
+    collection: 'agenda_sesiones',
+    id: idSesionDestino,
+    data: { ...destRaw, ...updateDestinoFields },
+    merge: false
+  });
+
+  let pasoASinFecha = false;
+  let fechaVaciaFinalUbicada: Date | null = null;
+
+  // 3. Si se eligió CASCADA_ADELANTE y la sesión destino tenía ejercicios, desplazar desde la sesión destino hacia delante
+  if (modo === 'CASCADA_ADELANTE' && tieneEjercicios(payloadDestinoPrevio) && fechaDestino) {
+    const futurasDesdeDestino = todasSesiones
+      .filter(
+        s =>
+          s.id !== idSesionOrigen &&
+          s.id !== idSesionDestino &&
+          !s.sin_fecha &&
+          s.fechaObj &&
+          !esSmallGroupTipo(s.tipo_sesion) &&
+          !esSesionCompletada(s) &&
+          !esSesionCancelada(s) &&
+          s.fechaObj.getTime() > fechaDestino.getTime()
+      )
+      .sort((a, b) => a.fechaObj.getTime() - b.fechaObj.getTime());
+
+    const nodoInicialDestino = {
+      id: idSesionDestino,
+      raw: destRaw,
+      fechaObj: fechaDestino,
+      ...payloadDestinoPrevio
+    };
+
+    const secuencia = [nodoInicialDestino, ...futurasDesdeDestino];
+
+    let lastProgIdx = -1;
+    for (let i = secuencia.length - 1; i >= 0; i--) {
+      if (tieneEjercicios(secuencia[i])) {
+        lastProgIdx = i;
+        break;
+      }
+    }
+
+    if (lastProgIdx >= 0) {
+      const payloadUltimoProgramado = extraerPayloadProgramacion(secuencia[lastProgIdx]);
+
+      for (let i = 1; i <= lastProgIdx; i++) {
+        const sesionSiguiente = secuencia[i];
+        const payloadAnterior = extraerPayloadProgramacion(secuencia[i - 1]);
+        const updateCascadaFields = {
+          ejercicios: payloadAnterior.ejercicios,
+          intensidad_sesion: payloadAnterior.intensidad_sesion,
+          orden_customizado: payloadAnterior.orden_customizado,
+          ultimo_editor: usuario,
+          fecha_ultima_edicion: ahora,
+          ultimo_modificado_por: usuario,
+          fecha_modificacion: ahora
+        };
+        batch.update(doc(db, 'agenda_sesiones', sesionSiguiente.id), updateCascadaFields);
+        undoOps.push({
+          type: 'set',
+          collection: 'agenda_sesiones',
+          id: sesionSiguiente.id,
+          data: sesionSiguiente.raw,
+          merge: false
+        });
+        redoOps.push({
+          type: 'set',
+          collection: 'agenda_sesiones',
+          id: sesionSiguiente.id,
+          data: { ...sesionSiguiente.raw, ...updateCascadaFields },
+          merge: false
+        });
+      }
+
+      if (lastProgIdx < secuencia.length - 1) {
+        const primeraVaciaFinal = secuencia[lastProgIdx + 1];
+        const updateVaciaFields = {
+          ejercicios: payloadUltimoProgramado.ejercicios,
+          intensidad_sesion: payloadUltimoProgramado.intensidad_sesion,
+          orden_customizado: payloadUltimoProgramado.orden_customizado,
+          ultimo_editor: usuario,
+          fecha_ultima_edicion: ahora,
+          ultimo_modificado_por: usuario,
+          fecha_modificacion: ahora
+        };
+        batch.update(doc(db, 'agenda_sesiones', primeraVaciaFinal.id), updateVaciaFields);
+        undoOps.push({
+          type: 'set',
+          collection: 'agenda_sesiones',
+          id: primeraVaciaFinal.id,
+          data: primeraVaciaFinal.raw,
+          merge: false
+        });
+        redoOps.push({
+          type: 'set',
+          collection: 'agenda_sesiones',
+          id: primeraVaciaFinal.id,
+          data: { ...primeraVaciaFinal.raw, ...updateVaciaFields },
+          merge: false
+        });
+        fechaVaciaFinalUbicada = primeraVaciaFinal.fechaObj;
+      } else {
+        const newSinFechaId = `SES-SF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        const sinFechaDocData = {
+          id_sesion_global: newSinFechaId,
+          id_cliente: clienteInfo.docId || idCliente,
+          alias: nombreCli,
+          nombre_cliente: nombreCli,
+          cliente_nombre: nombreCli,
+          tipo_sesion: destRaw.tipo_sesion || origRaw.tipo_sesion || 'Individual',
+          sin_fecha: true,
+          fecha_hora_inicio: null,
+          fecha_hora_anterior: destRaw.fecha_hora_inicio || null,
+          fecha_creacion_sin_fecha: ahora,
+          estado: 'Sin fecha',
+          estado_sesion: 'Pendiente',
+          ejercicios: payloadUltimoProgramado.ejercicios,
+          intensidad_sesion: payloadUltimoProgramado.intensidad_sesion,
+          orden_customizado: payloadUltimoProgramado.orden_customizado,
+          ultimo_editor: usuario,
+          fecha_ultima_edicion: ahora,
+          creado_por: usuario,
+          fecha_creacion: ahora,
+          utc_migrado: true
+        };
+
+        batch.set(doc(db, 'agenda_sesiones', newSinFechaId), sinFechaDocData);
+        undoOps.push({
+          type: 'delete',
+          collection: 'agenda_sesiones',
+          id: newSinFechaId
+        });
+        redoOps.push({
+          type: 'set',
+          collection: 'agenda_sesiones',
+          id: newSinFechaId,
+          data: sinFechaDocData,
+          merge: false
+        });
+        pasoASinFecha = true;
+      }
+    }
+  }
+
+  const origenTxt = formatearFechaHoraHumanaUTC(fechaOrigen);
+  const destinoTxt = formatearFechaHoraHumanaUTC(fechaDestino);
+
+  const detalleLog =
+    modo === 'MACHACAR'
+      ? `Se canceló la sesión del ${origenTxt} y su programación se ubicó en la sesión existente del ${destinoTxt} (reemplazando su contenido anterior).`
+      : pasoASinFecha
+      ? `Se canceló la sesión del ${origenTxt}, su programación se ubicó en la sesión del ${destinoTxt} y desde esa fecha se desplazó en cascada hacia delante (pasando la última a Sin Fecha).`
+      : fechaVaciaFinalUbicada
+      ? `Se canceló la sesión del ${origenTxt}, su programación se ubicó en la sesión del ${destinoTxt} y desde esa fecha se desplazó en cascada hacia delante.`
+      : `Se canceló la sesión del ${origenTxt} y su programación se ubicó en la sesión del ${destinoTxt}.`;
+
+  const logEntry: MovimientoLogCliente = {
+    id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    id_cliente: clienteInfo.docId || idCliente,
+    tipo: 'REPROGRAMACION',
+    titulo:
+      modo === 'MACHACAR'
+        ? 'Programación ubicada en sesión existente (machacando)'
+        : 'Programación ubicada en sesión existente (con cascada)',
+    detalle: detalleLog,
+    fecha_registro: ahora.toISOString(),
+    usuario
+  };
+
+  prepararOperacionLogCliente(batch, undoOps, redoOps, clienteInfo, logEntry);
+  await batch.commit();
+
+  const toastMessage =
+    modo === 'MACHACAR'
+      ? `🎯 Programación ubicada en la sesión del ${destinoTxt}`
+      : `🔄 Programación ubicada en el ${destinoTxt} con cascada hacia delante`;
+
+  return {
+    ok: true,
+    undoOps,
+    redoOps,
+    toastMessage,
+    logEntry
+  };
+}
+
 
 
 

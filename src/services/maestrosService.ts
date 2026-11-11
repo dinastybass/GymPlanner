@@ -4,10 +4,9 @@ import {
   getDocs,
   getDoc,
   doc,
-  setDoc,
-  updateDoc,
   deleteField,
 } from 'firebase/firestore';
+import { setDoc, updateDoc } from './offlineSyncService';
 import { CatalogoPermiso, MatrizPermisos, PermisoAccion, UsuarioApp } from '../types';
 
 const CACHE_KEY = 'gym_maestros_doc_map_v6';

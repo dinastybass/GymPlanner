@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { collection, getDocs, query, where, doc, updateDoc, addDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { updateDoc, addDoc } from '../services/offlineSyncService';
 import { cargarCatalogoMaestros, extraerListaMaster } from '../services/maestrosService';
 import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
@@ -148,9 +149,11 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
   const fetchDaySessions = useCallback(async () => {
     setLoading(true);
     try {
-      await revertirVencimientosAutomaticos();
-      await limpiarSesionesAntiguasYEjerciciosHuerfanos();
-      await procesarCaducidadSesionesSinFechaPorMeses();
+      if (typeof navigator === 'undefined' || navigator.onLine) {
+        await revertirVencimientosAutomaticos();
+        await limpiarSesionesAntiguasYEjerciciosHuerfanos();
+        await procesarCaducidadSesionesSinFechaPorMeses();
+      }
       const y = currentDate.getFullYear();
       const m = currentDate.getMonth();
       const d = currentDate.getDate();

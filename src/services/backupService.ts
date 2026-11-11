@@ -249,12 +249,36 @@ async function subirArchivoBackupAGoogleDrive(
   const token = await obtenerAccessTokenDrive(config);
   if (!folderId || !token) return null;
 
-  const boundary = '-------GymPlannerManualBackup' + Date.now();
-  const metadata = {
-    name: fileName,
-    mimeType: 'application/json',
-    parents: [folderId],
-  };
+  // Comprobar si ya existe un archivo con el mismo nombre en la carpeta para actualizarlo sin duplicar
+  let existingFileId = '';
+  try {
+    const searchQuery = `name = '${fileName.replace(/'/g, "\\'")}' and '${folderId}' in parents and trashed = false`;
+    const searchUrl = new URL('https://www.googleapis.com/drive/v3/files');
+    searchUrl.searchParams.set('q', searchQuery);
+    searchUrl.searchParams.set('fields', 'files(id, name)');
+    searchUrl.searchParams.set('supportsAllDrives', 'true');
+    searchUrl.searchParams.set('includeItemsFromAllDrives', 'true');
+    const searchRes = await fetch(searchUrl.toString(), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (searchRes.ok) {
+      const searchData = await searchRes.json();
+      if (Array.isArray(searchData.files) && searchData.files.length > 0) {
+        existingFileId = String(searchData.files[0].id || '');
+      }
+    }
+  } catch {
+    // continuar con creación normal
+  }
+
+  const boundary = '-------GymPlannerBackup' + Date.now();
+  const metadata = existingFileId
+    ? { name: fileName, mimeType: 'application/json' }
+    : {
+        name: fileName,
+        mimeType: 'application/json',
+        parents: [folderId],
+      };
 
   const multipartBody =
     `--${boundary}\r\n` +
@@ -265,23 +289,57 @@ async function subirArchivoBackupAGoogleDrive(
     `${jsonStr}\r\n` +
     `--${boundary}--`;
 
-  const uploadRes = await fetch(
-    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true',
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': `multipart/related; boundary=${boundary}`,
-      },
-      body: multipartBody,
-    }
-  );
+  const uploadUrl = existingFileId
+    ? `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(existingFileId)}?uploadType=multipart&supportsAllDrives=true`
+    : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true';
+
+  const uploadRes = await fetch(uploadUrl, {
+    method: existingFileId ? 'PATCH' : 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': `multipart/related; boundary=${boundary}`,
+    },
+    body: multipartBody,
+  });
 
   if (!uploadRes.ok) {
     const errTxt = await uploadRes.text();
     throw new Error(`Error subiendo copia a Google Drive (${uploadRes.status}): ${errTxt}`);
   }
   return await uploadRes.json();
+}
+
+async function limpiarBackupsAntiguosEnGoogleDrive(
+  config: GoogleDriveBackupConfig,
+  retentionDays = 30
+): Promise<void> {
+  try {
+    const folderId = extraerIdCarpetaDrive(config.folderId);
+    const token = await obtenerAccessTokenDrive(config);
+    if (!folderId || !token) return;
+
+    const cutoffDate = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
+    const query = `'${folderId}' in parents and name contains 'backup-gymplanner-' and createdTime < '${cutoffDate}' and trashed = false`;
+    const listUrl = new URL('https://www.googleapis.com/drive/v3/files');
+    listUrl.searchParams.set('q', query);
+    listUrl.searchParams.set('fields', 'files(id, name, createdTime)');
+    listUrl.searchParams.set('supportsAllDrives', 'true');
+    listUrl.searchParams.set('includeItemsFromAllDrives', 'true');
+
+    const res = await fetch(listUrl.toString(), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    for (const file of data.files || []) {
+      await fetch(
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?supportsAllDrives=true`,
+        { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }
+      );
+    }
+  } catch {
+    // ignore cleanup errors
+  }
 }
 
 async function descargarBackupDesdeGoogleDrive(
@@ -440,10 +498,91 @@ export async function generarBackupCompletoJSON(
   };
 }
 
+let autoBackupInFlight = false;
+const AUTO_BACKUP_STATUS_DOC_ID = 'backup_auto_status_v1';
+const LOCAL_LAST_AUTO_BACKUP_KEY = 'gym_last_auto_backup_date_v1';
+
+/**
+ * Verifica automáticamente una vez al día si ya existe la copia de seguridad diaria en Google Drive.
+ * Si el cron nocturno de GitHub Actions no se ejecutó, genera y sube la copia del día en segundo plano.
+ */
+export async function asegurarBackupDiarioAutomaticoEnDrive(): Promise<void> {
+  if (autoBackupInFlight) return;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const todayStr = `${yyyy}-${mm}-${dd}`;
+  const envSlug = isProduction ? 'prod' : 'dev';
+  const expectedFileName = `backup-gymplanner-${envSlug}-${todayStr}.json`;
+
+  try {
+    const localDone = localStorage.getItem(`${LOCAL_LAST_AUTO_BACKUP_KEY}_${envSlug}`);
+    if (localDone === todayStr) {
+      return;
+    }
+  } catch {
+    // ignore storage errors
+  }
+
+  autoBackupInFlight = true;
+  try {
+    const driveCfg = await cargarConfigGoogleDrive();
+    if (!driveCfg || !driveCfg.folderId || !driveCfg.clientId || !driveCfg.refreshToken) {
+      return;
+    }
+
+    // Comprobar en Google Drive si ya existe la copia de hoy (creada por GitHub Actions o por otro dispositivo)
+    const archivosDrive = await listarArchivosBackupEnGoogleDrive(driveCfg);
+    const existeHoyEnDrive = archivosDrive.some((item) => {
+      const nameMatch = (item.fileName || '').includes(todayStr);
+      const dateMatch = (item.createdAt || '').slice(0, 10) === todayStr && item.tipo === 'automatica';
+      return nameMatch || dateMatch;
+    });
+
+    if (existeHoyEnDrive) {
+      try {
+        localStorage.setItem(`${LOCAL_LAST_AUTO_BACKUP_KEY}_${envSlug}`, todayStr);
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
+    // Generar y subir la copia diaria automáticamente
+    const backupData = await generarBackupCompletoJSON();
+    const jsonStr = JSON.stringify(backupData, null, 2);
+    const uploaded = await subirArchivoBackupAGoogleDrive(driveCfg, expectedFileName, jsonStr);
+    if (uploaded) {
+      await limpiarBackupsAntiguosEnGoogleDrive(driveCfg, MAX_STORED_VERSIONS);
+      try {
+        localStorage.setItem(`${LOCAL_LAST_AUTO_BACKUP_KEY}_${envSlug}`, todayStr);
+        await setDoc(doc(db, 'maestros', AUTO_BACKUP_STATUS_DOC_ID), {
+          lastBackupDate: todayStr,
+          fileName: uploaded.name || expectedFileName,
+          driveFileId: uploaded.id,
+          updatedAt: new Date().toISOString(),
+        });
+      } catch {
+        // ignore
+      }
+    }
+  } catch (e) {
+    console.warn('Aviso en verificación de backup diario automático:', e);
+  } finally {
+    autoBackupInFlight = false;
+  }
+}
+
 /**
  * Lists all available backup versions from Google Drive (and local Firestore fallback) sorted newest to oldest
  */
 export async function listarVersionesBackup(): Promise<VersionBackupItem[]> {
+  // Asegurar que la copia diaria de hoy exista antes de listar
+  await asegurarBackupDiarioAutomaticoEnDrive();
+
   const versionesDrive: VersionBackupItem[] = [];
   const driveFilesIds = new Set<string>();
 

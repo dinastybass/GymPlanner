@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, getDocs, getDoc, doc, setDoc, updateDoc, writeBatch, query, where } from 'firebase/firestore';
+import { collection, getDocs, getDoc, doc, query, where } from 'firebase/firestore';
+import { setDoc, updateDoc, writeBatch } from '../services/offlineSyncService';
 import { EjercicioSesion } from '../types';
 import { CustomDropdown } from './CustomDropdown';
 import { getValoresMaestro } from '../services/maestrosService';
@@ -138,7 +139,7 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
           list.push({ id: d.id, ...data });
         });
 
-        // Ordenar sesiones DESCENDENTE (fechas más recientes/futuras primero, sin fecha al final)
+        // Ordenar sesiones ASCENDENTE (primero la más cercana en fecha, sin fecha al final)
         list.sort((a, b) => {
           const aSin = Boolean(a.sin_fecha || !a.fecha_hora_inicio);
           const bSin = Boolean(b.sin_fecha || !b.fecha_hora_inicio);
@@ -151,7 +152,7 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
           const tB = b.fecha_hora_inicio?.toMillis
             ? b.fecha_hora_inicio.toMillis()
             : (new Date(b.fecha_hora_inicio)).getTime() || 0;
-          return tB - tA; // Descendente
+          return tA - tB; // Ascendente: primero la más cercana
         });
 
         setSesiones(list);

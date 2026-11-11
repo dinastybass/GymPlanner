@@ -6,15 +6,14 @@ import {
   where,
   getDocs,
   getDoc,
-  doc,
-  setDoc,
-  deleteDoc,
-  writeBatch
+  doc
 } from 'firebase/firestore';
+import { setDoc, deleteDoc, writeBatch } from '../services/offlineSyncService';
 import { getValoresMaestro, obtenerFechaLimiteReprogramacionUTC } from '../services/maestrosService';
 import { CustomDropdown } from '../components/CustomDropdown';
 import { SendRoutineModal } from '../components/SendRoutineModal';
 import { ReprogramarSesionModal } from '../components/ReprogramarSesionModal';
+import { CancelarEliminarSesionModal } from '../components/CancelarEliminarSesionModal';
 import { useUndo } from '../context/UndoContext';
 import { FirestoreOp } from '../services/undoService';
 import { esSesionCompletada, parsearFechaFirestore } from '../utils/helpers';
@@ -3250,111 +3249,31 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
         </div>
       )}
 
-      {/* MODAL OPCIONES PAPELERA (ELIMINAR O ENVIAR A SIN FECHA - IDÉNTICO A FICHA CLIENTE) */}
-      {papeleraSesionModal.open && (
-        <div
-          className="modal-overlay"
-          style={{ display: 'flex', zIndex: 2350 }}
-          onClick={() => setPapeleraSesionModal(prev => ({ ...prev, open: false }))}
-        >
-          <div
-            className="modal-content"
-            style={{ maxWidth: 460 }}
-            onClick={e => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              className="modal-close"
-              onClick={() => setPapeleraSesionModal(prev => ({ ...prev, open: false }))}
-            >
-              ×
-            </button>
-            <div className="modal-header" style={{ marginBottom: 14 }}>
-              <h2>🗑️ Opciones de sesión</h2>
-              <p>
-                Sesión del <strong>{papeleraSesionModal.fechaStr}</strong> a las{' '}
-                <strong>{papeleraSesionModal.horaStr}</strong>. ¿Qué acción deseas realizar?
-              </p>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {papeleraSesionModal.puedeEnviarSinFecha && (
-                <button
-                  type="button"
-                  className="btn-outline"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: 12,
-                    padding: '14px 16px',
-                    textAlign: 'left',
-                    borderColor: '#f59e0b',
-                    background: '#fffbeb',
-                    color: '#92400e',
-                    borderRadius: 10
-                  }}
-                  onClick={async () => {
-                    const { idSesion, sFmt } = papeleraSesionModal;
-                    setPapeleraSesionModal(prev => ({ ...prev, open: false }));
-                    await handleCancelarSinFecha(idSesion, sFmt);
-                  }}
-                >
-                  <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>📌</span>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 3 }}>
-                      Enviar a sin fecha (Cancelar sesión)
-                    </div>
-                    <div style={{ fontSize: '0.78rem', color: '#78350f', fontWeight: 400, lineHeight: 1.35 }}>
-                      Libera el hueco en la agenda, desplaza las rutinas en cascada y ubica la última en la primera sesión vacía del bloque final (o en "Sesiones programadas sin fecha").
-                    </div>
-                  </div>
-                </button>
-              )}
-
-              <button
-                type="button"
-                className="btn-outline"
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 12,
-                  padding: '14px 16px',
-                  textAlign: 'left',
-                  borderColor: '#fca5a5',
-                  background: '#fef2f2',
-                  color: '#b91c1c',
-                  borderRadius: 10
-                }}
-                onClick={async () => {
-                  const { idSesion, sFmt } = papeleraSesionModal;
-                  setPapeleraSesionModal(prev => ({ ...prev, open: false }));
-                  await handleEliminarSesion(idSesion, sFmt);
-                }}
-              >
-                <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>🗑️</span>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 3 }}>
-                    Eliminar sesión definitivamente
-                  </div>
-                  <div style={{ fontSize: '0.78rem', color: '#991b1b', fontWeight: 400, lineHeight: 1.35 }}>
-                    Borra por completo esta sesión de la agenda sin desplazar las demás sesiones.
-                  </div>
-                </div>
-              </button>
-            </div>
-
-            <div className="modal-footer" style={{ marginTop: 18 }}>
-              <button
-                type="button"
-                className="btn-outline"
-                onClick={() => setPapeleraSesionModal(prev => ({ ...prev, open: false }))}
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* MODAL UNIFICADO DE CANCELAR O ELIMINAR SESIÓN (4 OPCIONES) */}
+      <CancelarEliminarSesionModal
+        isOpen={papeleraSesionModal.open}
+        sessionId={papeleraSesionModal.idSesion}
+        clientId={papeleraSesionModal.sFmt?.id_cliente || ''}
+        clientName={
+          papeleraSesionModal.sFmt?.alias ||
+          papeleraSesionModal.sFmt?.nombre_cliente ||
+          'Cliente'
+        }
+        fechaStr={papeleraSesionModal.fechaStr}
+        horaStr={papeleraSesionModal.horaStr}
+        tieneProgramacion={
+          Array.isArray(papeleraSesionModal.sFmt?.ejercicios) &&
+          papeleraSesionModal.sFmt.ejercicios.length > 0
+        }
+        numEjercicios={
+          Array.isArray(papeleraSesionModal.sFmt?.ejercicios)
+            ? papeleraSesionModal.sFmt.ejercicios.length
+            : 0
+        }
+        puedeMoverProgramacion={papeleraSesionModal.puedeEnviarSinFecha}
+        onClose={() => setPapeleraSesionModal(prev => ({ ...prev, open: false }))}
+        onSuccess={loadAgenda}
+      />
     </div>
   );
 };

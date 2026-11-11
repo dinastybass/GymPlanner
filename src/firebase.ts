@@ -1,5 +1,12 @@
 import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore, initializeFirestore, Firestore, setLogLevel } from 'firebase/firestore';
+import {
+  getFirestore,
+  initializeFirestore,
+  Firestore,
+  setLogLevel,
+  persistentLocalCache,
+  persistentMultipleTabManager
+} from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 const firebaseConfigProd = {
@@ -39,9 +46,19 @@ let db: Firestore;
 try {
   db = initializeFirestore(app, {
     experimentalAutoDetectLongPolling: true,
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    })
   });
 } catch {
-  db = getFirestore(app);
+  try {
+    db = initializeFirestore(app, {
+      experimentalAutoDetectLongPolling: true,
+      localCache: persistentLocalCache()
+    });
+  } catch {
+    db = getFirestore(app);
+  }
 }
 
 const auth = getAuth(app);
