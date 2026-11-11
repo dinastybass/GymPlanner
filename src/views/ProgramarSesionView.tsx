@@ -84,6 +84,23 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
   const [filterSubcat, setFilterSubcat] = useState('Todos');
   const [exSearchText, setExSearchText] = useState('');
 
+  useEffect(() => {
+    if (!modalAddOpen) {
+      setExSearchText('');
+      setMatSearch('');
+      setExPanelOpen(false);
+      setMatPanelOpen(false);
+    }
+  }, [modalAddOpen]);
+
+  useEffect(() => {
+    if (!exPanelOpen) setExSearchText('');
+  }, [exPanelOpen]);
+
+  useEffect(() => {
+    if (!matPanelOpen) setMatSearch('');
+  }, [matPanelOpen]);
+
   const [formEx, setFormEx] = useState({
     id_ejercicio: '',
     nombre_ejercicio: '',
@@ -592,6 +609,7 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
     setFilterNivel('Todos');
     setFilterSubcat('Todos');
     setExSearchText('');
+    setMatSearch('');
     setExPanelOpen(false);
     setMatPanelOpen(false);
 
@@ -634,6 +652,12 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
     if (!sesionActual || !sesionActual.ejercicios[index]) return;
     const ej = sesionActual.ejercicios[index];
     setEditingIndex(index);
+    setFilterMusculo('Todos');
+    setFilterBloque('Todos');
+    setFilterNivel('Todos');
+    setFilterSubcat('Todos');
+    setExSearchText('');
+    setMatSearch('');
     setExPanelOpen(false);
     setMatPanelOpen(false);
 

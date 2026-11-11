@@ -52,6 +52,10 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    setSearchTerm('');
+  }, [value]);
+
   const normalize = (txt: string) =>
     String(txt || '')
       .toLowerCase()
