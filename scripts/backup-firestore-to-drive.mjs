@@ -14,6 +14,16 @@ const DEFAULT_COLLECTIONS = [
 
 const RETENTION_DAYS = Number(process.env.RETENTION_DAYS || '30');
 
+function extractDriveFolderId(rawInput) {
+  const limpio = String(rawInput || '').trim();
+  if (!limpio) return '';
+  const matchFolder = limpio.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  if (matchFolder && matchFolder[1]) return matchFolder[1];
+  const matchIdParam = limpio.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (matchIdParam && matchIdParam[1]) return matchIdParam[1];
+  return limpio.split('?')[0].split('/')[0].trim();
+}
+
 function base64UrlEncode(input) {
   const buf = Buffer.isBuffer(input) ? input : Buffer.from(input, 'utf8');
   return buf.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
@@ -283,7 +293,7 @@ async function main() {
   fs.writeFileSync(path.join(outDir, fileName), fileBuffer);
   console.log(`💾 Guardado ${fileName} (${totalDocuments} documentos en ${collectionsToExport.length} colecciones)`);
 
-  const folderId = process.env.GDRIVE_FOLDER_ID?.trim();
+  const folderId = extractDriveFolderId(process.env.GDRIVE_FOLDER_ID);
   if (folderId) {
     const clientId = process.env.GDRIVE_CLIENT_ID?.trim();
     const clientSecret = process.env.GDRIVE_CLIENT_SECRET?.trim();

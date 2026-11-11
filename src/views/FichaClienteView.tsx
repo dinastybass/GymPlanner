@@ -2,16 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   doc,
   getDoc,
-  updateDoc,
   collection,
   getDocs,
   query,
-  where,
-  deleteDoc,
-  addDoc,
-  writeBatch
+  where
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { updateDoc, deleteDoc, addDoc, writeBatch } from '../services/offlineSyncService';
 import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
 import { clonarProfundoPreservandoFechas } from '../services/undoService';
@@ -31,6 +28,7 @@ import {
 import { confirmarDialogo } from '../utils/confirmDialog';
 import { SendRoutineModal } from '../components/SendRoutineModal';
 import { ReprogramarSesionModal } from '../components/ReprogramarSesionModal';
+import { CancelarEliminarSesionModal } from '../components/CancelarEliminarSesionModal';
 import {
   cancelarSesionConCascadaAdelante,
   revertirVencimientosAutomaticos,
@@ -2425,103 +2423,30 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
       />
 
 
-      {/* Modal Opciones Papelera (Eliminar o Enviar a Sin Fecha) */}
-      {modalPapeleraSesion.open && (
-        <div className="modal-overlay" style={{ display: 'flex' }}>
-          <div className="modal-content" style={{ maxWidth: 460 }}>
-            <button
-              type="button"
-              className="modal-close"
-              onClick={() => setModalPapeleraSesion(prev => ({ ...prev, open: false }))}
-            >
-              ×
-            </button>
-            <div className="modal-header" style={{ marginBottom: 14 }}>
-              <h2>🗑️ Opciones de sesión</h2>
-              <p>
-                Sesión del <strong>{modalPapeleraSesion.fechaStr}</strong> a las{' '}
-                <strong>{modalPapeleraSesion.horaStr}</strong>. ¿Qué acción deseas realizar?
-              </p>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {modalPapeleraSesion.puedeEnviarSinFecha && (
-                <button
-                  type="button"
-                  className="btn-outline"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: 12,
-                    padding: '14px 16px',
-                    textAlign: 'left',
-                    borderColor: '#f59e0b',
-                    background: '#fffbeb',
-                    color: '#92400e',
-                    borderRadius: 10
-                  }}
-                  onClick={async () => {
-                    const id = modalPapeleraSesion.idSesion;
-                    setModalPapeleraSesion(prev => ({ ...prev, open: false }));
-                    await cancelarSesionConCascada(id);
-                  }}
-                >
-                  <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>📌</span>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 3 }}>
-                      Enviar a sin fecha (Cancelar sesión)
-                    </div>
-                    <div style={{ fontSize: '0.78rem', color: '#78350f', fontWeight: 400, lineHeight: 1.35 }}>
-                      Libera el hueco en la agenda, desplaza las rutinas en cascada y ubica la última en la primera sesión vacía del bloque final (o en "Sesiones programadas sin fecha").
-                    </div>
-                  </div>
-                </button>
-              )}
-
-              <button
-                type="button"
-                className="btn-outline"
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 12,
-                  padding: '14px 16px',
-                  textAlign: 'left',
-                  borderColor: '#fca5a5',
-                  background: '#fef2f2',
-                  color: '#b91c1c',
-                  borderRadius: 10
-                }}
-                onClick={async () => {
-                  const id = modalPapeleraSesion.idSesion;
-                  setModalPapeleraSesion(prev => ({ ...prev, open: false }));
-                  await borrarSesion(id);
-                }}
-              >
-                <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>🗑️</span>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 3 }}>
-                    Eliminar sesión definitivamente
-                  </div>
-                  <div style={{ fontSize: '0.78rem', color: '#991b1b', fontWeight: 400, lineHeight: 1.35 }}>
-                    Borra por completo esta sesión de la agenda sin desplazar las demás sesiones.
-                  </div>
-                </div>
-              </button>
-            </div>
-
-            <div className="modal-footer" style={{ marginTop: 18 }}>
-              <button
-                type="button"
-                className="btn-outline"
-                onClick={() => setModalPapeleraSesion(prev => ({ ...prev, open: false }))}
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modal Unificado de Cancelar o Eliminar Sesión (4 opciones) */}
+      {(() => {
+        const sesionPapelera = sesionesCliente.find(
+          s => s.id === modalPapeleraSesion.idSesion
+        );
+        const numEjPapelera = Array.isArray(sesionPapelera?.ejercicios)
+          ? sesionPapelera.ejercicios.length
+          : 0;
+        return (
+          <CancelarEliminarSesionModal
+            isOpen={modalPapeleraSesion.open}
+            sessionId={modalPapeleraSesion.idSesion}
+            clientId={clientId}
+            clientName={alias || nom}
+            fechaStr={modalPapeleraSesion.fechaStr}
+            horaStr={modalPapeleraSesion.horaStr}
+            tieneProgramacion={numEjPapelera > 0}
+            numEjercicios={numEjPapelera}
+            puedeMoverProgramacion={modalPapeleraSesion.puedeEnviarSinFecha}
+            onClose={() => setModalPapeleraSesion(prev => ({ ...prev, open: false }))}
+            onSuccess={cargarTodo}
+          />
+        );
+      })()}
 
       {/* Modal Reprogramar Sesión Unificado */}
       <ReprogramarSesionModal

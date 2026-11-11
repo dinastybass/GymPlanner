@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { UndoProvider } from './context/UndoContext';
 import { Navbar } from './components/Navbar';
+import { OfflineStatusBanner } from './components/OfflineStatusBanner';
 import { ToastNotification } from './components/ToastNotification';
 import { LoginView } from './views/LoginView';
 import { PlanificacionView } from './views/PlanificacionView';
@@ -17,6 +18,8 @@ import { MaestrosView } from './views/MaestrosView';
 import { ProgramacionesPendientesView } from './views/ProgramacionesPendientesView';
 import { PantallaSalaView } from './views/PantallaSalaView';
 import { esRolProyectorSala, esRolBasico } from './services/maestrosService';
+import { precargarDatosOfflineEnSegundoPlano } from './services/offlineSyncService';
+import { asegurarBackupDiarioAutomaticoEnDrive } from './services/backupService';
 
 const VALID_TABS = new Set([
   'planificacion',
@@ -77,6 +80,14 @@ const AppContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>(initialRoute.tab);
   const [routeParam, setRouteParam] = useState<string>(initialRoute.param);
   const [historyStack, setHistoryStack] = useState<Array<{ tab: string; param: string }>>([]);
+
+  useEffect(() => {
+    if (!user) return;
+    // Precargar datos en caché local IndexedDB para uso sin WiFi
+    precargarDatosOfflineEnSegundoPlano();
+    // Verificar/ejecutar backup diario automático a Google Drive en segundo plano
+    asegurarBackupDiarioAutomaticoEnDrive();
+  }, [user]);
 
   useEffect(() => {
     if (isProyector) {
@@ -199,11 +210,17 @@ const AppContent: React.FC = () => {
   }
 
   if (activeTab === 'pantalla_sala' || isProyector) {
-    return <PantallaSalaView onBack={() => handleNavigate('planificacion')} />;
+    return (
+      <>
+        <OfflineStatusBanner />
+        <PantallaSalaView onBack={() => handleNavigate('planificacion')} />
+      </>
+    );
   }
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
+      <OfflineStatusBanner />
       <Navbar
         activeTab={activeTab}
         onNavigate={handleNavigate}

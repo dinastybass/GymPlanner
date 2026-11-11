@@ -2,14 +2,13 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   doc,
   getDoc,
-  updateDoc,
   collection,
   getDocs,
   query,
-  where,
-  writeBatch
+  where
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { updateDoc, writeBatch } from '../services/offlineSyncService';
 import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
 import { cargarCatalogoMaestros, extraerListaMaster } from '../services/maestrosService';

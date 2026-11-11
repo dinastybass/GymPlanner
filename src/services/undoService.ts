@@ -1,5 +1,6 @@
 import { db } from '../firebase';
-import { doc, getDoc, writeBatch } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
+import { writeBatch } from './offlineSyncService';
 import { confirmarDialogo } from '../utils/confirmDialog';
 
 export interface FirestoreOp {

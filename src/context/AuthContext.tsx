@@ -55,9 +55,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const emailKey = email.trim().toLowerCase();
         const esInvitado = emailKey === 'invitado@goandtrain.com';
 
-        let rolFinal = esInvitado ? 'Proyector Sala' : 'programador';
-        let nombreFinal = esInvitado ? 'Invitado Sala' : (email ? email.split('@')[0] : 'Empleado');
-        let aliasFinal = obtenerNombreCortoOAlias(nombreFinal);
+        const savedRole = localStorage.getItem('userRole');
+        const savedName = localStorage.getItem('gym_user_name');
+        const savedAlias = localStorage.getItem('gym_user_alias');
+
+        let rolFinal = esInvitado ? 'Proyector Sala' : (savedRole || 'programador');
+        let nombreFinal = esInvitado ? 'Invitado Sala' : (savedName || (email ? email.split('@')[0] : 'Empleado'));
+        let aliasFinal = savedAlias || obtenerNombreCortoOAlias(nombreFinal);
 
         try {
           let userDoc = await getDoc(doc(db, "usuarios_app", emailKey));
