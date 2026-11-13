@@ -386,8 +386,9 @@ export async function updateDoc(
     fieldTimestamps
   });
 
-  // Usar setDoc con merge: true para que funcione en offline aunque el documento haya sido creado también offline
-  const p = fbSetDoc(ref, enrichedData, { merge: true });
+  const p = fbUpdateDoc(ref, enrichedData).catch(() =>
+    fbSetDoc(ref, enrichedData, { merge: true })
+  );
   await ejecutarEscrituraNoBloqueante(p, [key], nowMs);
 }
 

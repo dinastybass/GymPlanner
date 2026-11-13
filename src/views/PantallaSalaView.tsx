@@ -42,34 +42,10 @@ function calcularTurnoObjetivo() {
   const currentTotalMins = now.getHours() * 60 + now.getMinutes();
 
   const targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  let targetBlock: 'MAÑANA' | 'TARDE' = 'MAÑANA';
-  let avanzarSiguienteDiaHabil = false;
+  const targetBlock: 'MAÑANA' | 'TARDE' =
+    currentTotalMins >= 13 * 60 + 30 ? 'TARDE' : 'MAÑANA';
 
-  if (targetDate.getDay() === 0 || targetDate.getDay() === 6) {
-    avanzarSiguienteDiaHabil = true;
-    targetBlock = 'MAÑANA';
-  } else if (currentTotalMins >= 21 * 60) {
-    avanzarSiguienteDiaHabil = true;
-    targetBlock = 'MAÑANA';
-  } else if (currentTotalMins >= 15 * 60 + 30) {
-    targetBlock = 'TARDE';
-  } else {
-    targetBlock = 'MAÑANA';
-  }
-
-  if (avanzarSiguienteDiaHabil) {
-    targetDate.setDate(targetDate.getDate() + 1);
-    while (targetDate.getDay() === 0 || targetDate.getDay() === 6) {
-      targetDate.setDate(targetDate.getDate() + 1);
-    }
-  }
-
-  const esHoyMismo =
-    targetDate.getFullYear() === now.getFullYear() &&
-    targetDate.getMonth() === now.getMonth() &&
-    targetDate.getDate() === now.getDate();
-
-  return { targetDate, targetBlock, esHoyMismo, currentTotalMins };
+  return { targetDate, targetBlock, esHoyMismo: true, currentTotalMins };
 }
 
 function getLayoutDimensions(count: number) {
@@ -148,7 +124,9 @@ export const PantallaSalaView: React.FC<PantallaSalaViewProps> = ({ onBack }) =>
         if (targetBlock === 'MAÑANA' && hora >= 14) return;
         if (targetBlock === 'TARDE' && hora < 14) return;
 
+        // No mostrar sesiones que empezaron hace más de 2h 30m ni posteriores a 30 minutos desde la hora actual
         if (esHoyMismo && currentTotalMins - sesionStartMins > 150) return;
+        if (sesionStartMins - currentTotalMins > 30) return;
 
         const idCli = data.id_cliente;
         const nombreCliente =

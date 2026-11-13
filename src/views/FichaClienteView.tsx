@@ -156,7 +156,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
     open: boolean;
     originSessionId: string;
     ejercicios: any[];
-    intensity: 'LOW' | 'MED' | 'HIGH';
+    intensity: string;
     tipoSesion: string;
   }>({
     open: false,
@@ -675,7 +675,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
       alert('Esta sesión no tiene ejercicios para enviar.');
       return;
     }
-    const intNorm = normalizarIntensidad(sesion.intensidad_sesion || sesion.intensidad || 'MED') as 'LOW' | 'MED' | 'HIGH';
+    const intNorm = normalizarIntensidad(sesion.intensidad_sesion || sesion.intensidad || 'MED');
     setSendRoutineData({
       open: true,
       originSessionId: idSesionOrigen,
@@ -1416,9 +1416,9 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                                     <td className="col-tipo">
                                       <span
                                         className={`pill ${isSG ? 'pill-sg' : 'pill-si'}`}
-                                        title={isSG ? 'Small Group' : 'Individual'}
+                                        title={isSG ? 'Small Group' : 'Personal Training'}
                                       >
-                                        {isSG ? 'S.G.' : 'Ind.'}
+                                        {isSG ? 'S.G.' : 'PT'}
                                       </span>
                                     </td>
                                     <td className="col-estado">
@@ -1600,8 +1600,8 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                                       S.G.
                                     </span>
                                   ) : (
-                                    <span className="pill pill-si" title="Individual">
-                                      Ind.
+                                    <span className="pill pill-si" title="Personal Training">
+                                      PT
                                     </span>
                                   );
 

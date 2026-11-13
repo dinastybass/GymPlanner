@@ -301,7 +301,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
   const [sendModalOpen, setSendModalOpen] = useState(false);
   const [sendEjercicios, setSendEjercicios] = useState<any[]>([]);
   const [sendTipoSesion, setSendTipoSesion] = useState<string>('Individual');
-  const [sendIntensidad, setSendIntensidad] = useState<'LOW' | 'MED' | 'HIGH'>('MED');
+  const [sendIntensidad, setSendIntensidad] = useState<string>('MED');
   const [sendClientId, setSendClientId] = useState<string>('');
   const [sendSessionId, setSendSessionId] = useState<string>('');
 
@@ -2958,7 +2958,10 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                             )}
                           </div>
                           <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>
-                            {s.tipo_sesion || 'Individual'}
+                            {(s.tipo_sesion || '').toLowerCase().includes('small') ||
+                            (s.tipo_sesion || '').toLowerCase().includes('group')
+                              ? 'S.G.'
+                              : 'PT'}
                           </span>
                         </div>
                         <div

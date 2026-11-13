@@ -177,7 +177,11 @@ export const EjerciciosView: React.FC<EjerciciosViewProps> = () => {
           extraerListaMaster(maestros, 'Ejercicios', ['Patrón Motor', 'Patrón de movimiento'])
         );
         setMusculosList(
-          extraerListaMaster(maestros, 'Ejercicios', ['Grupos de Ejercicios', 'Grupo muscular'])
+          extraerListaMaster(maestros, 'Ejercicios', [
+            'Músculos',
+            'Grupos de Ejercicios',
+            'Grupo muscular'
+          ])
         );
         setMaterialesList(
           extraerListaMaster(maestros, 'Ejercicios', ['Materiales', 'Material sugerido'])

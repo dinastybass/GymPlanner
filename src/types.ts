@@ -40,8 +40,8 @@ export interface EjercicioSesion {
   repeticiones?: string;
   Peso?: string | number;
   peso?: string | number;
-  Intensidad?: 'LOW' | 'MED' | 'HIGH';
-  intensidad?: 'LOW' | 'MED' | 'HIGH';
+  Intensidad?: 'LOW' | 'MED' | 'HIGH' | string;
+  intensidad?: 'LOW' | 'MED' | 'HIGH' | string;
   Material?: string;
   Material_Adaptacion?: string;
   Subgrupo?: string;
@@ -69,8 +69,8 @@ export interface SesionAgenda {
   fecha_hora_anterior?: any;
   sin_fecha?: boolean;
   estado?: 'Pendiente' | 'Completada' | 'Vencida' | 'Sin fecha';
-  intensidad?: 'LOW' | 'MED' | 'HIGH';
-  Intensidad?: 'LOW' | 'MED' | 'HIGH';
+  intensidad?: 'LOW' | 'MED' | 'HIGH' | string;
+  Intensidad?: 'LOW' | 'MED' | 'HIGH' | string;
   programado_por?: string;
   fecha_programacion?: any;
   ejercicios?: EjercicioSesion[];
@@ -126,8 +126,8 @@ export interface PlantillaSesion {
   nombre: string;
   tipo_sesion: string;
   nivel: string;
-  intensidad: 'LOW' | 'MED' | 'HIGH';
-  Intensidad?: 'LOW' | 'MED' | 'HIGH';
+  intensidad: 'LOW' | 'MED' | 'HIGH' | string;
+  Intensidad?: 'LOW' | 'MED' | 'HIGH' | string;
   ejercicios: EjercicioSesion[];
   orden_customizado?: boolean;
 }

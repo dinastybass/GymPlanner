@@ -1,9 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { collection, getDocs, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useUndo } from '../context/UndoContext';
 import { cargarCatalogoMaestros, extraerListaMaster } from '../services/maestrosService';
-import { normalizarIntensidad, renderIntensityBadge } from '../utils/helpers';
+import {
+  normalizarIntensidad,
+  renderIntensityBadge,
+  formatIntensityOptionLabel,
+  DEFAULT_INTENSIDADES_SESION
+} from '../utils/helpers';
 import { confirmarDialogo } from '../utils/confirmDialog';
 
 interface PlantillasViewProps {
@@ -33,11 +38,15 @@ export const PlantillasView: React.FC<PlantillasViewProps> = ({ onNavigate }) =>
     'Avanzado',
     'Todos los niveles'
   ]);
+  const [intensidadesMaster, setIntensidadesMaster] = useState<string[]>(
+    DEFAULT_INTENSIDADES_SESION
+  );
 
   const [collapsedTipos, setCollapsedTipos] = useState<Record<string, boolean>>({});
 
-  // Modal Nueva Plantilla
+  // Modal Nueva / Editar Plantilla
   const [modalNuevaOpen, setModalNuevaOpen] = useState(false);
+  const [editingPlantillaId, setEditingPlantillaId] = useState<string | null>(null);
   const [savingNueva, setSavingNueva] = useState(false);
   const [formNueva, setFormNueva] = useState({
     tipo: 'Fuerza',
@@ -75,6 +84,13 @@ export const PlantillasView: React.FC<PlantillasViewProps> = ({ onNavigate }) =>
 
         const nivs = extraerListaMaster(maestros, 'Ejercicios', ['Niveles', 'Nivel de Dificultad']);
         if (nivs.length > 0) setNivelesMaster([...nivs, 'Todos los niveles']);
+
+        const ints = extraerListaMaster(maestros, 'Sesiones', [
+          'Intensidad de la Sesión',
+          'Intensidad de la sesión',
+          'Intensidad'
+        ]);
+        if (ints.length > 0) setIntensidadesMaster(ints);
       } catch (e) {
         console.warn('Error cargando maestros en plantillas:', e);
       }
@@ -90,16 +106,29 @@ export const PlantillasView: React.FC<PlantillasViewProps> = ({ onNavigate }) =>
   }, [registerChangeListener, cargarPlantillas]);
 
   const abrirModalNueva = () => {
+    setEditingPlantillaId(null);
     setFormNueva({
       tipo: tiposSesionMaster[0] || 'Fuerza',
       nombre: '',
       nivel: nivelesMaster[0] || 'Básico',
-      intensidad: 'MED'
+      intensidad: normalizarIntensidad(intensidadesMaster[1] || intensidadesMaster[0] || 'MED')
     });
     setModalNuevaOpen(true);
   };
 
-  const crearPlantilla = async () => {
+  const abrirModalEditarPlantilla = (e: React.MouseEvent, p: any) => {
+    e.stopPropagation();
+    setEditingPlantillaId(p.id);
+    setFormNueva({
+      tipo: p.tipo_sesion || tiposSesionMaster[0] || 'Fuerza',
+      nombre: p.nombre || '',
+      nivel: p.nivel || nivelesMaster[0] || 'Básico',
+      intensidad: normalizarIntensidad(p.intensidad_sesion || p.intensidad || 'MED')
+    });
+    setModalNuevaOpen(true);
+  };
+
+  const guardarPlantillaModal = async () => {
     const nombre = formNueva.nombre.trim();
     if (!nombre) {
       alert('El nombre de la plantilla es obligatorio.');
@@ -109,38 +138,94 @@ export const PlantillasView: React.FC<PlantillasViewProps> = ({ onNavigate }) =>
     setSavingNueva(true);
     try {
       const intNorm = normalizarIntensidad(formNueva.intensidad || 'MED');
-      const nuevaPlantillaPayload = {
-        tipo_sesion: formNueva.tipo,
-        nombre,
-        nivel: formNueva.nivel,
-        intensidad: intNorm,
-        Intensidad: intNorm,
-        intensidad_sesion: intNorm,
-        ejercicios: [],
-        fecha_creacion: new Date()
-      };
 
-      const docRef = await addDoc(collection(db, 'plantillas_sesiones'), nuevaPlantillaPayload);
+      if (editingPlantillaId) {
+        const pPrevia = plantillasData.find(p => p.id === editingPlantillaId);
+        const prevData = {
+          tipo_sesion: pPrevia?.tipo_sesion || '',
+          nombre: pPrevia?.nombre || '',
+          nivel: pPrevia?.nivel || '',
+          intensidad: normalizarIntensidad(
+            pPrevia?.intensidad_sesion || pPrevia?.intensidad || 'MED'
+          ),
+          Intensidad: normalizarIntensidad(
+            pPrevia?.intensidad_sesion || pPrevia?.intensidad || 'MED'
+          ),
+          intensidad_sesion: normalizarIntensidad(
+            pPrevia?.intensidad_sesion || pPrevia?.intensidad || 'MED'
+          )
+        };
+        const nextData = {
+          tipo_sesion: formNueva.tipo,
+          nombre,
+          nivel: formNueva.nivel,
+          intensidad: intNorm,
+          Intensidad: intNorm,
+          intensidad_sesion: intNorm
+        };
 
-      pushAction({
-        label: `Crear plantilla "${nombre}"`,
-        undoOps: [{ type: 'delete', collection: 'plantillas_sesiones', id: docRef.id }],
-        redoOps: [
-          {
-            type: 'set',
-            collection: 'plantillas_sesiones',
-            id: docRef.id,
-            data: nuevaPlantillaPayload
-          }
-        ],
-        showToast: false
-      });
+        await updateDoc(doc(db, 'plantillas_sesiones', editingPlantillaId), nextData);
+        setPlantillasData(prev =>
+          prev.map(p => (p.id === editingPlantillaId ? { ...p, ...nextData } : p))
+        );
+        setModalNuevaOpen(false);
+        setEditingPlantillaId(null);
 
-      setModalNuevaOpen(false);
-      onNavigate('editar_plantilla', docRef.id);
+        pushAction({
+          label: `Editar plantilla "${nombre}"`,
+          undoOps: [
+            {
+              type: 'update',
+              collection: 'plantillas_sesiones',
+              id: editingPlantillaId,
+              data: prevData
+            }
+          ],
+          redoOps: [
+            {
+              type: 'update',
+              collection: 'plantillas_sesiones',
+              id: editingPlantillaId,
+              data: nextData
+            }
+          ],
+          showToast: true,
+          toastMessage: `✓ Plantilla "${nombre}" actualizada`
+        });
+      } else {
+        const nuevaPlantillaPayload = {
+          tipo_sesion: formNueva.tipo,
+          nombre,
+          nivel: formNueva.nivel,
+          intensidad: intNorm,
+          Intensidad: intNorm,
+          intensidad_sesion: intNorm,
+          ejercicios: [],
+          fecha_creacion: new Date()
+        };
+
+        const docRef = await addDoc(collection(db, 'plantillas_sesiones'), nuevaPlantillaPayload);
+
+        pushAction({
+          label: `Crear plantilla "${nombre}"`,
+          undoOps: [{ type: 'delete', collection: 'plantillas_sesiones', id: docRef.id }],
+          redoOps: [
+            {
+              type: 'set',
+              collection: 'plantillas_sesiones',
+              id: docRef.id,
+              data: nuevaPlantillaPayload
+            }
+          ],
+          showToast: false
+        });
+
+        setModalNuevaOpen(false);
+        onNavigate('editar_plantilla', docRef.id);
+      }
     } catch (e) {
-      console.error('Error creando plantilla:', e);
-      alert('Error al crear la plantilla.');
+      console.error('Error guardando plantilla:', e);
+      alert('Error al guardar la plantilla.');
     } finally {
       setSavingNueva(false);
     }
@@ -273,10 +358,11 @@ export const PlantillasView: React.FC<PlantillasViewProps> = ({ onNavigate }) =>
                       <table>
                         <thead>
                           <tr>
-                            <th style={{ width: '45%' }}>Nombre de Sesión</th>
-                            <th style={{ width: '25%' }}>Nivel</th>
-                            <th style={{ width: '20%' }}>Nº Ejercicios</th>
-                            <th style={{ width: '10%', textAlign: 'right' }}>Acciones</th>
+                            <th style={{ width: '36%' }}>Nombre de Sesión</th>
+                            <th style={{ width: '18%' }}>Intensidad</th>
+                            <th style={{ width: '18%' }}>Nivel</th>
+                            <th style={{ width: '16%' }}>Nº Ejercicios</th>
+                            <th style={{ width: '12%', textAlign: 'right' }}>Acciones</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -292,7 +378,9 @@ export const PlantillasView: React.FC<PlantillasViewProps> = ({ onNavigate }) =>
                               onClick={() => onNavigate('editar_plantilla', p.id)}
                             >
                               <td>
-                                <strong>{p.nombre || 'Sin nombre'}</strong>{' '}
+                                <strong>{p.nombre || 'Sin nombre'}</strong>
+                              </td>
+                              <td>
                                 <span
                                   dangerouslySetInnerHTML={{
                                     __html: renderIntensityBadge(intSes, { compact: true })
@@ -304,28 +392,38 @@ export const PlantillasView: React.FC<PlantillasViewProps> = ({ onNavigate }) =>
                               </td>
                               <td style={{ color: 'var(--text-muted)' }}>{numEj} ejercicios</td>
                               <td style={{ textAlign: 'right' }}>
-                                <button
-                                  type="button"
-                                  className="btn-icon danger"
-                                  title="Eliminar plantilla"
-                                  onClick={e => borrarPlantilla(e, p.id, p.nombre)}
-                                >
-                                  <svg
-                                    width="16"
-                                    height="16"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                  <button
+                                    type="button"
+                                    className="btn-icon"
+                                    title="Editar nombre, tipo de sesión y nivel"
+                                    onClick={e => abrirModalEditarPlantilla(e, p)}
                                   >
-                                    <polyline points="3 6 5 6 21 6" />
-                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                    <line x1="10" y1="11" x2="10" y2="17" />
-                                    <line x1="14" y1="11" x2="14" y2="17" />
-                                  </svg>
-                                </button>
+                                    ✏️
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-icon danger"
+                                    title="Eliminar plantilla"
+                                    onClick={e => borrarPlantilla(e, p.id, p.nombre)}
+                                  >
+                                    <svg
+                                      width="16"
+                                      height="16"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    >
+                                      <polyline points="3 6 5 6 21 6" />
+                                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                      <line x1="10" y1="11" x2="10" y2="17" />
+                                      <line x1="14" y1="11" x2="14" y2="17" />
+                                    </svg>
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -341,10 +439,14 @@ export const PlantillasView: React.FC<PlantillasViewProps> = ({ onNavigate }) =>
         )}
       </div>
 
-      {/* Modal Crear Plantilla */}
+      {/* Modal Crear / Editar Plantilla */}
       {modalNuevaOpen && (
-        <div className="modal-overlay" style={{ display: 'flex' }}>
-          <div className="modal-content">
+        <div
+          className="modal-overlay"
+          style={{ display: 'flex' }}
+          onClick={() => !savingNueva && setModalNuevaOpen(false)}
+        >
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
             <button
               type="button"
               className="modal-close"
@@ -353,8 +455,16 @@ export const PlantillasView: React.FC<PlantillasViewProps> = ({ onNavigate }) =>
               ×
             </button>
             <div className="modal-header">
-              <h2>Crear Plantilla de Sesión</h2>
-              <p>Define los datos básicos antes de añadir los ejercicios</p>
+              <h2>
+                {editingPlantillaId
+                  ? '✏️ Editar Datos de Plantilla'
+                  : 'Crear Plantilla de Sesión'}
+              </h2>
+              <p>
+                {editingPlantillaId
+                  ? 'Modifica el nombre, tipo de sesión, nivel o intensidad'
+                  : 'Define los datos básicos antes de añadir los ejercicios'}
+              </p>
             </div>
 
             <div className="form-group">
@@ -363,7 +473,12 @@ export const PlantillasView: React.FC<PlantillasViewProps> = ({ onNavigate }) =>
                 value={formNueva.tipo}
                 onChange={e => setFormNueva(prev => ({ ...prev, tipo: e.target.value }))}
               >
-                {tiposSesionMaster.map(t => (
+                {Array.from(
+                  new Set([
+                    ...tiposSesionMaster,
+                    ...(formNueva.tipo ? [formNueva.tipo] : [])
+                  ])
+                ).map(t => (
                   <option key={t} value={t}>
                     {t}
                   </option>
@@ -387,7 +502,12 @@ export const PlantillasView: React.FC<PlantillasViewProps> = ({ onNavigate }) =>
                 value={formNueva.nivel}
                 onChange={e => setFormNueva(prev => ({ ...prev, nivel: e.target.value }))}
               >
-                {nivelesMaster.map(n => (
+                {Array.from(
+                  new Set([
+                    ...nivelesMaster,
+                    ...(formNueva.nivel ? [formNueva.nivel] : [])
+                  ])
+                ).map(n => (
                   <option key={n} value={n}>
                     {n}
                   </option>
@@ -403,9 +523,16 @@ export const PlantillasView: React.FC<PlantillasViewProps> = ({ onNavigate }) =>
                   setFormNueva(prev => ({ ...prev, intensidad: e.target.value }))
                 }
               >
-                <option value="LOW">🟢 LOW (Baja)</option>
-                <option value="MED">🟡 MED (Media)</option>
-                <option value="HIGH">🔴 HIGH (Alta)</option>
+                {Array.from(
+                  new Set([
+                    ...intensidadesMaster.map(normalizarIntensidad),
+                    normalizarIntensidad(formNueva.intensidad)
+                  ])
+                ).map(intOption => (
+                  <option key={intOption} value={intOption}>
+                    {formatIntensityOptionLabel(intOption)}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -421,9 +548,13 @@ export const PlantillasView: React.FC<PlantillasViewProps> = ({ onNavigate }) =>
                 type="button"
                 className="btn-primary"
                 disabled={savingNueva}
-                onClick={crearPlantilla}
+                onClick={guardarPlantillaModal}
               >
-                {savingNueva ? 'Creando...' : 'Crear y Añadir Ejercicios'}
+                {savingNueva
+                  ? 'Guardando...'
+                  : editingPlantillaId
+                  ? 'Guardar cambios'
+                  : 'Crear y Añadir Ejercicios'}
               </button>
             </div>
           </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
+import { setDoc } from '../services/offlineSyncService';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
@@ -7,6 +8,9 @@ import { confirmarDialogo } from '../utils/confirmDialog';
 import {
   ESTRUCTURA_MAESTROS,
   CATALOGO_PERMISOS_APP,
+  DIAS_SEMANA_SG,
+  HORAS_MEDIA_HORA_SG,
+  parsearHorarioSmallGroup,
   cargarTodosLosMaestros,
   guardarValorMaestro,
   reordenarValoresMaestro,
@@ -48,6 +52,8 @@ export const MaestrosView: React.FC = () => {
   const [currentKey, setCurrentKey] = useState('Niveles');
 
   const [inputValor, setInputValor] = useState('');
+  const [sgDia, setSgDia] = useState<string>('Lunes');
+  const [sgHora, setSgHora] = useState<string>('18:00');
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingOldValue, setEditingOldValue] = useState<string | null>(null);
   const [savingItem, setSavingItem] = useState(false);
@@ -186,11 +192,18 @@ export const MaestrosView: React.FC = () => {
     setEditingItemId(id);
     setEditingOldValue(valor);
     setInputValor(valor);
+    if (currentSection === 'Agenda' && currentKey === 'Horarios Small Groups') {
+      const parsed = parsearHorarioSmallGroup(valor);
+      setSgDia(parsed.dia);
+      setSgHora(parsed.hora);
+    }
   };
 
   const handleGuardarItem = async () => {
     if (!puedeEditarActual()) return;
-    const val = inputValor.trim();
+    const esHorariosSG =
+      currentSection === 'Agenda' && currentKey === 'Horarios Small Groups';
+    const val = esHorariosSG ? `${sgDia} ${sgHora}` : inputValor.trim();
     if (!val) {
       alert('Escribe un valor válido.');
       return;
@@ -347,7 +360,7 @@ export const MaestrosView: React.FC = () => {
         const prevSnap = await getDoc(docRef);
         const prevDocData = prevSnap.exists() ? clonarProfundo(prevSnap.data()) : null;
 
-        await eliminarValorMaestro(currentKey, id);
+        await eliminarValorMaestro(currentKey, id, valor);
 
         if (
           currentSection === 'Gestión de Perfiles' &&
@@ -414,7 +427,7 @@ export const MaestrosView: React.FC = () => {
         depModal.valor,
         depModal.accion === 'reasignar' ? depModal.nuevoValor : null
       );
-      await eliminarValorMaestro(currentKey, depModal.itemId);
+      await eliminarValorMaestro(currentKey, depModal.itemId, depModal.valor);
 
       const nextSnap = await getDoc(docRef);
       const nextDocData = nextSnap.exists() ? clonarProfundo(nextSnap.data()) : null;
@@ -866,37 +879,90 @@ export const MaestrosView: React.FC = () => {
           )}
 
           {!esVistaPermisos && !esVistaBackups && editable && (
-            <div className="add-item-bar">
-              <input
-                type={
-                  currentSection === 'Agenda' &&
-                  (currentKey === 'Ocupación máxima' || currentKey === 'Meses de margen para reprogramar')
-                    ? 'number'
-                    : 'text'
-                }
-                min={
-                  currentSection === 'Agenda' && currentKey === 'Ocupación máxima'
-                    ? 1
-                    : currentSection === 'Agenda' && currentKey === 'Meses de margen para reprogramar'
-                    ? 0
-                    : undefined
-                }
-                placeholder={
-                  currentSection === 'Agenda' && currentKey === 'Ocupación máxima'
-                    ? 'Escribe el valor de ocupación máxima (ej: 6)...'
-                    : currentSection === 'Agenda' && currentKey === 'Meses de margen para reprogramar'
-                    ? 'Meses anteriores permitidos para reprogramar (ej: 1 = mes actual + anterior)...'
-                    : 'Escribe un nuevo valor para esta lista...'
-                }
-                value={inputValor}
-                onChange={e => setInputValor(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleGuardarItem();
+            <div className="add-item-bar" style={{ flexWrap: 'wrap' }}>
+              {currentSection === 'Agenda' && currentKey === 'Horarios Small Groups' ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: '1 1 160px' }}>
+                    <label
+                      style={{
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        color: 'var(--text-muted)',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      Día:
+                    </label>
+                    <select
+                      className="form-control"
+                      value={sgDia}
+                      onChange={e => setSgDia(e.target.value)}
+                      style={{ margin: 0, flex: 1 }}
+                    >
+                      {DIAS_SEMANA_SG.map(d => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: '1 1 150px' }}>
+                    <label
+                      style={{
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        color: 'var(--text-muted)',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      Hora:
+                    </label>
+                    <select
+                      className="form-control"
+                      value={sgHora}
+                      onChange={e => setSgHora(e.target.value)}
+                      style={{ margin: 0, flex: 1 }}
+                    >
+                      {HORAS_MEDIA_HORA_SG.map(h => (
+                        <option key={h} value={h}>
+                          {h}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ) : (
+                <input
+                  type={
+                    currentSection === 'Agenda' &&
+                    (currentKey === 'Ocupación máxima' || currentKey === 'Meses de margen para reprogramar')
+                      ? 'number'
+                      : 'text'
                   }
-                }}
-              />
+                  min={
+                    currentSection === 'Agenda' && currentKey === 'Ocupación máxima'
+                      ? 1
+                      : currentSection === 'Agenda' && currentKey === 'Meses de margen para reprogramar'
+                      ? 0
+                      : undefined
+                  }
+                  placeholder={
+                    currentSection === 'Agenda' && currentKey === 'Ocupación máxima'
+                      ? 'Escribe el valor de ocupación máxima (ej: 6)...'
+                      : currentSection === 'Agenda' && currentKey === 'Meses de margen para reprogramar'
+                      ? 'Meses anteriores permitidos para reprogramar (ej: 1 = mes actual + anterior)...'
+                      : 'Escribe un nuevo valor para esta lista...'
+                  }
+                  value={inputValor}
+                  onChange={e => setInputValor(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleGuardarItem();
+                    }
+                  }}
+                />
+              )}
               <button
                 type="button"
                 className="btn-primary"

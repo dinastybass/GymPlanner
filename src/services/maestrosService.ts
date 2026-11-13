@@ -9,13 +9,74 @@ import {
 import { setDoc, updateDoc } from './offlineSyncService';
 import { CatalogoPermiso, MatrizPermisos, PermisoAccion, UsuarioApp } from '../types';
 
-const CACHE_KEY = 'gym_maestros_doc_map_v6';
+const CACHE_KEY = 'gym_maestros_doc_map_v8';
+
+export const DIAS_SEMANA_SG = [
+  'Lunes',
+  'Martes',
+  'Miércoles',
+  'Jueves',
+  'Viernes',
+  'Sábado',
+  'Domingo'
+];
+
+export const HORAS_MEDIA_HORA_SG: string[] = (() => {
+  const list: string[] = [];
+  for (let h = 7; h <= 22; h++) {
+    const hh = String(h).padStart(2, '0');
+    list.push(`${hh}:00`);
+    list.push(`${hh}:30`);
+  }
+  return list;
+})();
+
+export function parsearHorarioSmallGroup(valorRaw: string): {
+  dia: string;
+  hora: string;
+  formateado: string;
+} {
+  const raw = String(valorRaw || '').trim();
+  const norm = raw
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  let diaDetectado = 'Lunes';
+  if (norm.includes('martes') || norm.startsWith('mar')) diaDetectado = 'Martes';
+  else if (norm.includes('miercoles') || norm.startsWith('mie')) diaDetectado = 'Miércoles';
+  else if (norm.includes('jueves') || norm.startsWith('jue')) diaDetectado = 'Jueves';
+  else if (norm.includes('viernes') || norm.startsWith('vie')) diaDetectado = 'Viernes';
+  else if (norm.includes('sabado') || norm.startsWith('sab')) diaDetectado = 'Sábado';
+  else if (norm.includes('domingo') || norm.startsWith('dom')) diaDetectado = 'Domingo';
+  else if (norm.includes('lunes') || norm.startsWith('lun')) diaDetectado = 'Lunes';
+
+  let horaDetectada = '18:00';
+  const matchHora = raw.match(/(\d{1,2})(?::(\d{1,2}))?/);
+  if (matchHora) {
+    let h = parseInt(matchHora[1], 10);
+    const m = matchHora[2] !== undefined ? parseInt(matchHora[2], 10) : 0;
+    if (isNaN(h)) h = 18;
+    h = Math.min(22, Math.max(7, h));
+    const mm = !isNaN(m) && m >= 15 && m < 45 ? '30' : '00';
+    if (!isNaN(m) && m >= 45 && h < 22) {
+      h += 1;
+    }
+    horaDetectada = `${String(h).padStart(2, '0')}:${mm}`;
+  }
+
+  return {
+    dia: diaDetectado,
+    hora: horaDetectada,
+    formateado: `${diaDetectado} ${horaDetectada}`
+  };
+}
 
 export const ESTRUCTURA_MAESTROS: Record<string, string[]> = {
   "Ejercicios": [
     "Niveles",
     "Bloques",
-    "Grupos de Ejercicios",
+    "Músculos",
     "Materiales",
     "Subcategorías",
     "Zona / Articulación",
@@ -24,7 +85,8 @@ export const ESTRUCTURA_MAESTROS: Record<string, string[]> = {
     "Series y Repeticiones"
   ],
   "Sesiones": [
-    "Tipo de Sesión"
+    "Tipo de Sesión",
+    "Intensidad de la Sesión"
   ],
   "Clientes": [
     "Estado",
@@ -116,11 +178,15 @@ export const CATALOGO_PERMISOS_APP: CatalogoPermiso[] = [
 ];
 
 export function limpiarNombreDoc(clave: string): string {
-  return String(clave)
+  const norm = String(clave)
     .toLowerCase()
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_|_$/g, "");
+  if (norm === 'musculos' || norm === 'grupo_muscular') {
+    return 'grupos_de_ejercicios';
+  }
+  return norm;
 }
 
 export function generarIdItem(valor: string): string {
@@ -153,26 +219,56 @@ export async function cargarTodosLosMaestros(forzar = false): Promise<Record<str
   snap.forEach(docSnap => {
     const d = docSnap.data();
     const sec = d.seccion;
-    const clv = d.clave;
+    const rawClv = d.clave;
     const valoresObj = d.valores || {};
 
-    if (!sec || !clv) return;
+    if (!sec || !rawClv) return;
+    // Normalizar clave "Grupos de Ejercicios" -> "Músculos"
+    const clv =
+      sec === 'Ejercicios' &&
+      (rawClv === 'Grupos de Ejercicios' || rawClv === 'Grupo muscular' || rawClv === 'Musculos')
+        ? 'Músculos'
+        : rawClv;
+
     if (!mapa[sec]) mapa[sec] = {};
     if (!mapa[sec][clv]) mapa[sec][clv] = [];
 
     for (const [itemId, itemData] of Object.entries(valoresObj as Record<string, any>)) {
-      mapa[sec][clv].push({
-        id: itemId,
-        valor: String(itemData.valor).trim(),
-        orden: Number(itemData.orden ?? 99)
-      });
+      const rawValStr = String(itemData.valor).trim();
+      const valStr =
+        sec === 'Agenda' && clv === 'Horarios Small Groups'
+          ? parsearHorarioSmallGroup(rawValStr).formateado
+          : rawValStr;
+      if (!mapa[sec][clv].some(existing => existing.id === itemId)) {
+        mapa[sec][clv].push({
+          id: itemId,
+          valor: valStr,
+          orden: Number(itemData.orden ?? 99)
+        });
+      }
     }
 
     mapa[sec][clv].sort((a, b) => {
       if (a.orden !== b.orden) return a.orden - b.orden;
       return a.valor.localeCompare(b.valor);
     });
+
+    if (sec === 'Ejercicios' && clv === 'Músculos') {
+      mapa[sec]['Grupos de Ejercicios'] = mapa[sec]['Músculos'];
+    }
   });
+
+  if (!mapa["Sesiones"]) mapa["Sesiones"] = {};
+  if (
+    !mapa["Sesiones"]["Intensidad de la Sesión"] ||
+    mapa["Sesiones"]["Intensidad de la Sesión"].length === 0
+  ) {
+    mapa["Sesiones"]["Intensidad de la Sesión"] = [
+      { id: "low", valor: "LOW", orden: 1 },
+      { id: "med", valor: "MED", orden: 2 },
+      { id: "high", valor: "HIGH", orden: 3 }
+    ];
+  }
 
   if (!mapa["Agenda"]) mapa["Agenda"] = {};
   if (!mapa["Agenda"]["Ocupación máxima"] || mapa["Agenda"]["Ocupación máxima"].length === 0) {
@@ -239,30 +335,35 @@ export async function guardarValorMaestro(
   orden: number | null = null,
   editId: string | null = null
 ): Promise<void> {
-  const valLimpio = String(valor).trim();
+  const valLimpio =
+    seccion === 'Agenda' && clave === 'Horarios Small Groups'
+      ? parsearHorarioSmallGroup(valor).formateado
+      : String(valor).trim();
   if (!valLimpio) return;
 
   const docKey = limpiarNombreDoc(clave);
   const itemId = generarIdItem(valLimpio);
   const docRef = doc(db, "maestros", docKey);
 
+  const snap = await getDoc(docRef);
+  const valoresActuales: Record<string, any> = snap.exists()
+    ? { ...(snap.data().valores || {}) }
+    : {};
+
   let ordenFinal = orden !== null && orden !== undefined ? Number(orden) : null;
 
-  if (ordenFinal === null || (editId && editId !== itemId)) {
-    const snap = await getDoc(docRef);
-    const valoresActuales = snap.exists() ? (snap.data().valores || {}) : {};
-
-    if (editId && valoresActuales[editId]) {
-      if (ordenFinal === null) {
-        ordenFinal = Number(valoresActuales[editId].orden ?? (Object.keys(valoresActuales).length));
-      }
-      if (editId !== itemId) {
-        await updateDoc(docRef, {
-          [`valores.${editId}`]: deleteField()
-        });
-      }
-    } else if (ordenFinal === null) {
-      const ordenes = Object.values(valoresActuales as Record<string, any>)
+  if (editId && valoresActuales[editId]) {
+    if (ordenFinal === null) {
+      ordenFinal = Number(valoresActuales[editId].orden ?? Object.keys(valoresActuales).length);
+    }
+    if (editId !== itemId) {
+      delete valoresActuales[editId];
+    }
+  } else if (ordenFinal === null) {
+    if (valoresActuales[itemId] && valoresActuales[itemId].orden !== undefined) {
+      ordenFinal = Number(valoresActuales[itemId].orden);
+    } else {
+      const ordenes = Object.values(valoresActuales)
         .map(x => Number(x.orden))
         .filter(n => !isNaN(n) && n !== 99);
       const maxOrden = ordenes.length > 0 ? Math.max(...ordenes) : Object.keys(valoresActuales).length;
@@ -270,18 +371,18 @@ export async function guardarValorMaestro(
     }
   }
 
+  valoresActuales[itemId] = {
+    seccion,
+    clave,
+    valor: valLimpio,
+    orden: Number(ordenFinal)
+  };
+
   await setDoc(docRef, {
     seccion,
     clave,
-    valores: {
-      [itemId]: {
-        seccion,
-        clave,
-        valor: valLimpio,
-        orden: Number(ordenFinal)
-      }
-    }
-  }, { merge: true });
+    valores: valoresActuales
+  });
 
   limpiarCacheMaestros();
 }
@@ -296,7 +397,11 @@ export async function reordenarValoresMaestro(
 
   const nuevosValores: Record<string, any> = {};
   listaItemsOrdenados.forEach((item, index) => {
-    const valLimpio = String(item.valor).trim();
+    const rawLimpio = String(item.valor).trim();
+    const valLimpio =
+      seccion === 'Agenda' && clave === 'Horarios Small Groups'
+        ? parsearHorarioSmallGroup(rawLimpio).formateado
+        : rawLimpio;
     const itemId = item.id || generarIdItem(valLimpio);
     nuevosValores[itemId] = {
       seccion,
@@ -315,12 +420,46 @@ export async function reordenarValoresMaestro(
   limpiarCacheMaestros();
 }
 
-export async function eliminarValorMaestro(clave: string, itemId: string): Promise<void> {
+export async function eliminarValorMaestro(
+  clave: string,
+  itemId: string,
+  valorTarget?: string
+): Promise<void> {
   const docKey = limpiarNombreDoc(clave);
   const docRef = doc(db, "maestros", docKey);
-  await updateDoc(docRef, {
-    [`valores.${itemId}`]: deleteField()
-  });
+  const snap = await getDoc(docRef);
+  if (snap.exists()) {
+    const data = snap.data() || {};
+    const valoresActuales: Record<string, any> = { ...(data.valores || {}) };
+    delete valoresActuales[itemId];
+    if (valorTarget) {
+      const targetNorm = String(valorTarget).trim().toLowerCase();
+      for (const [k, v] of Object.entries(valoresActuales)) {
+        if (String(v?.valor || '').trim().toLowerCase() === targetNorm) {
+          delete valoresActuales[k];
+        }
+      }
+    }
+    const entradasOrdenadas = Object.entries(valoresActuales).sort(
+      (a, b) => Number(a[1]?.orden ?? 99) - Number(b[1]?.orden ?? 99)
+    );
+    const nuevosValores: Record<string, any> = {};
+    entradasOrdenadas.forEach(([k, v], idx) => {
+      nuevosValores[k] = {
+        ...v,
+        orden: idx + 1
+      };
+    });
+    await setDoc(docRef, {
+      seccion: data.seccion || "Agenda",
+      clave: data.clave || clave,
+      valores: nuevosValores
+    });
+  } else {
+    await updateDoc(docRef, {
+      [`valores.${itemId}`]: deleteField()
+    });
+  }
   limpiarCacheMaestros();
 }
 
@@ -428,8 +567,47 @@ export async function asegurarRolesYPermisosIniciales(): Promise<{ roles: string
         await guardarValorMaestro("Agenda", "Ocupación máxima", "6", 1);
         await guardarValorMaestro("Agenda", "Meses de margen para reprogramar", "1", 1);
       }
+
+      const intSesionDocKey = limpiarNombreDoc("Intensidad de la Sesión");
+      const intSesionSnap = await getDoc(doc(db, "maestros", intSesionDocKey));
+      if (!intSesionSnap.exists() || !intSesionSnap.data()?.valores || Object.keys(intSesionSnap.data().valores).length === 0) {
+        await reordenarValoresMaestro("Sesiones", "Intensidad de la Sesión", [
+          { id: "low", valor: "LOW" },
+          { id: "med", valor: "MED" },
+          { id: "high", valor: "HIGH" }
+        ]);
+      }
+
+      // Traducir / normalizar los valores actuales de "Horarios Small Groups" a formato <Día> <HH:MM> (media en media hora)
+      const sgDocKey = limpiarNombreDoc("Horarios Small Groups");
+      const sgSnap = await getDoc(doc(db, "maestros", sgDocKey));
+      if (sgSnap.exists() && sgSnap.data()?.valores) {
+        const valoresSG = sgSnap.data().valores as Record<string, any>;
+        const entries = Object.entries(valoresSG).sort(
+          (a, b) => Number(a[1]?.orden ?? 99) - Number(b[1]?.orden ?? 99)
+        );
+        let requiereNormalizar = false;
+        const normalizados: { id: string; valor: string }[] = [];
+        const vistos = new Set<string>();
+        for (const [k, v] of entries) {
+          const parsed = parsearHorarioSmallGroup(String(v?.valor || ''));
+          const idEsperado = generarIdItem(parsed.formateado);
+          if (v?.valor !== parsed.formateado || k !== idEsperado) {
+            requiereNormalizar = true;
+          }
+          if (!vistos.has(idEsperado)) {
+            vistos.add(idEsperado);
+            normalizados.push({ id: idEsperado, valor: parsed.formateado });
+          } else {
+            requiereNormalizar = true;
+          }
+        }
+        if (requiereNormalizar) {
+          await reordenarValoresMaestro("Agenda", "Horarios Small Groups", normalizados);
+        }
+      }
     } catch (errOcup) {
-      console.warn("No se pudo asegurar valores por defecto de Agenda:", errOcup);
+      console.warn("No se pudo asegurar valores por defecto de Agenda/Sesiones:", errOcup);
     }
 
     const rolesExistentes = await getValoresMaestro("Gestión de Perfiles", "Roles");
@@ -537,10 +715,14 @@ const KEY_ALIASES: Record<string, string[]> = {
   'Bloque de la sesión en que se recomienda': ['Bloques'],
   'Bloque de recomendación': ['Bloques'],
   'Nivel de Dificultad': ['Niveles'],
-  'Grupo muscular': ['Grupos de Ejercicios'],
+  'Grupo muscular': ['Músculos', 'Grupos de Ejercicios'],
+  'Grupos de Ejercicios': ['Músculos'],
+  'Músculos': ['Grupos de Ejercicios'],
   'Material sugerido': ['Materiales'],
   'Subcategoría': ['Subcategorías'],
   'Patrón de movimiento': ['Patrón Motor'],
+  'Intensidad de la sesión': ['Intensidad de la Sesión'],
+  'Intensidad': ['Intensidad de la Sesión'],
   'Estado Cliente': ['Estado'],
   'Estado cliente': ['Estado'],
   'Horarios Small Group': ['Horarios Small Groups'],
@@ -652,6 +834,7 @@ export async function comprobarDependenciasMaestro(
       { col: 'agenda_sesiones', campo: 'ejercicios.Bloque' },
       { col: 'plantillas_sesiones', campo: 'ejercicios.Bloque' }
     ],
+    Músculos: [{ col: 'ejercicios', campo: 'Grupo_Muscular' }],
     'Grupos de Ejercicios': [{ col: 'ejercicios', campo: 'Grupo_Muscular' }],
     Materiales: [{ col: 'ejercicios', campo: 'Material' }],
     Subcategorías: [
@@ -677,6 +860,14 @@ export async function comprobarDependenciasMaestro(
     Estado: [{ col: 'clientes', campo: 'Estado_Cliente' }],
     'Tipo de Cliente': [{ col: 'clientes', campo: 'Tipo_Cliente' }],
     'Tipo de Sesión': [{ col: 'plantillas_sesiones', campo: 'tipo_sesion' }],
+    'Intensidad de la Sesión': [
+      { col: 'agenda_sesiones', campo: 'intensidad_sesion' },
+      { col: 'agenda_sesiones', campo: 'intensidad' },
+      { col: 'agenda_sesiones', campo: 'ejercicios.intensidad' },
+      { col: 'plantillas_sesiones', campo: 'intensidad_sesion' },
+      { col: 'plantillas_sesiones', campo: 'intensidad' },
+      { col: 'plantillas_sesiones', campo: 'ejercicios.intensidad' }
+    ],
     Roles: [{ col: 'usuarios_app', campo: 'rol' }]
   };
 
@@ -746,6 +937,7 @@ export async function reasignarOQuitarDependencia(
       { col: 'agenda_sesiones', campo: 'ejercicios.Bloque' },
       { col: 'plantillas_sesiones', campo: 'ejercicios.Bloque' }
     ],
+    Músculos: [{ col: 'ejercicios', campo: 'Grupo_Muscular' }],
     'Grupos de Ejercicios': [{ col: 'ejercicios', campo: 'Grupo_Muscular' }],
     Materiales: [{ col: 'ejercicios', campo: 'Material' }],
     Subcategorías: [
@@ -771,6 +963,15 @@ export async function reasignarOQuitarDependencia(
     Estado: [{ col: 'clientes', campo: 'Estado_Cliente' }],
     'Tipo de Cliente': [{ col: 'clientes', campo: 'Tipo_Cliente' }],
     'Tipo de Sesión': [{ col: 'plantillas_sesiones', campo: 'tipo_sesion' }],
+    'Intensidad de la Sesión': [
+      { col: 'agenda_sesiones', campo: 'intensidad_sesion' },
+      { col: 'agenda_sesiones', campo: 'intensidad' },
+      { col: 'agenda_sesiones', campo: 'ejercicios.intensidad' },
+      { col: 'plantillas_sesiones', campo: 'intensidad_sesion' },
+      { col: 'plantillas_sesiones', campo: 'intensidad' },
+      { col: 'plantillas_sesiones', campo: 'Intensidad' },
+      { col: 'plantillas_sesiones', campo: 'ejercicios.intensidad' }
+    ],
     Roles: [{ col: 'usuarios_app', campo: 'rol' }]
   };
 
