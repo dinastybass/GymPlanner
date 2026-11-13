@@ -12,7 +12,13 @@ import { updateDoc, writeBatch } from '../services/offlineSyncService';
 import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
 import { cargarCatalogoMaestros, extraerListaMaster } from '../services/maestrosService';
-import { normalizarIntensidad, renderIntensityBadge, coincideBusqueda } from '../utils/helpers';
+import {
+  normalizarIntensidad,
+  renderIntensityBadge,
+  formatIntensityOptionLabel,
+  DEFAULT_INTENSIDADES_SESION,
+  coincideBusqueda
+} from '../utils/helpers';
 import { confirmarDialogo } from '../utils/confirmDialog';
 import { SendRoutineModal } from '../components/SendRoutineModal';
 import { limpiarSesionesAntiguasYEjerciciosHuerfanos } from '../services/sessionCascadeService';
@@ -50,6 +56,9 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
     'BLOQUE 3: COMPENSATORIO - ACCESORIO',
     'BLOQUE 4: METABÓLICO - ACONDICIONAMIENTO'
   ]);
+  const [intensidadesMaster, setIntensidadesMaster] = useState<string[]>(
+    DEFAULT_INTENSIDADES_SESION
+  );
   const [gruposMuscularesMaster, setGruposMuscularesMaster] = useState<string[]>([]);
   const [nivelesMaster, setNivelesMaster] = useState<string[]>([]);
   const [subcategoriasMaster, setSubcategoriasMaster] = useState<string[]>([]);
@@ -134,21 +143,33 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
     try {
       const maestros = await cargarCatalogoMaestros();
       const bloques = extraerListaMaster(maestros, 'Ejercicios', [
+        'Bloques',
         'Bloque de la sesión en que se recomienda',
         'Bloque de recomendación'
       ]);
       if (bloques.length > 0) setOrdenBloques(bloques);
 
-      const musc = extraerListaMaster(maestros, 'Ejercicios', ['Grupo muscular']);
+      const ints = extraerListaMaster(maestros, 'Sesiones', [
+        'Intensidad de la Sesión',
+        'Intensidad de la sesión',
+        'Intensidad'
+      ]);
+      if (ints.length > 0) setIntensidadesMaster(ints);
+
+      const musc = extraerListaMaster(maestros, 'Ejercicios', [
+        'Músculos',
+        'Grupos de Ejercicios',
+        'Grupo muscular'
+      ]);
       if (musc.length > 0) setGruposMuscularesMaster(musc);
 
-      const niv = extraerListaMaster(maestros, 'Ejercicios', ['Nivel de Dificultad']);
+      const niv = extraerListaMaster(maestros, 'Ejercicios', ['Niveles', 'Nivel de Dificultad']);
       if (niv.length > 0) setNivelesMaster(niv);
 
-      const subc = extraerListaMaster(maestros, 'Ejercicios', ['Subcategoría']);
+      const subc = extraerListaMaster(maestros, 'Ejercicios', ['Subcategorías', 'Subcategoría']);
       if (subc.length > 0) setSubcategoriasMaster(subc);
 
-      const mats = extraerListaMaster(maestros, 'Ejercicios', ['Material sugerido']);
+      const mats = extraerListaMaster(maestros, 'Ejercicios', ['Materiales', 'Material sugerido']);
       if (mats.length > 0) setMaterialesMaster(mats);
 
       const sers = extraerListaMaster(maestros, 'Ejercicios', ['Series y Repeticiones']);
@@ -1066,9 +1087,13 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
             value={intSesActual}
             onChange={e => cambiarIntensidadSesion(e.target.value)}
           >
-            <option value="LOW">🟢 LOW (Baja)</option>
-            <option value="MED">🟡 MED (Media)</option>
-            <option value="HIGH">🔴 HIGH (Alta)</option>
+            {Array.from(new Set([...intensidadesMaster.map(normalizarIntensidad), intSesActual])).map(
+              intOption => (
+                <option key={intOption} value={intOption}>
+                  {formatIntensityOptionLabel(intOption)}
+                </option>
+              )
+            )}
           </select>
         </div>
       </div>
@@ -1707,9 +1732,16 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
                   value={formEx.intensidad}
                   onChange={e => setFormEx(prev => ({ ...prev, intensidad: e.target.value }))}
                 >
-                  <option value="LOW">🟢 LOW (Baja)</option>
-                  <option value="MED">🟡 MED (Media)</option>
-                  <option value="HIGH">🔴 HIGH (Alta)</option>
+                  {Array.from(
+                    new Set([
+                      ...intensidadesMaster.map(normalizarIntensidad),
+                      normalizarIntensidad(formEx.intensidad)
+                    ])
+                  ).map(intOption => (
+                    <option key={intOption} value={intOption}>
+                      {formatIntensityOptionLabel(intOption)}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>

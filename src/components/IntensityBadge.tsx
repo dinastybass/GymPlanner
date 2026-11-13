@@ -1,13 +1,14 @@
 import React from 'react';
+import { normalizarIntensidad, getIntensityBadgeClass } from '../utils/helpers';
 
 interface IntensityBadgeProps {
-  intensity?: 'LOW' | 'MED' | 'HIGH' | string;
+  intensity?: string;
   className?: string;
 }
 
 export const IntensityBadge: React.FC<IntensityBadgeProps> = ({ intensity = 'MED', className = '' }) => {
-  const val = String(intensity || 'MED').trim().toUpperCase();
-  const cls = val === 'LOW' ? 'int-low' : val === 'HIGH' ? 'int-high' : 'int-med';
+  const val = normalizarIntensidad(intensity);
+  const cls = getIntensityBadgeClass(val);
 
   return (
     <span

@@ -14,11 +14,50 @@ export function coincideBusqueda(texto: any, terminoBusqueda: any): boolean {
   return target.includes(term);
 }
 
-export function normalizarIntensidad(val: any): 'LOW' | 'MED' | 'HIGH' {
-  const s = String(val || 'MED').trim().toUpperCase();
-  if (s === 'LOW' || s === 'BAJA') return 'LOW';
-  if (s === 'HIGH' || s === 'ALTA') return 'HIGH';
-  return 'MED';
+export const DEFAULT_INTENSIDADES_SESION = ['LOW', 'MED', 'HIGH'];
+
+export function normalizarIntensidad(val: any): string {
+  const raw = String(val ?? '').trim();
+  if (!raw) return 'MED';
+  const s = raw.toUpperCase();
+  if (s === 'LOW' || s === 'BAJA' || s === '🟢 LOW (BAJA)' || s === 'LOW (BAJA)') return 'LOW';
+  if (s === 'MED' || s === 'MEDIA' || s === '🟡 MED (MEDIA)' || s === 'MED (MEDIA)') return 'MED';
+  if (s === 'HIGH' || s === 'ALTA' || s === '🔴 HIGH (ALTA)' || s === 'HIGH (ALTA)') return 'HIGH';
+  return raw;
+}
+
+export function getIntensityBadgeClass(intensidadRaw: any): string {
+  const val = normalizarIntensidad(intensidadRaw).toUpperCase();
+  if (val === 'LOW' || val === 'BAJA' || val.startsWith('LOW ')) return 'int-low';
+  if (val === 'MED' || val === 'MEDIA' || val.startsWith('MED ')) return 'int-med';
+  if (val === 'HIGH' || val === 'ALTA' || val.startsWith('HIGH ')) return 'int-high';
+  if (
+    val.includes('MAX') ||
+    val.includes('MÁX') ||
+    val.includes('VERY') ||
+    val.includes('MUY') ||
+    val.includes('EXTREM') ||
+    val.includes('PLUS') ||
+    val.includes('+')
+  ) {
+    return 'int-max';
+  }
+  return 'int-custom';
+}
+
+export function formatIntensityOptionLabel(valRaw: string): string {
+  const val = normalizarIntensidad(valRaw);
+  const upper = val.toUpperCase();
+  if (upper === 'LOW') return '🟢 LOW (Baja)';
+  if (upper === 'MED') return '🟡 MED (Media)';
+  if (upper === 'HIGH') return '🔴 HIGH (Alta)';
+  // Si el usuario ya incluyó un emoji al principio, respetarlo tal cual
+  if (/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(val)) {
+    return val;
+  }
+  const cls = getIntensityBadgeClass(val);
+  if (cls === 'int-max') return `🟣 ${val}`;
+  return `🟠 ${val}`;
 }
 
 export function renderIntensityBadge(
@@ -26,7 +65,7 @@ export function renderIntensityBadge(
   opts?: { prefix?: string; compact?: boolean }
 ): string {
   const val = normalizarIntensidad(intensidadRaw);
-  const cls = val === 'LOW' ? 'int-low' : val === 'HIGH' ? 'int-high' : 'int-med';
+  const cls = getIntensityBadgeClass(val);
   const prefix = opts?.prefix !== undefined ? opts.prefix : '⚡ ';
   const styleExtra = opts?.compact ? 'style="font-size:0.68rem;padding:2px 7px;"' : '';
   return `<span class="intensity-badge ${cls}" ${styleExtra} title="Intensidad: ${val}">${prefix}${val}</span>`;

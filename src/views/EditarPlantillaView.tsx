@@ -3,7 +3,13 @@ import { doc, getDoc, updateDoc, collection, getDocs } from 'firebase/firestore'
 import { db } from '../firebase';
 import { useUndo } from '../context/UndoContext';
 import { cargarCatalogoMaestros, extraerListaMaster } from '../services/maestrosService';
-import { normalizarIntensidad, renderIntensityBadge, coincideBusqueda } from '../utils/helpers';
+import {
+  normalizarIntensidad,
+  renderIntensityBadge,
+  formatIntensityOptionLabel,
+  DEFAULT_INTENSIDADES_SESION,
+  coincideBusqueda
+} from '../utils/helpers';
 
 interface EditarPlantillaViewProps {
   plantillaId: string;
@@ -28,8 +34,24 @@ export const EditarPlantillaView: React.FC<EditarPlantillaViewProps> = ({
     'BLOQUE 3: COMPENSATORIO - ACCESORIO',
     'BLOQUE 4: METABÓLICO - ACONDICIONAMIENTO'
   ]);
+  const [tiposSesionMaster, setTiposSesionMaster] = useState<string[]>([
+    'Fuerza',
+    'Metabólico',
+    'Movilidad',
+    'Readaptación',
+    'Full Body',
+    'Tren Superior',
+    'Tren Inferior'
+  ]);
+  const [intensidadesMaster, setIntensidadesMaster] = useState<string[]>(
+    DEFAULT_INTENSIDADES_SESION
+  );
   const [gruposMuscularesMaster, setGruposMuscularesMaster] = useState<string[]>([]);
-  const [nivelesMaster, setNivelesMaster] = useState<string[]>([]);
+  const [nivelesMaster, setNivelesMaster] = useState<string[]>([
+    'Básico',
+    'Intermedio',
+    'Avanzado'
+  ]);
   const [subcategoriasMaster, setSubcategoriasMaster] = useState<string[]>([]);
   const [materialesMaster, setMaterialesMaster] = useState<string[]>([]);
   const [seriesMaster, setSeriesMaster] = useState<string[]>([
@@ -41,6 +63,16 @@ export const EditarPlantillaView: React.FC<EditarPlantillaViewProps> = ({
     '4 x 12',
     "3 x 40''"
   ]);
+
+  // Modal Editar Datos de la Plantilla (Nombre, Tipo de Sesión, Intensidad, Nivel)
+  const [modalEditInfoOpen, setModalEditInfoOpen] = useState(false);
+  const [savingInfo, setSavingInfo] = useState(false);
+  const [formInfo, setFormInfo] = useState({
+    nombre: '',
+    tipo_sesion: '',
+    intensidad: 'MED',
+    nivel: ''
+  });
 
   const dragIndexRef = useRef<number | null>(null);
   const dragOverIndexRef = useRef<number | null>(null);
@@ -99,21 +131,40 @@ export const EditarPlantillaView: React.FC<EditarPlantillaViewProps> = ({
     try {
       const maestros = await cargarCatalogoMaestros();
       const bloques = extraerListaMaster(maestros, 'Ejercicios', [
+        'Bloques',
         'Bloque de la sesión en que se recomienda',
         'Bloque de recomendación'
       ]);
       if (bloques.length > 0) setOrdenBloques(bloques);
 
-      const musc = extraerListaMaster(maestros, 'Ejercicios', ['Grupo muscular']);
+      const tipos = extraerListaMaster(maestros, 'Sesiones', [
+        'Tipo de Sesión',
+        'Tipo de sesión',
+        'Tipos de Sesión'
+      ]);
+      if (tipos.length > 0) setTiposSesionMaster(tipos);
+
+      const ints = extraerListaMaster(maestros, 'Sesiones', [
+        'Intensidad de la Sesión',
+        'Intensidad de la sesión',
+        'Intensidad'
+      ]);
+      if (ints.length > 0) setIntensidadesMaster(ints);
+
+      const musc = extraerListaMaster(maestros, 'Ejercicios', [
+        'Músculos',
+        'Grupos de Ejercicios',
+        'Grupo muscular'
+      ]);
       if (musc.length > 0) setGruposMuscularesMaster(musc);
 
-      const niv = extraerListaMaster(maestros, 'Ejercicios', ['Nivel de Dificultad']);
+      const niv = extraerListaMaster(maestros, 'Ejercicios', ['Niveles', 'Nivel de Dificultad']);
       if (niv.length > 0) setNivelesMaster(niv);
 
-      const subc = extraerListaMaster(maestros, 'Ejercicios', ['Subcategoría']);
+      const subc = extraerListaMaster(maestros, 'Ejercicios', ['Subcategorías', 'Subcategoría']);
       if (subc.length > 0) setSubcategoriasMaster(subc);
 
-      const mats = extraerListaMaster(maestros, 'Ejercicios', ['Material sugerido']);
+      const mats = extraerListaMaster(maestros, 'Ejercicios', ['Materiales', 'Material sugerido']);
       if (mats.length > 0) setMaterialesMaster(mats);
 
       const sers = extraerListaMaster(maestros, 'Ejercicios', ['Series y Repeticiones']);
@@ -259,6 +310,102 @@ export const EditarPlantillaView: React.FC<EditarPlantillaViewProps> = ({
     } catch (e) {
       console.error(e);
       alert('No se pudo actualizar la intensidad de la plantilla.');
+    }
+  };
+
+  const abrirModalEditarInfo = () => {
+    if (!plantillaActual) return;
+    setFormInfo({
+      nombre: plantillaActual.nombre || '',
+      tipo_sesion: plantillaActual.tipo_sesion || tiposSesionMaster[0] || 'Fuerza',
+      intensidad: normalizarIntensidad(
+        plantillaActual.intensidad_sesion ||
+          plantillaActual.intensidad ||
+          plantillaActual.Intensidad ||
+          'MED'
+      ),
+      nivel: plantillaActual.nivel || nivelesMaster[0] || 'Básico'
+    });
+    setModalEditInfoOpen(true);
+  };
+
+  const guardarInfoPlantilla = async () => {
+    if (!plantillaActual) return;
+    const nuevoNombre = formInfo.nombre.trim();
+    if (!nuevoNombre) {
+      alert('El nombre de la plantilla es obligatorio.');
+      return;
+    }
+    const nuevoTipo = formInfo.tipo_sesion || 'Fuerza';
+    const nuevaInt = normalizarIntensidad(formInfo.intensidad || 'MED');
+    const nuevoNivel = formInfo.nivel || 'Todos los niveles';
+
+    const prevInt = normalizarIntensidad(
+      plantillaActual.intensidad_sesion ||
+        plantillaActual.intensidad ||
+        plantillaActual.Intensidad ||
+        'MED'
+    );
+
+    const prevData = {
+      nombre: plantillaActual.nombre || '',
+      tipo_sesion: plantillaActual.tipo_sesion || '',
+      intensidad: prevInt,
+      Intensidad: prevInt,
+      intensidad_sesion: prevInt,
+      nivel: plantillaActual.nivel || ''
+    };
+    const nextData = {
+      nombre: nuevoNombre,
+      tipo_sesion: nuevoTipo,
+      intensidad: nuevaInt,
+      Intensidad: nuevaInt,
+      intensidad_sesion: nuevaInt,
+      nivel: nuevoNivel
+    };
+
+    if (
+      prevData.nombre === nextData.nombre &&
+      prevData.tipo_sesion === nextData.tipo_sesion &&
+      prevData.intensidad_sesion === nextData.intensidad_sesion &&
+      prevData.nivel === nextData.nivel
+    ) {
+      setModalEditInfoOpen(false);
+      return;
+    }
+
+    setSavingInfo(true);
+    try {
+      await updateDoc(doc(db, 'plantillas_sesiones', plantillaId), nextData);
+      setPlantillaActual((prev: any) => ({ ...prev, ...nextData }));
+      setModalEditInfoOpen(false);
+
+      pushAction({
+        label: `Editar datos de plantilla "${nuevoNombre}"`,
+        undoOps: [
+          {
+            type: 'update',
+            collection: 'plantillas_sesiones',
+            id: plantillaId,
+            data: prevData
+          }
+        ],
+        redoOps: [
+          {
+            type: 'update',
+            collection: 'plantillas_sesiones',
+            id: plantillaId,
+            data: nextData
+          }
+        ],
+        showToast: true,
+        toastMessage: `✓ Datos de la plantilla "${nuevoNombre}" actualizados`
+      });
+    } catch (e) {
+      console.error('Error actualizando datos de plantilla:', e);
+      alert('No se pudieron actualizar los datos de la plantilla.');
+    } finally {
+      setSavingInfo(false);
     }
   };
 
@@ -673,52 +820,47 @@ export const EditarPlantillaView: React.FC<EditarPlantillaViewProps> = ({
 
       <div className="page-header">
         <div>
-          <h1>
-            {plantillaActual.nombre || 'Sin nombre'}{' '}
+          <h1>{plantillaActual.nombre || 'Sin nombre'}</h1>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={abrirModalEditarInfo}
+            title="Cambiar nombre, tipo de sesión, intensidad o nivel de la plantilla"
+          >
+            ✏️ Editar datos
+          </button>
+          <button type="button" className="btn-primary" onClick={() => abrirModalAnadir()}>
+            + Añadir ejercicio
+          </button>
+        </div>
+      </div>
+
+      <div className="plantilla-meta-grid">
+        <div className="plantilla-meta-col">
+          <span className="plantilla-meta-label">Tipo de Sesión</span>
+          <div className="plantilla-meta-value">
+            {plantillaActual.tipo_sesion || 'General'}
+          </div>
+        </div>
+
+        <div className="plantilla-meta-col">
+          <span className="plantilla-meta-label">Intensidad</span>
+          <div className="plantilla-meta-value">
             <span
               dangerouslySetInnerHTML={{
                 __html: renderIntensityBadge(intSesActual)
               }}
             />
-          </h1>
-          <div className="header-meta">
-            Tipo de Sesión: <strong>{plantillaActual.tipo_sesion || 'General'}</strong> · Nivel
-            Objetivo: <strong>{plantillaActual.nivel || 'Todos'}</strong>
           </div>
         </div>
-        <button type="button" className="btn-primary" onClick={() => abrirModalAnadir()}>
-          + Añadir ejercicio
-        </button>
-      </div>
 
-      <div className="session-intensity-bar">
-        <div className="session-intensity-bar-left">
-          <span>⚡ Intensidad global de la plantilla:</span>
-          <span
-            dangerouslySetInnerHTML={{
-              __html: renderIntensityBadge(intSesActual)
-            }}
-          />
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <label
-            style={{
-              fontSize: '0.82rem',
-              color: 'var(--text-muted)',
-              fontWeight: 600
-            }}
-          >
-            Cambiar nivel:
-          </label>
-          <select
-            className="session-intensity-select"
-            value={intSesActual}
-            onChange={e => cambiarIntensidadPlantilla(e.target.value)}
-          >
-            <option value="LOW">🟢 LOW (Baja)</option>
-            <option value="MED">🟡 MED (Media)</option>
-            <option value="HIGH">🔴 HIGH (Alta)</option>
-          </select>
+        <div className="plantilla-meta-col">
+          <span className="plantilla-meta-label">Nivel Objetivo</span>
+          <div className="plantilla-meta-value">
+            <span className="pill-nivel">{plantillaActual.nivel || 'Todos'}</span>
+          </div>
         </div>
       </div>
 
@@ -1291,9 +1433,16 @@ export const EditarPlantillaView: React.FC<EditarPlantillaViewProps> = ({
                   value={formEx.intensidad}
                   onChange={e => setFormEx(prev => ({ ...prev, intensidad: e.target.value }))}
                 >
-                  <option value="LOW">🟢 LOW (Baja)</option>
-                  <option value="MED">🟡 MED (Media)</option>
-                  <option value="HIGH">🔴 HIGH (Alta)</option>
+                  {Array.from(
+                    new Set([
+                      ...intensidadesMaster.map(normalizarIntensidad),
+                      normalizarIntensidad(formEx.intensidad)
+                    ])
+                  ).map(intOption => (
+                    <option key={intOption} value={intOption}>
+                      {formatIntensityOptionLabel(intOption)}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -1308,6 +1457,117 @@ export const EditarPlantillaView: React.FC<EditarPlantillaViewProps> = ({
               </button>
               <button type="button" className="btn-primary" onClick={guardarEjercicio}>
                 {editingIndex >= 0 ? 'Actualizar ejercicio' : 'Guardar ejercicio'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Editar Datos de la Plantilla (Nombre, Tipo de Sesión, Nivel) */}
+      {modalEditInfoOpen && (
+        <div
+          className="modal-overlay"
+          style={{ display: 'flex' }}
+          onClick={() => !savingInfo && setModalEditInfoOpen(false)}
+        >
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <button
+              type="button"
+              className="modal-close"
+              disabled={savingInfo}
+              onClick={() => setModalEditInfoOpen(false)}
+            >
+              ×
+            </button>
+            <div className="modal-header">
+              <h2>✏️ Editar Datos de la Plantilla</h2>
+              <p>Modifica el nombre, el tipo de sesión, la intensidad o el nivel objetivo</p>
+            </div>
+
+            <div className="form-group">
+              <label>Nombre de la Plantilla *</label>
+              <input
+                type="text"
+                placeholder="Ej: Empuje, Full Body Nivel 1..."
+                value={formInfo.nombre}
+                onChange={e => setFormInfo(prev => ({ ...prev, nombre: e.target.value }))}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Tipo de Sesión *</label>
+              <select
+                value={formInfo.tipo_sesion}
+                onChange={e => setFormInfo(prev => ({ ...prev, tipo_sesion: e.target.value }))}
+              >
+                {Array.from(
+                  new Set([
+                    ...tiposSesionMaster,
+                    ...(formInfo.tipo_sesion ? [formInfo.tipo_sesion] : [])
+                  ])
+                ).map(t => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label>Intensidad *</label>
+              <select
+                value={formInfo.intensidad}
+                onChange={e => setFormInfo(prev => ({ ...prev, intensidad: e.target.value }))}
+              >
+                {Array.from(
+                  new Set([
+                    ...intensidadesMaster.map(normalizarIntensidad),
+                    normalizarIntensidad(formInfo.intensidad)
+                  ])
+                ).map(intOption => (
+                  <option key={intOption} value={intOption}>
+                    {formatIntensityOptionLabel(intOption)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label>Nivel Objetivo *</label>
+              <select
+                value={formInfo.nivel}
+                onChange={e => setFormInfo(prev => ({ ...prev, nivel: e.target.value }))}
+              >
+                {Array.from(
+                  new Set([
+                    ...nivelesMaster,
+                    'Todos los niveles',
+                    ...(formInfo.nivel ? [formInfo.nivel] : [])
+                  ])
+                ).map(n => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn-outline"
+                disabled={savingInfo}
+                onClick={() => setModalEditInfoOpen(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={savingInfo}
+                onClick={guardarInfoPlantilla}
+              >
+                {savingInfo ? 'Guardando...' : 'Guardar cambios'}
               </button>
             </div>
           </div>

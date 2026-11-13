@@ -28,7 +28,7 @@ const diasSemanaMap: Record<number, string> = {
 
 export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate }) => {
   const { hasPermission } = useAuth();
-  const { registerChangeListener } = useUndo();
+  const { pushAction, registerChangeListener } = useUndo();
 
   const puedeEditarEstadoSesion = hasPermission('planificacion', 'editar');
   const puedeProgramarSesiones = hasPermission('programar_sesiones', 'ver') && hasPermission('programar_sesiones', 'editar');
@@ -79,6 +79,10 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
 
   const [openManana, setOpenManana] = useState<boolean>(() => new Date().getHours() < 14);
   const [openTarde, setOpenTarde] = useState<boolean>(() => new Date().getHours() >= 14);
+  const [openMananaNoComp, setOpenMananaNoComp] = useState<boolean>(true);
+  const [openMananaComp, setOpenMananaComp] = useState<boolean>(false);
+  const [openTardeNoComp, setOpenTardeNoComp] = useState<boolean>(true);
+  const [openTardeComp, setOpenTardeComp] = useState<boolean>(false);
   const [openSG, setOpenSG] = useState<boolean>(true);
 
   // Modal PR state
@@ -225,6 +229,8 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
     const isCompleted = esSesionCompletada(sesion);
     const nextStatus = isCompleted ? 'Pendiente' : 'Completada';
     const nextManual = nextStatus === 'Pendiente';
+    const prevEstado = sesion.estado || sesion.estado_sesion || 'Pendiente';
+    const prevManual = Boolean(sesion.pendiente_manual);
     try {
       await updateDoc(doc(db, 'agenda_sesiones', sesion.id), {
         estado: nextStatus,
@@ -238,6 +244,38 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
             : s
         )
       );
+      pushAction({
+        label: `Marcar sesión de ${sesion.nombreCliente || 'Cliente'} como ${nextStatus}`,
+        undoOps: [
+          {
+            type: 'update',
+            collection: 'agenda_sesiones',
+            id: sesion.id,
+            data: {
+              estado: prevEstado,
+              estado_sesion: prevEstado,
+              pendiente_manual: prevManual
+            }
+          }
+        ],
+        redoOps: [
+          {
+            type: 'update',
+            collection: 'agenda_sesiones',
+            id: sesion.id,
+            data: {
+              estado: nextStatus,
+              estado_sesion: nextStatus,
+              pendiente_manual: nextManual
+            }
+          }
+        ],
+        showToast: true,
+        toastMessage:
+          nextStatus === 'Completada'
+            ? `🟢 Sesión de ${sesion.nombreCliente || 'Cliente'} marcada como Completada`
+            : `⚪ Sesión de ${sesion.nombreCliente || 'Cliente'} devuelta a Pendiente`
+      });
     } catch (err) {
       console.error('Error cambiando estado:', err);
       alert('No se pudo actualizar el estado de la sesión.');
@@ -304,6 +342,11 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
       else sesionesTarde.push(item);
     }
   });
+
+  const sesionesMananaNoComp = sesionesManana.filter(s => !esSesionCompletada(s));
+  const sesionesMananaComp = sesionesManana.filter(s => esSesionCompletada(s));
+  const sesionesTardeNoComp = sesionesTarde.filter(s => !esSesionCompletada(s));
+  const sesionesTardeComp = sesionesTarde.filter(s => esSesionCompletada(s));
 
   const sgTimeRanges = Object.keys(smallGroupsMap);
   const totalSesiones = sesionesManana.length + sesionesTarde.length + sgTimeRanges.length;
@@ -670,7 +713,7 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
       <div className="section-header" onClick={() => setOpenManana(!openManana)}>
         <div className="section-title">
           <h2>Mañana</h2>
-          <span>{`${rangoManana} · ${sesionesManana.length} sesiones`}</span>
+          <span>{`${rangoManana} · ${sesionesManana.length} sesiones (${sesionesMananaNoComp.length} no completadas · ${sesionesMananaComp.length} completadas)`}</span>
         </div>
         <span
           className="chevron-icon"
@@ -684,15 +727,79 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
 
       {openManana && (
         <div className="section-content">
-          <div className="cards-grid">
-            {sesionesManana.length === 0 ? (
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                No hay sesiones individuales por la mañana.
+          {sesionesManana.length === 0 ? (
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: 16 }}>
+              No hay sesiones individuales por la mañana.
+            </div>
+          ) : (
+            <>
+              <div className="subsection-group">
+                <div
+                  className="subsection-header"
+                  onClick={() => setOpenMananaNoComp(!openMananaNoComp)}
+                >
+                  <div className="subsection-title">
+                    <span>⚪ No completadas</span>
+                    <span className="subsection-count">{sesionesMananaNoComp.length}</span>
+                  </div>
+                  <span
+                    className="chevron-icon"
+                    style={{ transform: openMananaNoComp ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </span>
+                </div>
+                {openMananaNoComp && (
+                  <div className="subsection-body">
+                    {sesionesMananaNoComp.length === 0 ? (
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.88rem', paddingLeft: 6 }}>
+                        Todas las sesiones de la mañana están completadas.
+                      </div>
+                    ) : (
+                      <div className="cards-grid">
+                        {sesionesMananaNoComp.map(s => renderCard(s))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            ) : (
-              sesionesManana.map(s => renderCard(s))
-            )}
-          </div>
+
+              <div className="subsection-group">
+                <div
+                  className="subsection-header completed-group"
+                  onClick={() => setOpenMananaComp(!openMananaComp)}
+                >
+                  <div className="subsection-title">
+                    <span>🟢 Completadas</span>
+                    <span className="subsection-count">{sesionesMananaComp.length}</span>
+                  </div>
+                  <span
+                    className="chevron-icon"
+                    style={{ transform: openMananaComp ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </span>
+                </div>
+                {openMananaComp && (
+                  <div className="subsection-body">
+                    {sesionesMananaComp.length === 0 ? (
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.88rem', paddingLeft: 6 }}>
+                        Aún no hay sesiones completadas por la mañana.
+                      </div>
+                    ) : (
+                      <div className="cards-grid">
+                        {sesionesMananaComp.map(s => renderCard(s))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -700,7 +807,7 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
       <div className="section-header" onClick={() => setOpenTarde(!openTarde)}>
         <div className="section-title">
           <h2>Tarde</h2>
-          <span>{`${rangoTarde} · ${sesionesTarde.length} sesiones`}</span>
+          <span>{`${rangoTarde} · ${sesionesTarde.length} sesiones (${sesionesTardeNoComp.length} no completadas · ${sesionesTardeComp.length} completadas)`}</span>
         </div>
         <span
           className="chevron-icon"
@@ -714,15 +821,79 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
 
       {openTarde && (
         <div className="section-content">
-          <div className="cards-grid">
-            {sesionesTarde.length === 0 ? (
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                No hay sesiones individuales por la tarde.
+          {sesionesTarde.length === 0 ? (
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: 16 }}>
+              No hay sesiones individuales por la tarde.
+            </div>
+          ) : (
+            <>
+              <div className="subsection-group">
+                <div
+                  className="subsection-header"
+                  onClick={() => setOpenTardeNoComp(!openTardeNoComp)}
+                >
+                  <div className="subsection-title">
+                    <span>⚪ No completadas</span>
+                    <span className="subsection-count">{sesionesTardeNoComp.length}</span>
+                  </div>
+                  <span
+                    className="chevron-icon"
+                    style={{ transform: openTardeNoComp ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </span>
+                </div>
+                {openTardeNoComp && (
+                  <div className="subsection-body">
+                    {sesionesTardeNoComp.length === 0 ? (
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.88rem', paddingLeft: 6 }}>
+                        Todas las sesiones de la tarde están completadas.
+                      </div>
+                    ) : (
+                      <div className="cards-grid">
+                        {sesionesTardeNoComp.map(s => renderCard(s))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            ) : (
-              sesionesTarde.map(s => renderCard(s))
-            )}
-          </div>
+
+              <div className="subsection-group">
+                <div
+                  className="subsection-header completed-group"
+                  onClick={() => setOpenTardeComp(!openTardeComp)}
+                >
+                  <div className="subsection-title">
+                    <span>🟢 Completadas</span>
+                    <span className="subsection-count">{sesionesTardeComp.length}</span>
+                  </div>
+                  <span
+                    className="chevron-icon"
+                    style={{ transform: openTardeComp ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </span>
+                </div>
+                {openTardeComp && (
+                  <div className="subsection-body">
+                    {sesionesTardeComp.length === 0 ? (
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.88rem', paddingLeft: 6 }}>
+                        Aún no hay sesiones completadas por la tarde.
+                      </div>
+                    ) : (
+                      <div className="cards-grid">
+                        {sesionesTardeComp.map(s => renderCard(s))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
 

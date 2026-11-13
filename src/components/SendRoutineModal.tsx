@@ -6,12 +6,17 @@ import { EjercicioSesion } from '../types';
 import { CustomDropdown } from './CustomDropdown';
 import { getValoresMaestro } from '../services/maestrosService';
 import { useUndo } from '../context/UndoContext';
+import {
+  normalizarIntensidad,
+  formatIntensityOptionLabel,
+  DEFAULT_INTENSIDADES_SESION
+} from '../utils/helpers';
 
 export interface SendRoutineModalProps {
   isOpen: boolean;
   onClose: () => void;
   ejercicios: EjercicioSesion[];
-  defaultIntensity?: 'LOW' | 'MED' | 'HIGH';
+  defaultIntensity?: string;
   defaultTipoSesion?: string;
   defaultClientId?: string;
   excludeSessionId?: string;
@@ -56,10 +61,13 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
   // Mode plantilla state
   const [tiposSesion, setTiposSesion] = useState<string[]>([]);
   const [niveles, setNiveles] = useState<string[]>([]);
+  const [intensidades, setIntensidades] = useState<string[]>(DEFAULT_INTENSIDADES_SESION);
   const [plantillaTipo, setPlantillaTipo] = useState<string>(defaultTipoSesion);
   const [plantillaNombre, setPlantillaNombre] = useState<string>('');
   const [plantillaNivel, setPlantillaNivel] = useState<string>('');
-  const [plantillaIntensidad, setPlantillaIntensidad] = useState<'LOW' | 'MED' | 'HIGH'>(defaultIntensity);
+  const [plantillaIntensidad, setPlantillaIntensidad] = useState<string>(
+    normalizarIntensidad(defaultIntensity)
+  );
 
   const [saving, setSaving] = useState(false);
 
@@ -72,6 +80,7 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
     setSesiones([]);
     setOverwriteMode('replace');
     setMode('cliente');
+    setPlantillaIntensidad(normalizarIntensidad(defaultIntensity));
 
     // Cargar clientes
     getDocs(collection(db, 'clientes'))
@@ -98,7 +107,10 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
       setNiveles(res);
       if (res.length > 0 && !plantillaNivel) setPlantillaNivel(res[0]);
     });
-  }, [isOpen]);
+    getValoresMaestro('Sesiones', 'Intensidad de la Sesión').then(res => {
+      if (res && res.length > 0) setIntensidades(res);
+    });
+  }, [isOpen, defaultIntensity]);
 
   // Cargar sesiones no completadas del cliente seleccionado
   useEffect(() => {
@@ -433,7 +445,10 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
                         const d = new Date(s.fecha_hora_inicio);
                         dateStr = `${d.toLocaleDateString('es-ES', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' })} · ${d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })}`;
                       }
-                      const tipoLabel = s.tipo_sesion ? `[${s.tipo_sesion}]` : '';
+                      const isSG =
+                        String(s.tipo_sesion || '').toLowerCase().includes('small') ||
+                        String(s.tipo_sesion || '').toLowerCase().includes('group');
+                      const tipoLabel = isSG ? '[S.G.]' : '[PT]';
 
                       return (
                         <option key={s.id} value={s.id}>
@@ -536,12 +551,19 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
                   </label>
                   <select
                     value={plantillaIntensidad}
-                    onChange={e => setPlantillaIntensidad(e.target.value as any)}
+                    onChange={e => setPlantillaIntensidad(e.target.value)}
                     style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #d1d5db' }}
                   >
-                    <option value="LOW">LOW</option>
-                    <option value="MED">MED</option>
-                    <option value="HIGH">HIGH</option>
+                    {Array.from(
+                      new Set([
+                        ...intensidades.map(normalizarIntensidad),
+                        normalizarIntensidad(plantillaIntensidad)
+                      ])
+                    ).map(intOpt => (
+                      <option key={intOpt} value={intOpt}>
+                        {formatIntensityOptionLabel(intOpt)}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
