@@ -1047,7 +1047,8 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
               setModalImportarOpen(true);
             }}
           >
-            📥 Importar Plantilla
+            <span className="ui-icon">📥</span>
+            <span>Importar Plantilla</span>
           </button>
           <button
             type="button"
@@ -1057,7 +1058,8 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
             + Añadir ejercicio
           </button>
           <button type="button" className="btn-outline" onClick={abrirModalEnviar}>
-            ➡️ Enviar a
+            <span className="ui-icon">➡️</span>
+            <span>Enviar a</span>
           </button>
         </div>
       </div>
@@ -1065,7 +1067,10 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
       {/* Barra de Intensidad Global de la Sesión */}
       <div className="session-intensity-bar">
         <div className="session-intensity-bar-left">
-          <span>⚡ Intensidad global de la sesión:</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span className="ui-icon">⚡</span>
+            <span>Intensidad global de la sesión:</span>
+          </span>
           <span
             dangerouslySetInnerHTML={{
               __html: renderIntensityBadge(intSesActual)
@@ -1161,7 +1166,10 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
                   {showSubHeader && (
                     <div className="subgroup-header">
                       <div className="subgroup-title-box">
-                        <span className="subgroup-badge">🔄 SUBGRUPO / CIRCUITO</span>
+                        <span className="subgroup-badge">
+                          <span className="ui-icon">🔄</span>
+                          <span>SUBGRUPO / CIRCUITO</span>
+                        </span>
                         <span className="subgroup-name">{sub}</span>
                         {subPauta && <span className="subgroup-pauta">{subPauta}</span>}
                       </div>
@@ -1471,7 +1479,10 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
                         setFormEx(prev => ({ ...prev, guardar_progreso: e.target.checked }))
                       }
                     />
-                    📈 Hacer seguimiento de Progreso (PR) en esta sesión
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <span className="ui-icon">📈</span>
+                      <span>Hacer seguimiento de Progreso (PR) en esta sesión</span>
+                    </span>
                     {formEx.prHint && (
                       <span
                         style={{
@@ -1620,13 +1631,17 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
               >
                 <div
                   style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
                     fontWeight: 700,
                     fontSize: '0.85rem',
                     color: '#0f766e',
                     marginBottom: 10
                   }}
                 >
-                  🔄 Agrupación en Subgrupo / Circuito / Superserie (Opcional)
+                  <span className="ui-icon">🔄</span>
+                  <span>Agrupación en Subgrupo / Circuito / Superserie (Opcional)</span>
                 </div>
                 <div className="form-grid" style={{ marginBottom: 0, gap: 12 }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
@@ -1774,7 +1789,10 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
               ×
             </button>
             <div className="modal-header">
-              <h2>📥 Importar Plantilla</h2>
+              <h2>
+                <span className="ui-icon">📥</span>
+                <span>Importar Plantilla</span>
+              </h2>
               <p>Selecciona una sesión predefinida para cargar todos sus ejercicios de golpe</p>
             </div>
 

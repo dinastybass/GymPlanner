@@ -923,7 +923,8 @@ export const EjerciciosView: React.FC<EjerciciosViewProps> = () => {
                       className="btn-youtube"
                       title="Abrir vídeo en una pestaña nueva"
                     >
-                      ▶ Ver en YouTube
+                      <span className="ui-icon">▶</span>
+                      <span>Ver en YouTube</span>
                     </a>
                   )}
                 </div>
@@ -958,8 +959,11 @@ export const EjerciciosView: React.FC<EjerciciosViewProps> = () => {
                       setFormEj(prev => ({ ...prev, es_de_progreso: e.target.checked }))
                     }
                   />
-                  <span>
-                    📈 <strong>Este es un "Ejercicio de Progreso"</strong> (Aparecerá en la pestaña Progreso de los clientes para registrar sus PRs de peso máximo)
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span className="ui-icon">📈</span>
+                    <span>
+                      <strong>Este es un &quot;Ejercicio de Progreso&quot;</strong> (Aparecerá en la pestaña Progreso de los clientes para registrar sus PRs de peso máximo)
+                    </span>
                   </span>
                 </label>
               </div>

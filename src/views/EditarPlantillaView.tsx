@@ -829,7 +829,8 @@ export const EditarPlantillaView: React.FC<EditarPlantillaViewProps> = ({
             onClick={abrirModalEditarInfo}
             title="Cambiar nombre, tipo de sesión, intensidad o nivel de la plantilla"
           >
-            ✏️ Editar datos
+            <span className="ui-icon">✏️</span>
+            <span>Editar datos</span>
           </button>
           <button type="button" className="btn-primary" onClick={() => abrirModalAnadir()}>
             + Añadir ejercicio
@@ -926,7 +927,10 @@ export const EditarPlantillaView: React.FC<EditarPlantillaViewProps> = ({
                   {showSubHeader && (
                     <div className="subgroup-header">
                       <div className="subgroup-title-box">
-                        <span className="subgroup-badge">🔄 SUBGRUPO / CIRCUITO</span>
+                        <span className="subgroup-badge">
+                          <span className="ui-icon">🔄</span>
+                          <span>SUBGRUPO / CIRCUITO</span>
+                        </span>
                         <span className="subgroup-name">{sub}</span>
                         {subPauta && <span className="subgroup-pauta">{subPauta}</span>}
                       </div>
@@ -1322,13 +1326,17 @@ export const EditarPlantillaView: React.FC<EditarPlantillaViewProps> = ({
               >
                 <div
                   style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
                     fontWeight: 700,
                     fontSize: '0.85rem',
                     color: '#0f766e',
                     marginBottom: 10
                   }}
                 >
-                  🔄 Agrupación en Subgrupo / Circuito / Superserie (Opcional)
+                  <span className="ui-icon">🔄</span>
+                  <span>Agrupación en Subgrupo / Circuito / Superserie (Opcional)</span>
                 </div>
                 <div className="form-grid" style={{ marginBottom: 0, gap: 12 }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
@@ -1480,7 +1488,10 @@ export const EditarPlantillaView: React.FC<EditarPlantillaViewProps> = ({
               ×
             </button>
             <div className="modal-header">
-              <h2>✏️ Editar Datos de la Plantilla</h2>
+              <h2>
+                <span className="ui-icon">✏️</span>
+                <span>Editar Datos de la Plantilla</span>
+              </h2>
               <p>Modifica el nombre, el tipo de sesión, la intensidad o el nivel objetivo</p>
             </div>
 

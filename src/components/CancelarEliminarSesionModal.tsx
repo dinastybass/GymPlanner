@@ -236,7 +236,10 @@ export const CancelarEliminarSesionModal: React.FC<CancelarEliminarSesionModalPr
         {step === 'main' ? (
           <>
             <div className="modal-header" style={{ marginBottom: 14 }}>
-              <h2>🗑️ Cancelar o Eliminar Sesión</h2>
+              <h2>
+                <span className="ui-icon">🗑️</span>
+                <span>Cancelar o Eliminar Sesión</span>
+              </h2>
               <p>
                 Sesión de <strong>{nombreCli}</strong> del <strong>{fechaStr}</strong>
                 {horaStr && horaStr !== '--:--' ? (
@@ -260,29 +263,18 @@ export const CancelarEliminarSesionModal: React.FC<CancelarEliminarSesionModalPr
               {/* OPCIÓN 1: BORRAR DEFINITIVAMENTE */}
               <button
                 type="button"
-                className="btn-outline"
+                className="modal-choice-btn choice-danger"
                 disabled={saving}
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 12,
-                  padding: '13px 15px',
-                  textAlign: 'left',
-                  borderColor: '#fca5a5',
-                  background: '#fef2f2',
-                  color: '#b91c1c',
-                  borderRadius: 10
-                }}
                 onClick={handleOpcion1Eliminar}
               >
-                <span style={{ fontSize: '1.2rem', lineHeight: 1.2, flexShrink: 0 }}>🗑️</span>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 2 }}>
+                <span className="modal-choice-icon">🗑️</span>
+                <div className="modal-choice-body">
+                  <div className="modal-choice-title">
                     {mostrarOpcionesProgramacion
                       ? '1. Borrar definitivamente (Eliminar)'
                       : 'Borrar definitivamente (Eliminar)'}
                   </div>
-                  <div style={{ fontSize: '0.78rem', color: '#991b1b', fontWeight: 400, lineHeight: 1.35 }}>
+                  <div className="modal-choice-desc">
                     Elimina por completo esta sesión de la agenda sin desplazar ni modificar las demás sesiones.
                   </div>
                 </div>
@@ -293,27 +285,16 @@ export const CancelarEliminarSesionModal: React.FC<CancelarEliminarSesionModalPr
                   {/* OPCIÓN 2: CANCELAR Y CASCADA HACIA DELANTE */}
                   <button
                     type="button"
-                    className="btn-outline"
+                    className="modal-choice-btn choice-info"
                     disabled={saving}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: 12,
-                      padding: '13px 15px',
-                      textAlign: 'left',
-                      borderColor: '#38bdf8',
-                      background: '#f0f9ff',
-                      color: '#0369a1',
-                      borderRadius: 10
-                    }}
                     onClick={handleOpcion2CascadaAdelante}
                   >
-                    <span style={{ fontSize: '1.2rem', lineHeight: 1.2, flexShrink: 0 }}>⏩</span>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 2 }}>
+                    <span className="modal-choice-icon">⏩</span>
+                    <div className="modal-choice-body">
+                      <div className="modal-choice-title">
                         2. Cancelar y cascada hacia delante
                       </div>
-                      <div style={{ fontSize: '0.78rem', color: '#0c4a6e', fontWeight: 400, lineHeight: 1.35 }}>
+                      <div className="modal-choice-desc">
                         Libera este hueco del calendario y desplaza su programación en cascada hacia las siguientes sesiones del cliente.
                       </div>
                     </div>
@@ -322,27 +303,16 @@ export const CancelarEliminarSesionModal: React.FC<CancelarEliminarSesionModalPr
                   {/* OPCIÓN 3: UBICAR PROGRAMACIÓN EN SESIÓN EXISTENTE A ELEGIR */}
                   <button
                     type="button"
-                    className="btn-outline"
+                    className="modal-choice-btn choice-success"
                     disabled={saving}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: 12,
-                      padding: '13px 15px',
-                      textAlign: 'left',
-                      borderColor: '#10b981',
-                      background: '#ecfdf5',
-                      color: '#065f46',
-                      borderRadius: 10
-                    }}
                     onClick={handleAbrirOpcion3ElegirExistente}
                   >
-                    <span style={{ fontSize: '1.2rem', lineHeight: 1.2, flexShrink: 0 }}>🎯</span>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 2 }}>
+                    <span className="modal-choice-icon">🎯</span>
+                    <div className="modal-choice-body">
+                      <div className="modal-choice-title">
                         3. Ubicar programación en sesión existente a elegir
                       </div>
-                      <div style={{ fontSize: '0.78rem', color: '#047857', fontWeight: 400, lineHeight: 1.35 }}>
+                      <div className="modal-choice-desc">
                         Elige otra sesión del cliente donde llevar esta programación y decide si machacar lo que haya o hacer cascada hacia delante desde esa ubicación.
                       </div>
                     </div>
@@ -351,27 +321,16 @@ export const CancelarEliminarSesionModal: React.FC<CancelarEliminarSesionModalPr
                   {/* OPCIÓN 4: UBICAR EN SIN FECHA */}
                   <button
                     type="button"
-                    className="btn-outline"
+                    className="modal-choice-btn choice-warn"
                     disabled={saving}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: 12,
-                      padding: '13px 15px',
-                      textAlign: 'left',
-                      borderColor: '#f59e0b',
-                      background: '#fffbeb',
-                      color: '#92400e',
-                      borderRadius: 10
-                    }}
                     onClick={handleOpcion4UbicarEnSinFecha}
                   >
-                    <span style={{ fontSize: '1.2rem', lineHeight: 1.2, flexShrink: 0 }}>📌</span>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 2 }}>
+                    <span className="modal-choice-icon">📌</span>
+                    <div className="modal-choice-body">
+                      <div className="modal-choice-title">
                         4. Ubicar en Sin Fecha
                       </div>
-                      <div style={{ fontSize: '0.78rem', color: '#78350f', fontWeight: 400, lineHeight: 1.35 }}>
+                      <div className="modal-choice-desc">
                         Libera este hueco de la agenda y guarda esta sesión directamente en "Sesiones Sin Fecha" sin mover ninguna otra sesión.
                       </div>
                     </div>
@@ -395,7 +354,10 @@ export const CancelarEliminarSesionModal: React.FC<CancelarEliminarSesionModalPr
           /* PASO OPCIÓN 3: ELEGIR SESIÓN EXISTENTE Y MODO (MACHACAR O CASCADA ADELANTE) */
           <>
             <div className="modal-header" style={{ marginBottom: 14 }}>
-              <h2>🎯 Ubicar programación en sesión existente</h2>
+              <h2>
+                <span className="ui-icon">🎯</span>
+                <span>Ubicar programación en sesión existente</span>
+              </h2>
               <p>
                 Selecciona la sesión de <strong>{nombreCli}</strong> donde quieres llevar la programación del{' '}
                 <strong>{fechaStr}</strong>. Las sesiones intermedias quedarán intactas.
@@ -453,27 +415,16 @@ export const CancelarEliminarSesionModal: React.FC<CancelarEliminarSesionModalPr
 
                         <button
                           type="button"
-                          className="btn-outline"
+                          className="modal-choice-btn choice-info"
                           disabled={saving}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'flex-start',
-                            gap: 12,
-                            padding: '13px 15px',
-                            textAlign: 'left',
-                            borderColor: '#38bdf8',
-                            background: '#f0f9ff',
-                            color: '#0369a1',
-                            borderRadius: 10
-                          }}
                           onClick={() => handleEjecutarOpcion3('CASCADA_ADELANTE')}
                         >
-                          <span style={{ fontSize: '1.2rem', lineHeight: 1.2, flexShrink: 0 }}>🔄</span>
-                          <div>
-                            <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 2 }}>
+                          <span className="modal-choice-icon">🔄</span>
+                          <div className="modal-choice-body">
+                            <div className="modal-choice-title">
                               Hacer cascada hacia delante desde esa ubicación
                             </div>
-                            <div style={{ fontSize: '0.78rem', color: '#0c4a6e', fontWeight: 400, lineHeight: 1.35 }}>
+                            <div className="modal-choice-desc">
                               Ubica la programación en el {sesionDestinoSeleccionada.fechaHumana} y desplaza lo que había en esa sesión hacia las siguientes sesiones posteriores.
                             </div>
                           </div>
@@ -481,27 +432,16 @@ export const CancelarEliminarSesionModal: React.FC<CancelarEliminarSesionModalPr
 
                         <button
                           type="button"
-                          className="btn-outline"
+                          className="modal-choice-btn choice-warn"
                           disabled={saving}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'flex-start',
-                            gap: 12,
-                            padding: '13px 15px',
-                            textAlign: 'left',
-                            borderColor: '#f59e0b',
-                            background: '#fffbeb',
-                            color: '#92400e',
-                            borderRadius: 10
-                          }}
                           onClick={() => handleEjecutarOpcion3('MACHACAR')}
                         >
-                          <span style={{ fontSize: '1.2rem', lineHeight: 1.2, flexShrink: 0 }}>⚡</span>
-                          <div>
-                            <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 2 }}>
+                          <span className="modal-choice-icon">⚡</span>
+                          <div className="modal-choice-body">
+                            <div className="modal-choice-title">
                               Machacar lo que hay en esa sesión
                             </div>
-                            <div style={{ fontSize: '0.78rem', color: '#78350f', fontWeight: 400, lineHeight: 1.35 }}>
+                            <div className="modal-choice-desc">
                               Sustituye los ejercicios del {sesionDestinoSeleccionada.fechaHumana} por esta programación sin mover las sesiones posteriores.
                             </div>
                           </div>
@@ -510,27 +450,16 @@ export const CancelarEliminarSesionModal: React.FC<CancelarEliminarSesionModalPr
                     ) : (
                       <button
                         type="button"
-                        className="btn-outline"
+                        className="modal-choice-btn choice-success"
                         disabled={saving}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'flex-start',
-                          gap: 12,
-                          padding: '13px 15px',
-                          textAlign: 'left',
-                          borderColor: '#10b981',
-                          background: '#ecfdf5',
-                          color: '#065f46',
-                          borderRadius: 10
-                        }}
                         onClick={() => handleEjecutarOpcion3('MACHACAR')}
                       >
-                        <span style={{ fontSize: '1.2rem', lineHeight: 1.2, flexShrink: 0 }}>✅</span>
-                        <div>
-                          <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 2 }}>
+                        <span className="modal-choice-icon">✅</span>
+                        <div className="modal-choice-body">
+                          <div className="modal-choice-title">
                             Ubicar programación en esta sesión vacía
                           </div>
-                          <div style={{ fontSize: '0.78rem', color: '#047857', fontWeight: 400, lineHeight: 1.35 }}>
+                          <div className="modal-choice-desc">
                             La sesión del {sesionDestinoSeleccionada.fechaHumana} está vacía. Se colocará ahí la programación y se liberará el hueco original.
                           </div>
                         </div>
@@ -548,7 +477,8 @@ export const CancelarEliminarSesionModal: React.FC<CancelarEliminarSesionModalPr
                 disabled={saving}
                 onClick={() => setStep('main')}
               >
-                ← Volver a las 4 opciones
+                <span className="ui-icon">←</span>
+                <span>Volver a las 4 opciones</span>
               </button>
               <button
                 type="button"

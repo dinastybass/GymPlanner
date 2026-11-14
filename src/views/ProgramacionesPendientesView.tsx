@@ -194,7 +194,10 @@ export const ProgramacionesPendientesView: React.FC<ProgramacionesPendientesView
         <div key={entrenador} className="trainer-accordion">
           <div className="trainer-header" onClick={() => toggleTrainer(entrenador)}>
             <div className="trainer-title">
-              <span>👤 ENTRENADOR: {entrenador}</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <span className="ui-icon">👤</span>
+                <span>ENTRENADOR: {entrenador}</span>
+              </span>
               <span
                 style={{
                   background: '#ffffff',

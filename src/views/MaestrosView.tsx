@@ -856,14 +856,20 @@ export const MaestrosView: React.FC = () => {
 
           {!esAdmin && currentSection !== 'Ejercicios' && (
             <div className="readonly-banner">
-              🔒 Modo consulta: como Programador solo puedes editar los maestros de la sección{' '}
-              <strong>Ejercicios</strong>.
+              <span className="ui-icon">🔒</span>
+              <span>
+                Modo consulta: como Programador solo puedes editar los maestros de la sección{' '}
+                <strong>Ejercicios</strong>.
+              </span>
             </div>
           )}
 
           {currentSection === 'Agenda' && currentKey === 'Meses de margen para reprogramar' && (
             <div
               style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 8,
                 background: '#f0fdfa',
                 border: '1px solid #99f6e4',
                 color: '#0f766e',
@@ -874,7 +880,10 @@ export const MaestrosView: React.FC = () => {
                 lineHeight: 1.45
               }}
             >
-              ℹ️ <strong>Política de reprogramación:</strong> El valor indica cuántos meses anteriores al mes en curso permiten reprogramar sesiones (por ejemplo, <strong>1</strong> = mes actual + 1 mes anterior). Las sesiones vencidas o sin fecha de meses anteriores a ese límite quedan bloqueadas como <strong>Vencidas</strong> en su fecha original.
+              <span className="ui-icon" style={{ marginTop: 2 }}>ℹ️</span>
+              <span>
+                <strong>Política de reprogramación:</strong> El valor indica cuántos meses anteriores al mes en curso permiten reprogramar sesiones (por ejemplo, <strong>1</strong> = mes actual + 1 mes anterior). Las sesiones vencidas o sin fecha de meses anteriores a ese límite quedan bloqueadas como <strong>Vencidas</strong> en su fecha original.
+              </span>
             </div>
           )}
 
@@ -1072,7 +1081,8 @@ export const MaestrosView: React.FC = () => {
                                 title="Renombrar"
                                 onClick={() => iniciarEdicion(item.id, item.valor)}
                               >
-                                ✏️ Editar
+                                <span className="ui-icon">✏️</span>
+                                <span>Editar</span>
                               </button>
                               <button
                                 type="button"
@@ -1129,6 +1139,9 @@ export const MaestrosView: React.FC = () => {
               {backupProgressMsg && (
                 <div
                   style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
                     background: '#f0fdfa',
                     border: '1px solid #99f6e4',
                     color: '#0f766e',
@@ -1138,7 +1151,8 @@ export const MaestrosView: React.FC = () => {
                     fontSize: '0.88rem'
                   }}
                 >
-                  ⏳ {backupProgressMsg}
+                  <span className="ui-icon">⏳</span>
+                  <span>{backupProgressMsg}</span>
                 </div>
               )}
 
@@ -1233,7 +1247,17 @@ export const MaestrosView: React.FC = () => {
                         style={{ padding: '6px 12px', fontSize: '0.8rem' }}
                         title="Volver a leer las copias de Google Drive"
                       >
-                        {cargandoListaDrive ? '⏳ Leyendo Drive...' : '🔄 Actualizar lista'}
+                        {cargandoListaDrive ? (
+                          <>
+                            <span className="ui-icon">⏳</span>
+                            <span>Leyendo Drive...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="ui-icon">🔄</span>
+                            <span>Actualizar lista</span>
+                          </>
+                        )}
                       </button>
                     )}
                     {esAdmin && (
@@ -1243,7 +1267,17 @@ export const MaestrosView: React.FC = () => {
                         onClick={() => setMostrarConfigDrive(!mostrarConfigDrive)}
                         style={{ padding: '6px 12px', fontSize: '0.8rem' }}
                       >
-                        {driveConfig.folderId ? '⚙️ Conexión guardada' : '☁️ Conectar Google Drive'}
+                        {driveConfig.folderId ? (
+                          <>
+                            <span className="ui-icon">⚙️</span>
+                            <span>Conexión guardada</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="ui-icon">☁️</span>
+                            <span>Conectar Google Drive</span>
+                          </>
+                        )}
                       </button>
                     )}
                   </div>
@@ -1260,8 +1294,9 @@ export const MaestrosView: React.FC = () => {
                       marginBottom: 16
                     }}
                   >
-                    <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 6 }}>
-                      ☁️ Conexión con carpeta de Google Drive (guardada permanentemente)
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: '0.9rem', marginBottom: 6 }}>
+                      <span className="ui-icon">☁️</span>
+                      <span>Conexión con carpeta de Google Drive (guardada permanentemente)</span>
                     </div>
                     <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 0, marginBottom: 12 }}>
                       Estos datos quedan guardados en la base de datos: <strong>solo necesitas configurarlos una vez</strong> y se mantendrán en todos tus inicios de sesión y dispositivos.
@@ -1436,8 +1471,9 @@ export const MaestrosView: React.FC = () => {
                   >
                     CUENTAS VINCULADAS A FIREBASE AUTHENTICATION
                   </div>
-                  <h3 style={{ margin: '4px 0 0 0', fontSize: '1.1rem' }}>
-                    👤 Usuarios de Autenticación y Asignación de Rol
+                  <h3 style={{ margin: '4px 0 0 0', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span className="ui-icon">👤</span>
+                    <span>Usuarios de Autenticación y Asignación de Rol</span>
                   </h3>
                 </div>
                 <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
@@ -1681,7 +1717,10 @@ export const MaestrosView: React.FC = () => {
                       className={`perm-role-tab ${active ? 'active' : ''}`}
                       onClick={() => setRolSeleccionadoPermisos(r)}
                     >
-                      <span>👤 {r}</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <span className="ui-icon">👤</span>
+                        <span>{r}</span>
+                      </span>
                       <span className="role-badge">
                         {activosCount}/{totalChecks}
                       </span>
@@ -1766,7 +1805,8 @@ export const MaestrosView: React.FC = () => {
                           style={{ padding: '7px 14px', fontSize: '0.8rem' }}
                           onClick={() => restaurarPermisosDefectoRol(rolActivo)}
                         >
-                          ↺ Restaurar valores por defecto
+                          <span className="ui-icon">↺</span>
+                          <span>Restaurar valores por defecto</span>
                         </button>
                       )}
                     </div>
@@ -1776,10 +1816,30 @@ export const MaestrosView: React.FC = () => {
                         <thead>
                           <tr>
                             <th style={{ minWidth: 280 }}>Acción / Módulo del Sistema</th>
-                            <th style={{ width: 95 }}>👁️ Ver</th>
-                            <th style={{ width: 95 }}>✏️ Editar</th>
-                            <th style={{ width: 95 }}>➕ Crear</th>
-                            <th style={{ width: 95 }}>🗑️ Borrar</th>
+                            <th style={{ width: 95 }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                                <span className="ui-icon">👁️</span>
+                                <span>Ver</span>
+                              </span>
+                            </th>
+                            <th style={{ width: 95 }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                                <span className="ui-icon">✏️</span>
+                                <span>Editar</span>
+                              </span>
+                            </th>
+                            <th style={{ width: 95 }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                                <span className="ui-icon">➕</span>
+                                <span>Crear</span>
+                              </span>
+                            </th>
+                            <th style={{ width: 95 }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                                <span className="ui-icon">🗑️</span>
+                                <span>Borrar</span>
+                              </span>
+                            </th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1798,7 +1858,10 @@ export const MaestrosView: React.FC = () => {
                                     padding: '8px 14px'
                                   }}
                                 >
-                                  📂 {cat}
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                    <span className="ui-icon">📂</span>
+                                    <span>{cat}</span>
+                                  </span>
                                 </td>
                               </tr>
                               {acciones.map(p => {
@@ -1872,7 +1935,10 @@ export const MaestrosView: React.FC = () => {
               ×
             </button>
             <div className="modal-header">
-              <h2>⚠️ Valor en uso</h2>
+              <h2>
+                <span className="ui-icon">⚠️</span>
+                <span>Valor en uso</span>
+              </h2>
               <p>
                 El valor <strong>"{depModal.valor}"</strong> se está utilizando actualmente en{' '}
                 <strong>{depModal.depsCount}</strong> registro(s) ({depModal.colsStr}).

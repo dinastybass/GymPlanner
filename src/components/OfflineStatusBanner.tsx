@@ -27,7 +27,8 @@ export const OfflineStatusBanner: React.FC = () => {
       <div className="offline-top-banner offline-mode" role="status" aria-live="polite">
         <div className="offline-banner-inner">
           <span className="offline-banner-text">
-            📡 Sin conexión · Guardando cambios en el dispositivo
+            <span className="ui-icon">📡</span>
+            <span>Sin conexión · Guardando cambios en el dispositivo</span>
           </span>
           {pendingCount > 0 && (
             <span className="offline-pending-counter">
@@ -51,7 +52,8 @@ export const OfflineStatusBanner: React.FC = () => {
       >
         <div className="offline-banner-inner">
           <span className="offline-banner-text">
-            🔄 Sincronizando cambios con la nube...
+            <span className="ui-icon">🔄</span>
+            <span>Sincronizando cambios con la nube...</span>
           </span>
           {pendingCount > 0 && (
             <span className="offline-pending-counter">
@@ -67,7 +69,10 @@ export const OfflineStatusBanner: React.FC = () => {
     return (
       <div className="offline-top-banner synced-mode" role="status" aria-live="polite">
         <div className="offline-banner-inner">
-          <span className="offline-banner-text">✓ Cambios sincronizados</span>
+          <span className="offline-banner-text">
+            <span className="ui-icon">✓</span>
+            <span>Cambios sincronizados</span>
+          </span>
         </div>
       </div>
     );

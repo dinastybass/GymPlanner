@@ -6,7 +6,11 @@ import {
   cargarCatalogoMaestros,
   extraerListaMaster
 } from '../services/maestrosService';
-import { esSesionCompletada, esSesionCancelada } from '../utils/helpers';
+import {
+  esSesionCompletada,
+  esSesionCancelada,
+  obtenerFechaOperativaEfectiva
+} from '../utils/helpers';
 
 interface PantallaSalaViewProps {
   onBack: () => void;
@@ -37,15 +41,19 @@ const mesesMap: Record<number, string> = {
   11: 'DICIEMBRE'
 };
 
-function calcularTurnoObjetivo() {
+function calcularTurnoObjetivo(diasSemana: string[]) {
   const now = new Date();
   const currentTotalMins = now.getHours() * 60 + now.getMinutes();
 
-  const targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const targetBlock: 'MAÑANA' | 'TARDE' =
-    currentTotalMins >= 13 * 60 + 30 ? 'TARDE' : 'MAÑANA';
+  const { targetDate, rolledOver } = obtenerFechaOperativaEfectiva(diasSemana, now);
+  const esHoyMismo = !rolledOver;
+  const targetBlock: 'MAÑANA' | 'TARDE' = !esHoyMismo
+    ? 'MAÑANA'
+    : currentTotalMins >= 13 * 60 + 30
+      ? 'TARDE'
+      : 'MAÑANA';
 
-  return { targetDate, targetBlock, esHoyMismo: true, currentTotalMins };
+  return { targetDate, targetBlock, esHoyMismo, currentTotalMins };
 }
 
 function getLayoutDimensions(count: number) {
@@ -64,13 +72,22 @@ export const PantallaSalaView: React.FC<PantallaSalaViewProps> = ({ onBack }) =>
     'BLOQUE 3: COMPENSATORIO - ACCESORIO',
     'BLOQUE 4: METABÓLICO - ACONDICIONAMIENTO'
   ]);
+  const diasSemanaRef = React.useRef<string[]>([
+    'Lunes',
+    'Martes',
+    'Miércoles',
+    'Jueves',
+    'Viernes'
+  ]);
   const [sesionesActivas, setSesionesActivas] = useState<any[]>([]);
   const [shiftDateLabel, setShiftDateLabel] = useState('CARGANDO...');
   const [shiftBlockLabel, setShiftBlockLabel] = useState('TURNO');
 
   const actualizarPantallaSala = useCallback(async () => {
     try {
-      const { targetDate, targetBlock, esHoyMismo, currentTotalMins } = calcularTurnoObjetivo();
+      const { targetDate, targetBlock, esHoyMismo, currentTotalMins } = calcularTurnoObjetivo(
+        diasSemanaRef.current
+      );
 
       const diaNombre = diasSemanaMap[targetDate.getDay()] || '';
       const diaNum = targetDate.getDate();
@@ -124,9 +141,11 @@ export const PantallaSalaView: React.FC<PantallaSalaViewProps> = ({ onBack }) =>
         if (targetBlock === 'MAÑANA' && hora >= 14) return;
         if (targetBlock === 'TARDE' && hora < 14) return;
 
-        // No mostrar sesiones que empezaron hace más de 2h 30m ni posteriores a 30 minutos desde la hora actual
-        if (esHoyMismo && currentTotalMins - sesionStartMins > 150) return;
-        if (sesionStartMins - currentTotalMins > 30) return;
+        // No mostrar sesiones que empezaron hace más de 2h 30m ni posteriores a 30 minutos desde la hora actual (solo aplica en el día en curso)
+        if (esHoyMismo) {
+          if (currentTotalMins - sesionStartMins > 150) return;
+          if (sesionStartMins - currentTotalMins > 30) return;
+        }
 
         const idCli = data.id_cliente;
         const nombreCliente =
@@ -165,6 +184,14 @@ export const PantallaSalaView: React.FC<PantallaSalaViewProps> = ({ onBack }) =>
           'Bloque de recomendación'
         ]);
         if (bloques.length > 0) setOrdenBloques(bloques);
+
+        const dias = extraerListaMaster(maestros, 'Agenda', [
+          'Días de la semana',
+          'Dias de la semana'
+        ]);
+        if (dias.length > 0) {
+          diasSemanaRef.current = dias;
+        }
       } catch (e) {
         console.warn('Error cargando maestros en pantalla_sala:', e);
       }
@@ -301,7 +328,10 @@ export const PantallaSalaView: React.FC<PantallaSalaViewProps> = ({ onBack }) =>
                     item.esSubgrupo ? (
                       <div key={iIdx} className="sala-subgrupo">
                         <div className="sala-subgrupo-header">
-                          <span className="sala-subgrupo-title">🔄 {item.nombre}</span>
+                          <span className="sala-subgrupo-title">
+                            <span className="ui-icon">🔄</span>
+                            <span>{item.nombre}</span>
+                          </span>
                           {item.pauta && (
                             <span className="sala-subgrupo-reps">{item.pauta}</span>
                           )}
@@ -352,7 +382,17 @@ export const PantallaSalaView: React.FC<PantallaSalaViewProps> = ({ onBack }) =>
                 : undefined
             }
           >
-            {isProyector ? '⏻ Cerrar Sesión' : '✕ Cerrar Sala'}
+            {isProyector ? (
+              <>
+                <span className="ui-icon">⏻</span>
+                <span>Cerrar Sesión</span>
+              </>
+            ) : (
+              <>
+                <span className="ui-icon">✕</span>
+                <span>Cerrar Sala</span>
+              </>
+            )}
           </button>
         </div>
       </header>

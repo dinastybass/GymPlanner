@@ -63,10 +63,16 @@ export const ToastNotification: React.FC = () => {
                 borderRadius: '6px',
                 fontWeight: 700,
                 fontSize: '0.85rem',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '5px',
+                lineHeight: 1.2
               }}
             >
-              ↩ Deshacer
+              <span className="ui-icon">↩</span>
+              <span>Deshacer</span>
             </button>
           )}
           <button

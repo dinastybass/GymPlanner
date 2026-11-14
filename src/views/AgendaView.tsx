@@ -16,7 +16,12 @@ import { ReprogramarSesionModal } from '../components/ReprogramarSesionModal';
 import { CancelarEliminarSesionModal } from '../components/CancelarEliminarSesionModal';
 import { useUndo } from '../context/UndoContext';
 import { FirestoreOp } from '../services/undoService';
-import { esSesionCompletada, parsearFechaFirestore } from '../utils/helpers';
+import {
+  esSesionCompletada,
+  parsearFechaFirestore,
+  obtenerFechaOperativaEfectiva,
+  getJsDayFromNombre
+} from '../utils/helpers';
 import { confirmarDialogo } from '../utils/confirmDialog';
 import {
   cancelarSesionConCascadaAdelante,
@@ -199,8 +204,8 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     } catch {
       // ignore
     }
-    const now = new Date();
-    return new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
+    const { targetDate } = obtenerFechaOperativaEfectiva();
+    return new Date(Date.UTC(targetDate.getFullYear(), targetDate.getMonth(), 1));
   });
 
   useEffect(() => {
@@ -215,8 +220,8 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
   // Mobile calendar mode (Google Calendar style single-day view vs full week)
   const [mobileCalendarMode, setMobileCalendarMode] = useState<'dia' | 'semana'>('dia');
   const [mobileSelectedDayIdx, setMobileSelectedDayIdx] = useState<number>(() => {
-    const now = new Date();
-    const day = now.getDay(); // 0 Sun, 1 Mon, 2 Tue, 3 Wed, 4 Thu, 5 Fri, 6 Sat
+    const { targetDate } = obtenerFechaOperativaEfectiva();
+    const day = targetDate.getDay(); // 0 Sun, 1 Mon, 2 Tue, 3 Wed, 4 Thu, 5 Fri, 6 Sat
     return day >= 1 && day <= 5 ? day - 1 : 0;
   });
 
@@ -384,7 +389,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
   tardeSlots.forEach(t => { timeToRowMap[t] = rCounter++; });
 
   // Compute weeks of currentMonthDate
-  const getWeeksForMonth = useCallback((monthDate: Date) => {
+  const getWeeksForMonth = useCallback((monthDate: Date, workingDaysList?: string[]) => {
     const firstDayOfMonth = new Date(Date.UTC(monthDate.getUTCFullYear(), monthDate.getUTCMonth(), 1));
     const lastDayOfMonth = new Date(Date.UTC(monthDate.getUTCFullYear(), monthDate.getUTCMonth() + 1, 0));
 
@@ -400,8 +405,10 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     const weeks: { weekNum: number; mondayDate: Date; isCurrentWeek: boolean; title: string }[] = [];
     const tempMon = new Date(startCalendar);
     let w = 1;
-    const nowReal = new Date();
-    const hoyReal = new Date(Date.UTC(nowReal.getFullYear(), nowReal.getMonth(), nowReal.getDate(), 0, 0, 0, 0));
+    const { targetDate: fechaOperativa } = obtenerFechaOperativaEfectiva(workingDaysList);
+    const hoyReal = new Date(
+      Date.UTC(fechaOperativa.getFullYear(), fechaOperativa.getMonth(), fechaOperativa.getDate(), 0, 0, 0, 0)
+    );
 
     while (tempMon <= lastDayOfMonth) {
       const mDate = new Date(tempMon);
@@ -433,18 +440,18 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     return weeks;
   }, []);
 
-  const weeksList = getWeeksForMonth(currentMonthDate);
+  const weeksList = getWeeksForMonth(currentMonthDate, diasSemana);
 
-  // Initialize default expanded state when month changes
+  // Initialize default expanded state when month or working days change
   useEffect(() => {
-    const wList = getWeeksForMonth(currentMonthDate);
+    const wList = getWeeksForMonth(currentMonthDate, diasSemana);
     const initialExpanded: Record<number, boolean> = {};
     const anyCurrent = wList.some(w => w.isCurrentWeek);
     wList.forEach((w, idx) => {
       initialExpanded[w.weekNum] = anyCurrent ? w.isCurrentWeek : idx === 0;
     });
     setExpandedWeeks(initialExpanded);
-  }, [currentMonthDate, getWeeksForMonth]);
+  }, [currentMonthDate, diasSemana, getWeeksForMonth]);
 
   const loadAgenda = useCallback(async () => {
     setLoading(true);
@@ -460,7 +467,12 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
         getValoresMaestro('Agenda', 'Meses de margen para reprogramar')
       ]);
 
-      if (diasDB.length > 0) setDiasSemana(diasDB);
+      if (diasDB.length > 0) {
+        setDiasSemana(prev => (JSON.stringify(prev) === JSON.stringify(diasDB) ? prev : diasDB));
+        const { targetDate } = obtenerFechaOperativaEfectiva(diasDB);
+        const idxMatch = diasDB.findIndex(d => getJsDayFromNombre(d) === targetDate.getDay());
+        if (idxMatch >= 0) setMobileSelectedDayIdx(idxMatch);
+      }
       if (horasIndDB.length > 0) setTimeSlots(horasIndDB);
       if (horasSGDB.length > 0) setSgTimeSlotsRaw(horasSGDB);
       if (ocupacionDB.length > 0) {
@@ -614,9 +626,10 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     const diffDays = Math.floor(Math.abs(fecha.getTime() - startDateCalendar.getTime()) / (1000 * 60 * 60 * 24));
     const weekNum = Math.floor(diffDays / 7) + 1;
     const dayIndex = fecha.getUTCDay();
+    const matchedColIdx = diasSemana.findIndex(d => getJsDayFromNombre(d) === dayIndex);
 
-    if (dayIndex >= 1 && dayIndex <= diasSemana.length) {
-      const col = dayIndex + 1;
+    if (matchedColIdx !== -1) {
+      const col = matchedColIdx + 2;
       const row = timeToRowMap[timeStr];
       if (row) {
         const dayKey = `w${weekNum}-c${col}`;
@@ -662,6 +675,8 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     clientes: { idSesion: string; nombre: string; isCompleted: boolean }[];
     firstId: string;
     isPending: boolean;
+    ejercicios: any[];
+    intensidad: string;
   }> = {};
 
   Object.values(sesionesRaw).forEach(info => {
@@ -674,16 +689,22 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     const timeStr = fecha.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
     const keyHora = timeStr.replace(':', '');
     const slotKey = `${dateStrID}-${keyHora}`;
+    const ejs = Array.isArray(data.ejercicios) ? data.ejercicios : [];
+    const intSlot = data.intensidad_sesion || data.intensidad || data.Intensidad || 'MED';
 
     if (!sgSlotsMap[slotKey]) {
       sgSlotsMap[slotKey] = {
         clientes: [],
         firstId: info.id,
-        isPending: !data.ejercicios || data.ejercicios.length === 0
+        isPending: ejs.length === 0,
+        ejercicios: ejs,
+        intensidad: intSlot
       };
-    } else if (data.ejercicios && data.ejercicios.length > 0) {
+    } else if (ejs.length > 0) {
       sgSlotsMap[slotKey].isPending = false;
       sgSlotsMap[slotKey].firstId = info.id;
+      sgSlotsMap[slotKey].ejercicios = ejs;
+      if (intSlot) sgSlotsMap[slotKey].intensidad = intSlot;
     }
 
     sgSlotsMap[slotKey].clientes.push({
@@ -700,8 +721,24 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     const info = sesionesRaw[idSesion];
     if (!info) return;
 
-    const sFmt = formatearSesionAgenda(idSesion, info.docData, mesesMargenReprog);
-    const acciones = obtenerAccionesDisponiblesSesion(info.docData, mesesMargenReprog);
+    let docDataEfectivo = info.docData;
+    const accionesBase = obtenerAccionesDisponiblesSesion(info.docData, mesesMargenReprog);
+    if (accionesBase.isSG && accionesBase.ejercicios.length === 0 && accionesBase.fechaObj) {
+      const dateStrID = accionesBase.fechaObj.toISOString().split('T')[0];
+      const timeStr = accionesBase.fechaObj.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+      const sgSlot = sgSlotsMap[`${dateStrID}-${timeStr.replace(':', '')}`];
+      if (sgSlot && sgSlot.ejercicios.length > 0) {
+        docDataEfectivo = {
+          ...info.docData,
+          ejercicios: sgSlot.ejercicios,
+          intensidad: sgSlot.intensidad || info.docData?.intensidad,
+          intensidad_sesion: sgSlot.intensidad || info.docData?.intensidad_sesion
+        };
+      }
+    }
+
+    const sFmt = formatearSesionAgenda(idSesion, docDataEfectivo, mesesMargenReprog);
+    const acciones = obtenerAccionesDisponiblesSesion(docDataEfectivo, mesesMargenReprog);
 
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     let left = rect.left;
@@ -1601,7 +1638,8 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
           &lt;
         </button>
         <button type="button" className="calendar-icon-btn">
-          📅 <span>{mesStrFormatted}</span>
+          <span className="ui-icon">📅</span>
+          <span>{mesStrFormatted}</span>
         </button>
         <button
           type="button"
@@ -1662,14 +1700,16 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                             className={`mobile-mode-btn ${mobileCalendarMode === 'dia' ? 'active' : ''}`}
                             onClick={() => setMobileCalendarMode('dia')}
                           >
-                            📅 Vista Día
+                            <span className="ui-icon">📅</span>
+                            <span>Vista Día</span>
                           </button>
                           <button
                             type="button"
                             className={`mobile-mode-btn ${mobileCalendarMode === 'semana' ? 'active' : ''}`}
                             onClick={() => setMobileCalendarMode('semana')}
                           >
-                            🗓️ Vista Semana
+                            <span className="ui-icon">🗓️</span>
+                            <span>Vista Semana</span>
                           </button>
                         </div>
 
@@ -1864,28 +1904,39 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                                                     </span>
                                                   </React.Fragment>
                                                 ))}
-                                                <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px dashed var(--border)' }}>
+                                                <div className="sg-slot-actions">
                                                   <a
                                                     href="#programar"
+                                                    className={`sg-routine-btn ${sgInfo.isPending ? 'pending' : ''}`}
+                                                    style={{ padding: '6px 8px', fontSize: '0.78rem' }}
                                                     onClick={(e) => {
                                                       e.preventDefault();
                                                       e.stopPropagation();
                                                       onNavigate('programar_sesion', sgInfo.firstId);
                                                     }}
-                                                    style={{
-                                                      display: 'block',
-                                                      textAlign: 'center',
-                                                      fontSize: '0.78rem',
-                                                      fontWeight: 'bold',
-                                                      color: 'white',
-                                                      background: sgInfo.isPending ? '#dc2626' : 'var(--accent-dark)',
-                                                      padding: '6px 0',
-                                                      borderRadius: 6,
-                                                      textDecoration: 'none'
-                                                    }}
                                                   >
-                                                    {sgInfo.isPending ? '📋 Programar SG' : '✅ Rutina SG'}
+                                                    <span className="ui-icon">{sgInfo.isPending ? '📋' : '✅'}</span>
+                                                    <span>{sgInfo.isPending ? 'Programar SG' : 'Rutina SG'}</span>
                                                   </a>
+                                                  {!sgInfo.isPending && sgInfo.ejercicios.length > 0 && (
+                                                    <button
+                                                      type="button"
+                                                      className="sg-send-btn"
+                                                      title="Enviar programación de este Small Group"
+                                                      onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        setSendEjercicios(sgInfo.ejercicios);
+                                                        setSendTipoSesion('Small Group');
+                                                        setSendIntensidad(sgInfo.intensidad || 'MED');
+                                                        setSendClientId('');
+                                                        setSendSessionId(sgInfo.firstId);
+                                                        setSendModalOpen(true);
+                                                      }}
+                                                    >
+                                                      <span className="ui-icon">➡️</span>
+                                                    </button>
+                                                  )}
                                                 </div>
                                               </>
                                             ) : (
@@ -2116,28 +2167,38 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                                                 </span>
                                               </React.Fragment>
                                             ))}
-                                            <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px dashed var(--border)' }}>
+                                            <div className="sg-slot-actions">
                                               <a
                                                 href="#programar"
+                                                className={`sg-routine-btn ${sgInfo.isPending ? 'pending' : ''}`}
                                                 onClick={(e) => {
                                                   e.preventDefault();
                                                   e.stopPropagation();
                                                   onNavigate('programar_sesion', sgInfo.firstId);
                                                 }}
-                                                style={{
-                                                  display: 'block',
-                                                  textAlign: 'center',
-                                                  fontSize: '0.75rem',
-                                                  fontWeight: 'bold',
-                                                  color: 'white',
-                                                  background: sgInfo.isPending ? '#dc2626' : 'var(--accent-dark)',
-                                                  padding: '4px 0',
-                                                  borderRadius: 4,
-                                                  textDecoration: 'none'
-                                                }}
                                               >
-                                                {sgInfo.isPending ? '📋 Programar SG' : '✅ Rutina SG'}
+                                                <span className="ui-icon">{sgInfo.isPending ? '📋' : '✅'}</span>
+                                                <span>{sgInfo.isPending ? 'Programar SG' : 'Rutina SG'}</span>
                                               </a>
+                                              {!sgInfo.isPending && sgInfo.ejercicios.length > 0 && (
+                                                <button
+                                                  type="button"
+                                                  className="sg-send-btn"
+                                                  title="Enviar programación de este Small Group"
+                                                  onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    setSendEjercicios(sgInfo.ejercicios);
+                                                    setSendTipoSesion('Small Group');
+                                                    setSendIntensidad(sgInfo.intensidad || 'MED');
+                                                    setSendClientId('');
+                                                    setSendSessionId(sgInfo.firstId);
+                                                    setSendModalOpen(true);
+                                                  }}
+                                                >
+                                                  <span className="ui-icon">➡️</span>
+                                                </button>
+                                              )}
                                             </div>
                                           </>
                                         )}
@@ -2179,10 +2240,14 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                   }}
                   title={`Ir a la ficha de ${activeMenu.nombreCliente}`}
                 >
-                  👤 {activeMenu.nombreCliente}
+                  <span className="ui-icon">👤</span>
+                  <span className="session-action-menu-client-text">{activeMenu.nombreCliente}</span>
                 </a>
               ) : (
-                <span>👤 {activeMenu.nombreCliente}</span>
+                <span className="session-action-menu-client-name">
+                  <span className="ui-icon">👤</span>
+                  <span className="session-action-menu-client-text">{activeMenu.nombreCliente}</span>
+                </span>
               )}
               <span
                 className={`pill ${
@@ -2200,10 +2265,20 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
               </span>
             </div>
             <div className="session-action-menu-meta">
-              <span>
-                {activeMenu.sFmt.sin_fecha
-                  ? '📌 Sin fecha asignada'
-                  : `📅 ${activeMenu.sFmt.fechaStr} · ${activeMenu.sFmt.horaStr.split(' - ')[0]}`}
+              <span className="session-action-meta-item">
+                {activeMenu.sFmt.sin_fecha ? (
+                  <>
+                    <span className="ui-icon">📌</span>
+                    <span>Sin fecha asignada</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="ui-icon">📅</span>
+                    <span>
+                      {activeMenu.sFmt.fechaStr} · {activeMenu.sFmt.horaStr.split(' - ')[0]}
+                    </span>
+                  </>
+                )}
               </span>
               <span>{activeMenu.acciones.ejercicios.length} ej.</span>
             </div>
@@ -2309,8 +2384,9 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
           >
             <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--primary)' }}>
-                  📅 Generar / Ubicación de Sesión
+                <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span className="ui-icon">📅</span>
+                  <span>Generar / Ubicación de Sesión</span>
                 </h2>
                 <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                   {slotContext.modo === 'slot'
@@ -2592,8 +2668,9 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                     )}
 
                     {hasOverbooking && (
-                      <div className="warning-msg" style={{ display: 'flex' }}>
-                        <span>⚠️ Atención: Hay un conflicto de overbooking ({ocupacionMaxima} o más clientes).</span>
+                      <div className="warning-msg" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span className="ui-icon">⚠️</span>
+                        <span>Atención: Hay un conflicto de overbooking ({ocupacionMaxima} o más clientes).</span>
                       </div>
                     )}
 
@@ -2752,8 +2829,9 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
           >
             <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--primary)' }}>
-                  📌 Asignar Sesión Existente
+                <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span className="ui-icon">📌</span>
+                  <span>Asignar Sesión Existente</span>
                 </h2>
                 <p style={{ margin: '4px 0 0 0', fontSize: '0.84rem', color: 'var(--text-muted)' }}>
                   Selecciona un cliente y elige una de sus sesiones sin fecha (o pendientes) para asignarla al hueco seleccionado.
@@ -2876,8 +2954,9 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                     Selecciona primero un cliente para ver sus sesiones disponibles.
                   </div>
                 ) : asigLoadingSessions ? (
-                  <div style={{ padding: 20, textAlign: 'center', color: '#64748b', fontSize: '0.9rem' }}>
-                    ⏳ Buscando sesiones del cliente...
+                  <div style={{ padding: 20, textAlign: 'center', color: '#64748b', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                    <span className="ui-icon">⏳</span>
+                    <span>Buscando sesiones del cliente...</span>
                   </div>
                 ) : listToRenderAsig.length === 0 ? (
                   sinFechaListAsig.length === 0 && conFechaListAsig.length > 0 && !asigMostrarConFecha ? (
@@ -2929,14 +3008,18 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                             {s.sin_fecha ? (
                               <span className="pill pill-sin-fecha" style={{ fontSize: '0.7rem', padding: '2px 8px' }}>
-                                📌 Sin fecha
+                                <span className="ui-icon">📌</span>
+                                <span>Sin fecha</span>
                               </span>
                             ) : (
                               <span
                                 className={`pill ${s.estado === 'Vencida' ? 'pill-vencida' : 'pill-pendiente'}`}
                                 style={{ fontSize: '0.7rem', padding: '2px 8px' }}
                               >
-                                📅 {s.diaStr} {s.fechaStr} · {s.horaStr.split(' - ')[0]}
+                                <span className="ui-icon">📅</span>
+                                <span>
+                                  {s.diaStr} {s.fechaStr} · {s.horaStr.split(' - ')[0]}
+                                </span>
                               </span>
                             )}
                             <span style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.85rem' }}>
@@ -2966,14 +3049,24 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                         </div>
                         <div
                           style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
                             fontSize: '0.8rem',
-                            color: '#475569',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis'
+                            color: '#475569'
                           }}
                         >
-                          🏋️ {resumenEj}
+                          <span className="ui-icon">🏋️</span>
+                          <span
+                            style={{
+                              minWidth: 0,
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis'
+                            }}
+                          >
+                            {resumenEj}
+                          </span>
                         </div>
                       </div>
                     );
@@ -2995,7 +3088,17 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                   disabled={savingAsig}
                   style={{ background: 'var(--accent)' }}
                 >
-                  {savingAsig ? '⏳ Asignando...' : '📌 Asignar Sesión al Hueco'}
+                  {savingAsig ? (
+                    <>
+                      <span className="ui-icon">⏳</span>
+                      <span>Asignando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="ui-icon">📌</span>
+                      <span>Asignar Sesión al Hueco</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>
@@ -3050,7 +3153,10 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
               &times;
             </button>
             <div className="modal-header" style={{ marginBottom: 14 }}>
-              <h2>⚠️ Ya existe una sesión ese día</h2>
+              <h2>
+                <span className="ui-icon">⚠️</span>
+                <span>Ya existe una sesión ese día</span>
+              </h2>
               <p>
                 <strong>{colisionMismoDiaModal.nombreCliente}</strong> ya tiene una sesión programada el{' '}
                 <strong>{colisionMismoDiaModal.fechaLabelStr}</strong> a las{' '}
@@ -3067,27 +3173,16 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <button
                 type="button"
-                className="btn-outline"
+                className="modal-choice-btn choice-warn"
                 disabled={colisionMismoDiaModal.saving}
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 12,
-                  padding: '14px 16px',
-                  textAlign: 'left',
-                  borderColor: '#f59e0b',
-                  background: '#fffbeb',
-                  color: '#92400e',
-                  borderRadius: 10
-                }}
                 onClick={() => handleEjecutarResolucionColisionMismoDia('MACHACAR')}
               >
-                <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>🔄</span>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 3 }}>
+                <span className="modal-choice-icon">🔄</span>
+                <div className="modal-choice-body">
+                  <div className="modal-choice-title">
                     Actualizar a las {colisionMismoDiaModal.horaNuevaStr} y machacar ejercicios
                   </div>
-                  <div style={{ fontSize: '0.78rem', color: '#78350f', fontWeight: 400, lineHeight: 1.35 }}>
+                  <div className="modal-choice-desc">
                     Sustituye los ejercicios que había en ese día ({colisionMismoDiaModal.numEjExistente} ej.) por los de la sesión entrante ({colisionMismoDiaModal.numEjEntrante} ej.) sin desplazar el resto de sesiones.
                   </div>
                 </div>
@@ -3095,28 +3190,17 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
 
               <button
                 type="button"
-                className="btn-outline"
+                className="modal-choice-btn choice-info"
                 disabled={colisionMismoDiaModal.saving}
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 12,
-                  padding: '14px 16px',
-                  textAlign: 'left',
-                  borderColor: '#38bdf8',
-                  background: '#f0f9ff',
-                  color: '#0369a1',
-                  borderRadius: 10
-                }}
                 onClick={() => handleEjecutarResolucionColisionMismoDia('CASCADA_ADELANTE')}
               >
-                <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>⏩</span>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 3 }}>
+                <span className="modal-choice-icon">⏩</span>
+                <div className="modal-choice-body">
+                  <div className="modal-choice-title">
                     Actualizar a las {colisionMismoDiaModal.horaNuevaStr} y realizar cascada hacia delante
                   </div>
-                  <div style={{ fontSize: '0.78rem', color: '#0c4a6e', fontWeight: 400, lineHeight: 1.35 }}>
-                    Coloca aquí los ejercicios de la sesión entrante ({colisionMismoDiaModal.numEjEntrante} ej.) y desplaza la rutina que estaba ese día hacia las siguientes sesiones futuras (ubicando la última en la primera vacía del bloque final o en "Sin fecha").
+                  <div className="modal-choice-desc">
+                    Coloca aquí los ejercicios de la sesión entrante ({colisionMismoDiaModal.numEjEntrante} ej.) y desplaza la rutina que estaba ese día hacia las siguientes sesiones futuras (ubicando la última en la primera vacía del bloque final o en &quot;Sin fecha&quot;).
                   </div>
                 </div>
               </button>
@@ -3162,9 +3246,17 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
             </button>
             <div className="modal-header" style={{ marginBottom: 14 }}>
               <h2>
-                {ubicarSinFechaModal.esSinFecha
-                  ? '📌 Ubicar sesión sin fecha'
-                  : '📅 Reprogramar sesión a nueva fecha'}
+                {ubicarSinFechaModal.esSinFecha ? (
+                  <>
+                    <span className="ui-icon">📌</span>
+                    <span>Ubicar sesión sin fecha</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="ui-icon">📅</span>
+                    <span>Reprogramar sesión a nueva fecha</span>
+                  </>
+                )}
               </h2>
               <p>
                 Vas a ubicar la sesión de <strong>{ubicarSinFechaModal.nombreCliente}</strong> (
@@ -3181,27 +3273,16 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <button
                 type="button"
-                className="btn-outline"
+                className="modal-choice-btn choice-success"
                 disabled={ubicarSinFechaModal.saving}
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 12,
-                  padding: '14px 16px',
-                  textAlign: 'left',
-                  borderColor: '#10b981',
-                  background: '#ecfdf5',
-                  color: '#065f46',
-                  borderRadius: 10
-                }}
                 onClick={() => handleEjecutarUbicacionSinFecha(false)}
               >
-                <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>📍</span>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 3 }}>
+                <span className="modal-choice-icon">📍</span>
+                <div className="modal-choice-body">
+                  <div className="modal-choice-title">
                     Ubicar directamente sin cascada (sin mover nada)
                   </div>
-                  <div style={{ fontSize: '0.78rem', color: '#047857', fontWeight: 400, lineHeight: 1.35 }}>
+                  <div className="modal-choice-desc">
                     Coloca esta sesión y su programación ({ubicarSinFechaModal.numEjercicios} ej.) directamente el {ubicarSinFechaModal.fechaLabelStr} a las {ubicarSinFechaModal.horaStr} sin desplazar ninguna otra sesión.
                   </div>
                 </div>
@@ -3209,27 +3290,14 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
 
               <button
                 type="button"
-                className="btn-outline"
+                className="modal-choice-btn choice-info"
                 disabled={ubicarSinFechaModal.saving}
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 12,
-                  padding: '14px 16px',
-                  textAlign: 'left',
-                  borderColor: '#38bdf8',
-                  background: '#f0f9ff',
-                  color: '#0369a1',
-                  borderRadius: 10
-                }}
                 onClick={() => handleEjecutarUbicacionSinFecha(true)}
               >
-                <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>🔄</span>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 3 }}>
-                    Ubicar con cascada
-                  </div>
-                  <div style={{ fontSize: '0.78rem', color: '#0c4a6e', fontWeight: 400, lineHeight: 1.35 }}>
+                <span className="modal-choice-icon">🔄</span>
+                <div className="modal-choice-body">
+                  <div className="modal-choice-title">Ubicar con cascada</div>
+                  <div className="modal-choice-desc">
                     {ubicarSinFechaModal.esSinFecha
                       ? 'Inserta este hueco, adelanta las programaciones posteriores en cascada y ubica esta rutina al final (en la última sesión programada o primera vacía del bloque final).'
                       : 'Mueve la sesión a la nueva fecha y reordena las rutinas en cascada manteniendo su orden cronológico.'}

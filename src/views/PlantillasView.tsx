@@ -319,7 +319,10 @@ export const PlantillasView: React.FC<PlantillasViewProps> = ({ onNavigate }) =>
                   }
                 >
                   <h2>
-                    <span>📂 TIPO DE SESIÓN: {tipo.toUpperCase()}</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <span className="ui-icon">📂</span>
+                      <span>TIPO DE SESIÓN: {tipo.toUpperCase()}</span>
+                    </span>
                     <span className="count">{lista.length} plantillas</span>
                   </h2>
                   <span
@@ -399,7 +402,7 @@ export const PlantillasView: React.FC<PlantillasViewProps> = ({ onNavigate }) =>
                                     title="Editar nombre, tipo de sesión y nivel"
                                     onClick={e => abrirModalEditarPlantilla(e, p)}
                                   >
-                                    ✏️
+                                    <span className="ui-icon">✏️</span>
                                   </button>
                                   <button
                                     type="button"
@@ -456,9 +459,14 @@ export const PlantillasView: React.FC<PlantillasViewProps> = ({ onNavigate }) =>
             </button>
             <div className="modal-header">
               <h2>
-                {editingPlantillaId
-                  ? '✏️ Editar Datos de Plantilla'
-                  : 'Crear Plantilla de Sesión'}
+                {editingPlantillaId ? (
+                  <>
+                    <span className="ui-icon">✏️</span>
+                    <span>Editar Datos de Plantilla</span>
+                  </>
+                ) : (
+                  'Crear Plantilla de Sesión'
+                )}
               </h2>
               <p>
                 {editingPlantillaId

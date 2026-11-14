@@ -489,7 +489,10 @@ export const ReprogramarSesionModal: React.FC<ReprogramarSesionModalProps> = ({
             ×
           </button>
           <div className="modal-header" style={{ marginBottom: 12 }}>
-            <h2 style={{ margin: '0 0 6px 0' }}>📅 Reprogramar Sesión en Calendario</h2>
+            <h2>
+              <span className="ui-icon">📅</span>
+              <span>Reprogramar Sesión en Calendario</span>
+            </h2>
             {sesionOrig && (
               <div
                 style={{
@@ -499,7 +502,8 @@ export const ReprogramarSesionModal: React.FC<ReprogramarSesionModalProps> = ({
                   padding: '10px 14px',
                   borderRadius: 8,
                   fontSize: '0.88rem',
-                  marginTop: 6
+                  marginTop: 6,
+                  lineHeight: 1.4
                 }}
               >
                 {sesionOrig.sin_fecha ? (
@@ -533,7 +537,10 @@ export const ReprogramarSesionModal: React.FC<ReprogramarSesionModalProps> = ({
                 >
                   &lt;
                 </button>
-                <div className="reprog-week-title">📅 {weekLabel}</div>
+                <div className="reprog-week-title">
+                  <span className="ui-icon">📅</span>
+                  <span>{weekLabel}</span>
+                </div>
                 <button
                   type="button"
                   className="reprog-nav-arrow"
@@ -800,7 +807,10 @@ export const ReprogramarSesionModal: React.FC<ReprogramarSesionModalProps> = ({
               ×
             </button>
             <div className="modal-header" style={{ marginBottom: 14 }}>
-              <h2>⚠️ Ya existe una sesión ese día</h2>
+              <h2>
+                <span className="ui-icon">⚠️</span>
+                <span>Ya existe una sesión ese día</span>
+              </h2>
               <p>
                 <strong>{resolvedClientName}</strong> ya tiene una sesión programada el{' '}
                 <strong>{modalColisionDia.fechaLabelStr}</strong> a las{' '}
@@ -818,34 +828,16 @@ export const ReprogramarSesionModal: React.FC<ReprogramarSesionModalProps> = ({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <button
                 type="button"
-                className="btn-outline"
+                className="modal-choice-btn choice-warn"
                 disabled={modalColisionDia.saving}
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 12,
-                  padding: '14px 16px',
-                  textAlign: 'left',
-                  borderColor: '#f59e0b',
-                  background: '#fffbeb',
-                  color: '#92400e',
-                  borderRadius: 10
-                }}
                 onClick={() => ejecutarResolucionColisionMismoDia('MACHACAR')}
               >
-                <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>🔄</span>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 3 }}>
+                <span className="modal-choice-icon">🔄</span>
+                <div className="modal-choice-body">
+                  <div className="modal-choice-title">
                     Actualizar a las {modalColisionDia.horaNuevaStr} y machacar ejercicios
                   </div>
-                  <div
-                    style={{
-                      fontSize: '0.78rem',
-                      color: '#78350f',
-                      fontWeight: 400,
-                      lineHeight: 1.35
-                    }}
-                  >
+                  <div className="modal-choice-desc">
                     Sustituye los ejercicios que había en ese día ({modalColisionDia.numEjExistente}{' '}
                     ej.) por los de la sesión que estás moviendo ({modalColisionDia.numEjEntrante}{' '}
                     ej.) sin desplazar el resto de sesiones.
@@ -855,35 +847,17 @@ export const ReprogramarSesionModal: React.FC<ReprogramarSesionModalProps> = ({
 
               <button
                 type="button"
-                className="btn-outline"
+                className="modal-choice-btn choice-info"
                 disabled={modalColisionDia.saving}
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 12,
-                  padding: '14px 16px',
-                  textAlign: 'left',
-                  borderColor: '#38bdf8',
-                  background: '#f0f9ff',
-                  color: '#0369a1',
-                  borderRadius: 10
-                }}
                 onClick={() => ejecutarResolucionColisionMismoDia('CASCADA_ADELANTE')}
               >
-                <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>⏩</span>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 3 }}>
+                <span className="modal-choice-icon">⏩</span>
+                <div className="modal-choice-body">
+                  <div className="modal-choice-title">
                     Actualizar a las {modalColisionDia.horaNuevaStr} y realizar cascada hacia
                     delante
                   </div>
-                  <div
-                    style={{
-                      fontSize: '0.78rem',
-                      color: '#0c4a6e',
-                      fontWeight: 400,
-                      lineHeight: 1.35
-                    }}
-                  >
+                  <div className="modal-choice-desc">
                     Coloca aquí los ejercicios de la sesión entrante (
                     {modalColisionDia.numEjEntrante} ej.) y desplaza la rutina que estaba ese día
                     hacia las siguientes sesiones futuras (ubicando la última en la primera vacía
@@ -933,9 +907,14 @@ export const ReprogramarSesionModal: React.FC<ReprogramarSesionModalProps> = ({
             </button>
             <div className="modal-header" style={{ marginBottom: 14 }}>
               <h2>
-                {modalUbicarSinFecha.esSinFecha
-                  ? '📌 Ubicar sesión sin fecha'
-                  : '📅 Reprogramar sesión a nueva fecha'}
+                <span className="ui-icon">
+                  {modalUbicarSinFecha.esSinFecha ? '📌' : '📅'}
+                </span>
+                <span>
+                  {modalUbicarSinFecha.esSinFecha
+                    ? 'Ubicar sesión sin fecha'
+                    : 'Reprogramar sesión a nueva fecha'}
+                </span>
               </h2>
               <p>
                 Vas a ubicar la sesión de <strong>{resolvedClientName}</strong> (
@@ -953,34 +932,16 @@ export const ReprogramarSesionModal: React.FC<ReprogramarSesionModalProps> = ({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <button
                 type="button"
-                className="btn-outline"
+                className="modal-choice-btn choice-success"
                 disabled={modalUbicarSinFecha.saving}
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 12,
-                  padding: '14px 16px',
-                  textAlign: 'left',
-                  borderColor: '#10b981',
-                  background: '#ecfdf5',
-                  color: '#065f46',
-                  borderRadius: 10
-                }}
                 onClick={() => ejecutarUbicacionSinFecha(false)}
               >
-                <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>📍</span>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 3 }}>
+                <span className="modal-choice-icon">📍</span>
+                <div className="modal-choice-body">
+                  <div className="modal-choice-title">
                     Ubicar directamente sin cascada (sin mover nada)
                   </div>
-                  <div
-                    style={{
-                      fontSize: '0.78rem',
-                      color: '#047857',
-                      fontWeight: 400,
-                      lineHeight: 1.35
-                    }}
-                  >
+                  <div className="modal-choice-desc">
                     Coloca esta sesión y su programación ({modalUbicarSinFecha.numEjercicios} ej.)
                     directamente el {modalUbicarSinFecha.fechaLabelStr} a las{' '}
                     {modalUbicarSinFecha.horaStr} sin desplazar ninguna otra sesión.
@@ -990,34 +951,16 @@ export const ReprogramarSesionModal: React.FC<ReprogramarSesionModalProps> = ({
 
               <button
                 type="button"
-                className="btn-outline"
+                className="modal-choice-btn choice-info"
                 disabled={modalUbicarSinFecha.saving}
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 12,
-                  padding: '14px 16px',
-                  textAlign: 'left',
-                  borderColor: '#38bdf8',
-                  background: '#f0f9ff',
-                  color: '#0369a1',
-                  borderRadius: 10
-                }}
                 onClick={() => ejecutarUbicacionSinFecha(true)}
               >
-                <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>🔄</span>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 3 }}>
+                <span className="modal-choice-icon">🔄</span>
+                <div className="modal-choice-body">
+                  <div className="modal-choice-title">
                     Ubicar con cascada
                   </div>
-                  <div
-                    style={{
-                      fontSize: '0.78rem',
-                      color: '#0c4a6e',
-                      fontWeight: 400,
-                      lineHeight: 1.35
-                    }}
-                  >
+                  <div className="modal-choice-desc">
                     {modalUbicarSinFecha.esSinFecha
                       ? 'Inserta este hueco, adelanta las programaciones posteriores en cascada y ubica esta rutina al final (en la última sesión programada o primera vacía del bloque final).'
                       : 'Mueve la sesión a la nueva fecha y reordena las rutinas en cascada manteniendo su orden cronológico.'}
