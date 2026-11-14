@@ -71,3 +71,9 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
+
+# AI Studio (archivos temporales, artefactos y capturas de chat)
+.aistudio/
+public/assets/aistudio/
+assets/aistudio/
+dev-dist/

@@ -84,12 +84,14 @@ export const FichaEjercicioView: React.FC<FichaEjercicioViewProps> = ({
       <div className="breadcrumb">
         <a
           href="#ejercicios"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
           onClick={e => {
             e.preventDefault();
             onNavigate('ejercicios');
           }}
         >
-          ← Volver a Ejercicios
+          <span className="ui-icon">←</span>
+          <span>Volver a Ejercicios</span>
         </a>{' '}
         &gt; <span>Ficha de Ejercicio</span>
       </div>
@@ -106,7 +108,10 @@ export const FichaEjercicioView: React.FC<FichaEjercicioViewProps> = ({
 
       <div className="ficha-ej-grid">
         <div className="card ficha-ej-card">
-          <h3>📋 Clasificación</h3>
+          <h3>
+            <span className="ui-icon">📋</span>
+            <span>Clasificación</span>
+          </h3>
           <div className="ficha-ej-info-row">
             <span className="ficha-ej-info-label">Bloque Recomendado</span>
             <div className="ficha-ej-info-val">{formatTags(data.Bloque || data.Fase_Bloque, true)}</div>
@@ -122,7 +127,10 @@ export const FichaEjercicioView: React.FC<FichaEjercicioViewProps> = ({
         </div>
 
         <div className="card ficha-ej-card">
-          <h3>⚙️ Detalles de Ejecución</h3>
+          <h3>
+            <span className="ui-icon">⚙️</span>
+            <span>Detalles de Ejecución</span>
+          </h3>
           <div className="ficha-ej-info-row">
             <span className="ficha-ej-info-label">Material Sugerido</span>
             <div className="ficha-ej-info-val">{formatTags(data.Material, true)}</div>
@@ -142,14 +150,20 @@ export const FichaEjercicioView: React.FC<FichaEjercicioViewProps> = ({
           {(data.Precauciones || data.Precauciones_Lesion) &&
             String(data.Precauciones || data.Precauciones_Lesion).trim() !== '' && (
               <div className="warning-box" style={{ marginTop: 15 }}>
-                <span>⚠️ Precauciones / Lesiones a vigilar</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <span className="ui-icon">⚠️</span>
+                  <span>Precauciones / Lesiones a vigilar</span>
+                </span>
                 <p>{data.Precauciones || data.Precauciones_Lesion}</p>
               </div>
             )}
         </div>
 
         <div className="card ficha-ej-card">
-          <h3>💪 Anatomía y Biomecánica</h3>
+          <h3>
+            <span className="ui-icon">💪</span>
+            <span>Anatomía y Biomecánica</span>
+          </h3>
           <div className="ficha-ej-info-row">
             <span className="ficha-ej-info-label">Patrón de Movimiento</span>
             <div className="ficha-ej-info-val">{formatTags(data.Patron_Movimiento || data.Patron_Motor)}</div>
@@ -165,7 +179,10 @@ export const FichaEjercicioView: React.FC<FichaEjercicioViewProps> = ({
         </div>
 
         <div className="card ficha-ej-card">
-          <h3>🎥 Multimedia</h3>
+          <h3>
+            <span className="ui-icon">🎥</span>
+            <span>Multimedia</span>
+          </h3>
           <div className="ficha-ej-info-row" style={{ borderBottom: 'none' }}>
             <span className="ficha-ej-info-label">Vídeo Demostrativo</span>
             <div>
@@ -176,7 +193,8 @@ export const FichaEjercicioView: React.FC<FichaEjercicioViewProps> = ({
                   rel="noopener noreferrer"
                   className="video-btn"
                 >
-                  ▶ Ver Vídeo del Ejercicio en YouTube
+                  <span className="ui-icon">▶</span>
+                  <span>Ver Vídeo del Ejercicio en YouTube</span>
                 </a>
               ) : (
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: '5px 0 0 0' }}>

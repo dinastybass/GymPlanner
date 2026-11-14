@@ -390,6 +390,9 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
           type="button"
           className={onlySinFechaFilter ? 'btn-primary' : 'btn-outline'}
           style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
             padding: '8px 12px',
             fontSize: '0.82rem',
             whiteSpace: 'nowrap',
@@ -401,7 +404,8 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
           onClick={() => setOnlySinFechaFilter(prev => !prev)}
           title="Filtrar clientes que tienen sesiones programadas sin fecha"
         >
-          📌 Con sin fecha ({totalClientesConSinFecha})
+          <span className="ui-icon">📌</span>
+          <span>Con sin fecha ({totalClientesConSinFecha})</span>
         </button>
 
         <span className="total-count">{filtrados.length} clientes</span>
@@ -454,8 +458,9 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
                   }
                 >
                   <div className="acc-title">
-                    <span>
-                      {configVisual[estadoKey].icono} {estadoKey.toUpperCase()}
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <span className="ui-icon">{configVisual[estadoKey].icono}</span>
+                      <span>{estadoKey.toUpperCase()}</span>
                     </span>
                     <span className="acc-badge">{listaEstado.length}</span>
                   </div>
@@ -564,24 +569,28 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
                                     <td className="col-cli-nombre">{c.nombre_completo}</td>
                                     <td className="col-cli-alias">
                                       <strong>{c.alias}</strong>
-                                      {(c.sin_fecha_count || 0) > 0 && (
-                                        <span
-                                          style={{
-                                            marginLeft: 8,
-                                            background: '#fef3c7',
-                                            color: '#92400e',
-                                            border: '1px solid #f59e0b',
-                                            borderRadius: 10,
-                                            padding: '2px 7px',
-                                            fontSize: '0.72rem',
-                                            fontWeight: 700,
-                                            whiteSpace: 'nowrap'
-                                          }}
-                                          title={`${c.sin_fecha_count} sesión(es) sin fecha asignada`}
-                                        >
-                                          📌 {c.sin_fecha_count} sin fecha
-                                        </span>
-                                      )}
+                                        {(c.sin_fecha_count || 0) > 0 && (
+                                          <span
+                                            style={{
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: 4,
+                                              marginLeft: 8,
+                                              background: '#fef3c7',
+                                              color: '#92400e',
+                                              border: '1px solid #f59e0b',
+                                              borderRadius: 10,
+                                              padding: '2px 7px',
+                                              fontSize: '0.72rem',
+                                              fontWeight: 700,
+                                              whiteSpace: 'nowrap'
+                                            }}
+                                            title={`${c.sin_fecha_count} sesión(es) sin fecha asignada`}
+                                          >
+                                            <span className="ui-icon">📌</span>
+                                            <span>{c.sin_fecha_count} sin fecha</span>
+                                          </span>
+                                        )}
                                     </td>
                                     <td className="col-cli-objetivo text-light">{c.objetivo_global}</td>
                                     {!isProgramadorOnly && (
@@ -662,7 +671,10 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
             </div>
 
             <div className="form-grid">
-              <div className="form-section-title">📋 Datos Personales y Asignación</div>
+              <div className="form-section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="ui-icon">📋</span>
+                <span>Datos Personales y Asignación</span>
+              </div>
 
               <div className="form-group">
                 <label>Nombre Completo *</label>
@@ -725,7 +737,10 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
                 </select>
               </div>
 
-              <div className="form-section-title">🧒 Servicio Go &amp; Kids</div>
+              <div className="form-section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="ui-icon">🧒</span>
+                <span>Servicio Go &amp; Kids</span>
+              </div>
 
               <div className="form-group">
                 <label>¿Activo este mes?</label>
@@ -759,7 +774,10 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
                 />
               </div>
 
-              <div className="form-section-title">🎯 Objetivos y Seguimiento</div>
+              <div className="form-section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="ui-icon">🎯</span>
+                <span>Objetivos y Seguimiento</span>
+              </div>
 
               <div className="form-group">
                 <label>Objetivo Global</label>
@@ -788,8 +806,9 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
                 />
               </div>
 
-              <div className="form-section-title">
-                ⚠️ Salud, Precauciones y Valoración Física (VAF)
+              <div className="form-section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="ui-icon">⚠️</span>
+                <span>Salud, Precauciones y Valoración Física (VAF)</span>
               </div>
 
               <div className="form-group full">

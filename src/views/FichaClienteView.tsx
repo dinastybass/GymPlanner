@@ -1025,7 +1025,10 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                 item.esSubgrupo ? (
                   <div key={iIdx} className="preview-subgrupo">
                     <div className="subgrupo-header">
-                      <span className="subgrupo-title">🔄 {item.nombre}</span>
+                      <span className="subgrupo-title">
+                        <span className="ui-icon">🔄</span>
+                        <span>{item.nombre}</span>
+                      </span>
                       {item.pauta && <span className="subgrupo-reps">{item.pauta}</span>}
                     </div>
                     {item.ejercicios.map((ej, eIdx) =>
@@ -1074,7 +1077,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
           </svg>
-          Editar ficha
+          <span>Editar ficha</span>
         </button>
       </div>
 
@@ -1118,16 +1121,25 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
             className="mobile-details-toggle"
             onClick={() => setMobileDetailsOpen(!mobileDetailsOpen)}
           >
-            <span>
-              {mobileDetailsOpen
-                ? '▲ Ocultar objetivos, lesiones y Go&Kids'
-                : '📋 Ver objetivos, lesiones y Go&Kids'}
-            </span>
+            {mobileDetailsOpen ? (
+              <>
+                <span className="ui-icon">▲</span>
+                <span>Ocultar objetivos, lesiones y Go&amp;Kids</span>
+              </>
+            ) : (
+              <>
+                <span className="ui-icon">📋</span>
+                <span>Ver objetivos, lesiones y Go&amp;Kids</span>
+              </>
+            )}
           </button>
 
           <div className={`ficha-extra-cards ${mobileDetailsOpen ? 'show-mobile' : ''}`}>
             <div className="ficha-card">
-              <h3>🎯 Objetivos y seguimiento</h3>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className="ui-icon">🎯</span>
+                <span>Objetivos y seguimiento</span>
+              </h3>
               <div className="text-block">
                 <span>Objetivo global</span>
                 <p>{objGlobal}</p>
@@ -1143,7 +1155,10 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
             </div>
 
             <div className="ficha-card warning-card">
-              <h3>⚠️ Historial y Precauciones</h3>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className="ui-icon">⚠️</span>
+                <span>Historial y Precauciones</span>
+              </h3>
               <div className="warning-box">
                 <span>Patología / Lesiones previas</span>
                 <p>{lesiones}</p>
@@ -1155,7 +1170,10 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
             </div>
 
             <div className="ficha-card">
-              <h3>👶 Servicio Go&amp;Kids</h3>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className="ui-icon">👶</span>
+                <span>Servicio Go&amp;Kids</span>
+              </h3>
               <div className="info-row">
                 <span className="info-label">Activo este mes</span>
                 <span className="info-val">{kidsActivo}</span>
@@ -1178,41 +1196,36 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
             <div className="ficha-view-switcher">
               <button
                 type="button"
-                className={mainView === 'sesiones' ? 'btn-primary' : 'btn-outline'}
-                style={mainView !== 'sesiones' ? { borderColor: 'transparent', color: 'var(--text-muted)' } : undefined}
+                className={`ficha-switch-btn ${mainView === 'sesiones' ? 'active' : ''}`}
                 onClick={() => setMainView('sesiones')}
               >
-                📅 Historial de Sesiones
+                <span className="ficha-switch-icon">📅</span>
+                <span className="ficha-switch-label">
+                  <span className="desktop-text">Historial de Sesiones</span>
+                  <span className="mobile-text">Sesiones</span>
+                </span>
               </button>
               <button
                 type="button"
-                className={mainView === 'progreso' ? 'btn-primary' : 'btn-outline'}
-                style={mainView !== 'progreso' ? { borderColor: 'transparent', color: 'var(--text-muted)' } : undefined}
+                className={`ficha-switch-btn ${mainView === 'progreso' ? 'active' : ''}`}
                 onClick={() => setMainView('progreso')}
               >
-                📈 Progreso
+                <span className="ficha-switch-icon">📈</span>
+                <span className="ficha-switch-label">Progreso</span>
               </button>
               <button
                 type="button"
-                className={mainView === 'movimientos' ? 'btn-primary' : 'btn-outline'}
-                style={mainView !== 'movimientos' ? { borderColor: 'transparent', color: 'var(--text-muted)' } : undefined}
+                className={`ficha-switch-btn ${mainView === 'movimientos' ? 'active' : ''}`}
                 onClick={() => setMainView('movimientos')}
               >
-                📋 Registro de Movimientos
+                <span className="ficha-switch-icon">📋</span>
+                <span className="ficha-switch-label">
+                  <span className="desktop-text">Registro de Movimientos</span>
+                  <span className="mobile-text">Movimientos</span>
+                </span>
                 {Array.isArray(clienteActual?.historial_movimientos) &&
                   clienteActual.historial_movimientos.length > 0 && (
-                    <span
-                      style={{
-                        marginLeft: 6,
-                        background: mainView === 'movimientos' ? 'rgba(255,255,255,0.22)' : '#e2e8f0',
-                        color: mainView === 'movimientos' ? '#fff' : '#334155',
-                        borderRadius: 6,
-                        padding: '1px 7px',
-                        fontSize: '0.74rem',
-                        fontWeight: 700,
-                        fontVariantNumeric: 'tabular-nums'
-                      }}
-                    >
+                    <span className="ficha-switch-badge">
                       {clienteActual.historial_movimientos.length}
                     </span>
                   )}
@@ -1272,7 +1285,8 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                     onClick={() => setOpenSinFecha(!openSinFecha)}
                   >
                     <div className="sin-fecha-title-group">
-                      📌 Sesiones Sin Fecha{' '}
+                      <span className="ui-icon">📌</span>
+                      <span>Sesiones Sin Fecha</span>
                       <span style={{ color: '#b45309', marginLeft: 4 }}>
                         {sesionesSinFecha.length} {sesionesSinFecha.length === 1 ? 'sesión' : 'sesiones'}
                       </span>
@@ -1402,7 +1416,10 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                                       )}
                                     </td>
                                     <td className="col-fecha">
-                                      <span className="pill pill-sin-fecha">📌 Sin fecha</span>
+                                      <span className="pill pill-sin-fecha">
+                                        <span className="ui-icon">📌</span>
+                                        <span>Sin fecha</span>
+                                      </span>
                                       <span
                                         style={{
                                           fontSize: '0.73rem',
@@ -1486,7 +1503,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                                             title="Enviar Programación"
                                             onClick={() => abrirModalEnviar(s.id)}
                                           >
-                                            ➡️
+                                            <span className="ui-icon">➡️</span>
                                           </button>
                                         )}
                                         <button
@@ -1764,7 +1781,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                                                 title="Enviar Programación"
                                                 onClick={() => abrirModalEnviar(s.id)}
                                               >
-                                                ➡️
+                                                <span className="ui-icon">➡️</span>
                                               </button>
                                             )}
                                             <button
@@ -1866,6 +1883,9 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                                 <td>
                                   <span
                                     style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: 6,
                                       background: '#dcfce7',
                                       color: '#166534',
                                       padding: '6px 14px',
@@ -1875,7 +1895,8 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                                       border: '1px solid #bbf7d0'
                                     }}
                                   >
-                                    🏆 {maxPeso} kg
+                                    <span className="ui-icon">🏆</span>
+                                    <span>{maxPeso} kg</span>
                                   </span>
                                 </td>
                                 <td style={{ textAlign: 'right' }}>
@@ -1904,7 +1925,8 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                                         })
                                       }
                                     >
-                                      📋 Historial ({regsDeEsteEj.length})
+                                      <span className="ui-icon">📋</span>
+                                      <span>Historial ({regsDeEsteEj.length})</span>
                                     </button>
                                   </div>
                                 </td>
@@ -2387,7 +2409,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                               className="action-btn del"
                               onClick={() => borrarRegistroPR(r.id)}
                             >
-                              🗑️
+                              <span className="ui-icon">🗑️</span>
                             </button>
                           </td>
                         </tr>

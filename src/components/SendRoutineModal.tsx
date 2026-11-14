@@ -9,7 +9,10 @@ import { useUndo } from '../context/UndoContext';
 import {
   normalizarIntensidad,
   formatIntensityOptionLabel,
-  DEFAULT_INTENSIDADES_SESION
+  DEFAULT_INTENSIDADES_SESION,
+  parsearFechaFirestore,
+  esSesionCompletada,
+  esSesionCancelada
 } from '../utils/helpers';
 
 export interface SendRoutineModalProps {
@@ -23,18 +26,26 @@ export interface SendRoutineModalProps {
   onSuccess?: () => void;
 }
 
+interface SgSlotOption {
+  slotKey: string;
+  timestampMs: number;
+  fechaHoraInicio: any;
+  dateLabel: string;
+  firstDocId: string;
+  docIds: string[];
+  participantes: string[];
+  ejercicios: any[];
+  docsSnapshot: { id: string; data: any }[];
+}
+
+function esTipoSmallGroup(tipoRaw: any): boolean {
+  const t = String(tipoRaw || '').trim().toLowerCase();
+  return t.includes('small') || t.includes('group') || t === 'sg' || t === 's.g.';
+}
+
 function isSessionCompletedOrCancelled(data: any): boolean {
   if (!data) return false;
-  const estadoSesion = String(data.estado_sesion || '').trim().toLowerCase();
-  const estado = String(data.estado || '').trim().toLowerCase();
-  const asistencia = String(data.asistencia || '').trim().toLowerCase();
-
-  if (estadoSesion === 'completada' || estado === 'completada') return true;
-  if (estadoSesion === 'cancelada' || estado === 'cancelada') return true;
-  if (asistencia === 'asistio' || asistencia === 'completada') return true;
-  if (data.completada === true) return true;
-
-  return false;
+  return esSesionCompletada(data) || esSesionCancelada(data);
 }
 
 export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
@@ -48,7 +59,7 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
   onSuccess
 }) => {
   const { pushAction, showToast } = useUndo();
-  const [mode, setMode] = useState<'cliente' | 'plantilla'>('cliente');
+  const [mode, setMode] = useState<'cliente' | 'small_group' | 'plantilla'>('cliente');
 
   // Mode cliente state
   const [clientes, setClientes] = useState<{ id: string; name: string; search: string }[]>([]);
@@ -56,6 +67,12 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
   const [sesiones, setSesiones] = useState<any[]>([]);
   const [selectedSesion, setSelectedSesion] = useState<string>('');
   const [loadingSesiones, setLoadingSesiones] = useState(false);
+
+  // Mode Small Group state
+  const [sgSlots, setSgSlots] = useState<SgSlotOption[]>([]);
+  const [selectedSgSlotKey, setSelectedSgSlotKey] = useState<string>('');
+  const [loadingSgSlots, setLoadingSgSlots] = useState(false);
+
   const [overwriteMode, setOverwriteMode] = useState<'replace' | 'merge'>('replace');
 
   // Mode plantilla state
@@ -71,37 +88,137 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
 
   const [saving, setSaving] = useState(false);
 
-  // Inicializar clientes y valores maestros al abrir
+  // Inicializar clientes, slots Small Group y valores maestros al abrir
   useEffect(() => {
     if (!isOpen) return;
 
     setSelectedCliente('');
     setSelectedSesion('');
     setSesiones([]);
+    setSelectedSgSlotKey('');
+    setSgSlots([]);
     setOverwriteMode('replace');
     setMode('cliente');
+    setPlantillaNombre('');
     setPlantillaIntensidad(normalizarIntensidad(defaultIntensity));
 
-    // Cargar clientes
+    const now = new Date();
+    const startOfTodayUTC = new Date(
+      Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+    );
+
+    // Cargar clientes y luego los slots de Small Group disponibles
+    setLoadingSgSlots(true);
     getDocs(collection(db, 'clientes'))
-      .then(snap => {
+      .then(async snap => {
         const list: { id: string; name: string; search: string }[] = [];
+        const clientesMap: Record<string, string> = {};
         snap.forEach(d => {
           const data = d.data();
-          const alias = String(data.Alias || '').trim();
-          const fullName = String(data.Nombre_Cliente || data.Nombre || data.nombre || '').trim();
+          const alias = String(data.Alias || data.alias || '').trim();
+          const fullName = String(
+            data.Nombre_Cliente || data.nombre_cliente || data.Nombre || data.nombre || ''
+          ).trim();
           const name = alias || fullName || 'Sin nombre';
           list.push({ id: d.id, name, search: `${alias} ${fullName}` });
+          clientesMap[d.id] = name;
+          if (data.ID_Cliente) {
+            clientesMap[data.ID_Cliente] = name;
+          }
         });
         list.sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
         setClientes(list);
+
+        try {
+          const qSG = query(
+            collection(db, 'agenda_sesiones'),
+            where('fecha_hora_inicio', '>=', startOfTodayUTC)
+          );
+          const sgSnap = await getDocs(qSG);
+          const grouped: Record<string, SgSlotOption> = {};
+
+          sgSnap.forEach(d => {
+            const data = d.data();
+            if (!esTipoSmallGroup(data.tipo_sesion)) return;
+            if (isSessionCompletedOrCancelled(data)) return;
+            const fechaObj = parsearFechaFirestore(data.fecha_hora_inicio);
+            if (!fechaObj) return;
+
+            const tsMs = fechaObj.getTime();
+            const key = String(tsMs);
+            const idCli = data.id_cliente || data.ID_Cliente || '';
+            const nombrePart =
+              (idCli && clientesMap[idCli]) ||
+              data.alias ||
+              data.Alias ||
+              data.nombre_cliente ||
+              data.Nombre_Cliente ||
+              data.cliente_nombre ||
+              'Cliente';
+            const ejs = Array.isArray(data.ejercicios) ? data.ejercicios : [];
+
+            if (!grouped[key]) {
+              const dateLabel = `${fechaObj.toLocaleDateString('es-ES', {
+                weekday: 'short',
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                timeZone: 'UTC'
+              })} · ${fechaObj.toLocaleTimeString('es-ES', {
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: 'UTC'
+              })}`;
+
+              grouped[key] = {
+                slotKey: key,
+                timestampMs: tsMs,
+                fechaHoraInicio: data.fecha_hora_inicio,
+                dateLabel,
+                firstDocId: d.id,
+                docIds: [],
+                participantes: [],
+                ejercicios: ejs,
+                docsSnapshot: []
+              };
+            }
+
+            grouped[key].docIds.push(d.id);
+            grouped[key].docsSnapshot.push({ id: d.id, data });
+            if (!grouped[key].participantes.includes(nombrePart)) {
+              grouped[key].participantes.push(nombrePart);
+            }
+            if (grouped[key].ejercicios.length === 0 && ejs.length > 0) {
+              grouped[key].ejercicios = ejs;
+              grouped[key].firstDocId = d.id;
+            }
+          });
+
+          const slotsList = Object.values(grouped)
+            .filter(slot => !(excludeSessionId && slot.docIds.includes(excludeSessionId)))
+            .sort((a, b) => a.timestampMs - b.timestampMs);
+
+          setSgSlots(slotsList);
+        } catch (errSg) {
+          console.warn('Error cargando slots de Small Group:', errSg);
+        } finally {
+          setLoadingSgSlots(false);
+        }
       })
-      .catch(err => console.warn('Error cargando clientes:', err));
+      .catch(err => {
+        console.warn('Error cargando clientes:', err);
+        setLoadingSgSlots(false);
+      });
 
     // Cargar maestros para plantillas
     getValoresMaestro('Sesiones', 'Tipo de Sesión').then(res => {
       setTiposSesion(res);
-      if (res.length > 0 && !plantillaTipo) setPlantillaTipo(res[0]);
+      if (res.length > 0) {
+        const matched = defaultTipoSesion
+          ? res.find(t => t.toLowerCase() === defaultTipoSesion.toLowerCase())
+          : undefined;
+        setPlantillaTipo(matched || res[0]);
+      }
     });
     getValoresMaestro('Ejercicios', 'Niveles').then(res => {
       setNiveles(res);
@@ -110,7 +227,7 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
     getValoresMaestro('Sesiones', 'Intensidad de la Sesión').then(res => {
       if (res && res.length > 0) setIntensidades(res);
     });
-  }, [isOpen, defaultIntensity]);
+  }, [isOpen, defaultIntensity, defaultTipoSesion, excludeSessionId]);
 
   // Cargar sesiones no completadas del cliente seleccionado
   useEffect(() => {
@@ -123,8 +240,8 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
     setLoadingSesiones(true);
     setSelectedSesion('');
     const now = new Date();
-    const endOfTodayUTC = new Date(
-      Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+    const startOfTodayUTC = new Date(
+      Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
     );
 
     const q = query(collection(db, 'agenda_sesiones'), where('id_cliente', '==', selectedCliente));
@@ -139,13 +256,11 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
           // Excluir sesiones completadas o canceladas
           if (isSessionCompletedOrCancelled(data)) return;
 
-          // Solo permitir sesiones sin fecha o posteriores al día de hoy
+          // Permitir sesiones sin fecha o desde hoy en adelante
           const esSinFecha = Boolean(data.sin_fecha === true || !data.fecha_hora_inicio);
           if (!esSinFecha) {
-            const fechaObj = data.fecha_hora_inicio?.toDate
-              ? data.fecha_hora_inicio.toDate()
-              : new Date(data.fecha_hora_inicio);
-            if (isNaN(fechaObj.getTime()) || fechaObj <= endOfTodayUTC) return;
+            const fechaObj = parsearFechaFirestore(data.fecha_hora_inicio);
+            if (!fechaObj || fechaObj < startOfTodayUTC) return;
           }
 
           list.push({ id: d.id, ...data });
@@ -158,13 +273,9 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
           if (aSin && !bSin) return 1;
           if (!aSin && bSin) return -1;
           if (aSin && bSin) return 0;
-          const tA = a.fecha_hora_inicio?.toMillis
-            ? a.fecha_hora_inicio.toMillis()
-            : (new Date(a.fecha_hora_inicio)).getTime() || 0;
-          const tB = b.fecha_hora_inicio?.toMillis
-            ? b.fecha_hora_inicio.toMillis()
-            : (new Date(b.fecha_hora_inicio)).getTime() || 0;
-          return tA - tB; // Ascendente: primero la más cercana
+          const tA = parsearFechaFirestore(a.fecha_hora_inicio)?.getTime() || 0;
+          const tB = parsearFechaFirestore(b.fecha_hora_inicio)?.getTime() || 0;
+          return tA - tB;
         });
 
         setSesiones(list);
@@ -177,8 +288,100 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
   if (!isOpen) return null;
 
   const currentTargetSession = sesiones.find(s => s.id === selectedSesion);
-  const targetExercisesCount = currentTargetSession?.ejercicios ? currentTargetSession.ejercicios.length : 0;
+  const currentTargetSgSlot = sgSlots.find(s => s.slotKey === selectedSgSlotKey);
+
+  const targetExercisesCount =
+    mode === 'small_group'
+      ? currentTargetSgSlot?.ejercicios?.length || 0
+      : currentTargetSession?.ejercicios?.length || 0;
   const targetHasExercises = targetExercisesCount > 0;
+
+  const actualizarSlotSmallGroup = async (
+    fechaHoraInicio: any,
+    ejerciciosOrigen: any[],
+    intensidadNorm: string,
+    labelDestino: string
+  ) => {
+    const qGroup = query(
+      collection(db, 'agenda_sesiones'),
+      where('fecha_hora_inicio', '==', fechaHoraInicio)
+    );
+    const snapGroup = await getDocs(qGroup);
+
+    const groupDocs: { id: string; data: any }[] = [];
+    let prevEjerciciosComunes: any[] = [];
+    snapGroup.forEach(d => {
+      const dataD = d.data();
+      if (!esTipoSmallGroup(dataD.tipo_sesion) || esSesionCancelada(dataD)) return;
+      groupDocs.push({ id: d.id, data: dataD });
+      if (prevEjerciciosComunes.length === 0 && Array.isArray(dataD.ejercicios) && dataD.ejercicios.length > 0) {
+        prevEjerciciosComunes = dataD.ejercicios;
+      }
+    });
+
+    if (groupDocs.length === 0) {
+      throw new Error('No se encontraron sesiones activas en ese slot de Small Group.');
+    }
+
+    const finalEjercicios =
+      overwriteMode === 'merge'
+        ? [...prevEjerciciosComunes, ...ejerciciosOrigen]
+        : ejerciciosOrigen;
+
+    const author = localStorage.getItem('gym_user_name') || 'Usuario';
+    const fechaEdicion = new Date();
+    const updatePayload = {
+      ejercicios: finalEjercicios,
+      intensidad: intensidadNorm,
+      Intensidad: intensidadNorm,
+      intensidad_sesion: intensidadNorm,
+      programado_por: author,
+      ultimo_editor: author,
+      fecha_programacion: fechaEdicion,
+      fecha_ultima_edicion: fechaEdicion,
+      orden_customizado: true
+    };
+
+    const batch = writeBatch(db);
+    const undoOps: any[] = [];
+    const redoOps: any[] = [];
+
+    groupDocs.forEach(gDoc => {
+      batch.update(doc(db, 'agenda_sesiones', gDoc.id), updatePayload);
+      undoOps.push({
+        type: 'set',
+        collection: 'agenda_sesiones',
+        id: gDoc.id,
+        data: {
+          ejercicios: gDoc.data.ejercicios || [],
+          intensidad: gDoc.data.intensidad || 'MED',
+          Intensidad: gDoc.data.Intensidad || 'MED',
+          intensidad_sesion: gDoc.data.intensidad_sesion || 'MED',
+          orden_customizado: Boolean(gDoc.data.orden_customizado)
+        },
+        merge: true
+      });
+      redoOps.push({
+        type: 'set',
+        collection: 'agenda_sesiones',
+        id: gDoc.id,
+        data: updatePayload,
+        merge: true
+      });
+    });
+
+    await batch.commit();
+
+    pushAction({
+      label: `Enviar rutina a ${labelDestino}`,
+      undoOps,
+      redoOps,
+      showToast: true,
+      toastMessage: `➡️ Rutina enviada exitosamente a ${labelDestino}`
+    });
+
+    showToast(`➡️ Rutina enviada exitosamente a ${labelDestino}`);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -189,6 +392,9 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
 
     setSaving(true);
     try {
+      const intensidadNorm = normalizarIntensidad(defaultIntensity);
+      const ejerciciosAClonar = JSON.parse(JSON.stringify(ejercicios));
+
       if (mode === 'cliente') {
         if (!selectedSesion) {
           alert('Por favor selecciona una sesión destino.');
@@ -201,84 +407,88 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
           throw new Error('La sesión de destino no existe en la base de datos.');
         }
         const dataDestino = sesionDestinoSnap.data();
-
-        const prevEjercicios = dataDestino.ejercicios || [];
-        const ejerciciosAClonar = JSON.parse(JSON.stringify(ejercicios));
-        const finalEjercicios =
-          overwriteMode === 'merge'
-            ? [...prevEjercicios, ...ejerciciosAClonar]
-            : ejerciciosAClonar;
-
-        const author = localStorage.getItem('gym_user_name') || 'Usuario';
-        const fechaEdicion = new Date();
-        const tipoDest = String(dataDestino.tipo_sesion || '').toLowerCase();
         const targetClientObj = clientes.find(c => c.id === selectedCliente);
         const targetClientName = targetClientObj?.name || 'Cliente';
 
-        if (tipoDest.includes('small') || tipoDest.includes('group')) {
-          // Si es Small Group, actualizar a todos los participantes del slot horario
-          const qGroup = query(
-            collection(db, 'agenda_sesiones'),
-            where('fecha_hora_inicio', '==', dataDestino.fecha_hora_inicio)
+        if (esTipoSmallGroup(dataDestino.tipo_sesion) && dataDestino.fecha_hora_inicio) {
+          await actualizarSlotSmallGroup(
+            dataDestino.fecha_hora_inicio,
+            ejerciciosAClonar,
+            intensidadNorm,
+            `Small Group (${targetClientName})`
           );
-          const snapGroup = await getDocs(qGroup);
-          const batch = writeBatch(db);
-          snapGroup.forEach(d => {
-            const t = String(d.data().tipo_sesion || '').toLowerCase();
-            if (t.includes('small') || t.includes('group')) {
-              batch.update(doc(db, 'agenda_sesiones', d.id), {
-                ejercicios: finalEjercicios,
-                intensidad: defaultIntensity,
-                Intensidad: defaultIntensity,
-                intensidad_sesion: defaultIntensity,
-                programado_por: author,
-                ultimo_editor: author,
-                fecha_programacion: fechaEdicion,
-                fecha_ultima_edicion: fechaEdicion,
-                orden_customizado: true
-              });
-            }
-          });
-          await batch.commit();
         } else {
-          await updateDoc(doc(db, 'agenda_sesiones', selectedSesion), {
+          const prevEjercicios = dataDestino.ejercicios || [];
+          const finalEjercicios =
+            overwriteMode === 'merge'
+              ? [...prevEjercicios, ...ejerciciosAClonar]
+              : ejerciciosAClonar;
+
+          const author = localStorage.getItem('gym_user_name') || 'Usuario';
+          const fechaEdicion = new Date();
+          const updatePayload = {
             ejercicios: finalEjercicios,
-            intensidad: defaultIntensity,
-            Intensidad: defaultIntensity,
-            intensidad_sesion: defaultIntensity,
+            intensidad: intensidadNorm,
+            Intensidad: intensidadNorm,
+            intensidad_sesion: intensidadNorm,
             programado_por: author,
             ultimo_editor: author,
             fecha_programacion: fechaEdicion,
             fecha_ultima_edicion: fechaEdicion,
             orden_customizado: true
+          };
+
+          await updateDoc(doc(db, 'agenda_sesiones', selectedSesion), updatePayload);
+
+          pushAction({
+            label: `Enviar rutina a ${targetClientName}`,
+            undoOps: [
+              {
+                type: 'set',
+                collection: 'agenda_sesiones',
+                id: selectedSesion,
+                data: {
+                  ejercicios: prevEjercicios,
+                  intensidad: dataDestino.intensidad || 'MED',
+                  Intensidad: dataDestino.Intensidad || 'MED',
+                  intensidad_sesion: dataDestino.intensidad_sesion || 'MED',
+                  orden_customizado: Boolean(dataDestino.orden_customizado)
+                },
+                merge: true
+              }
+            ],
+            redoOps: [
+              {
+                type: 'set',
+                collection: 'agenda_sesiones',
+                id: selectedSesion,
+                data: updatePayload,
+                merge: true
+              }
+            ],
+            showToast: true,
+            toastMessage: `➡️ Rutina enviada exitosamente a ${targetClientName}`
           });
+
+          showToast(`➡️ Rutina enviada exitosamente a ${targetClientName}`);
         }
 
-        pushAction({
-          label: `Enviar rutina a ${targetClientName}`,
-          undoOps: [
-            {
-              type: 'set',
-              collection: 'agenda_sesiones',
-              id: selectedSesion,
-              data: { ejercicios: prevEjercicios },
-              merge: true
-            }
-          ],
-          redoOps: [
-            {
-              type: 'set',
-              collection: 'agenda_sesiones',
-              id: selectedSesion,
-              data: { ejercicios: finalEjercicios, orden_customizado: true },
-              merge: true
-            }
-          ],
-          showToast: true,
-          toastMessage: `➡️ Rutina enviada exitosamente a ${targetClientName}`
-        });
+        onClose();
+        if (onSuccess) onSuccess();
+      } else if (mode === 'small_group') {
+        if (!currentTargetSgSlot) {
+          alert('Por favor selecciona una sesión de Small Group.');
+          setSaving(false);
+          return;
+        }
 
-        showToast(`➡️ Rutina enviada exitosamente a ${targetClientName}`);
+        await actualizarSlotSmallGroup(
+          currentTargetSgSlot.fechaHoraInicio,
+          ejerciciosAClonar,
+          intensidadNorm,
+          `Small Group (${currentTargetSgSlot.dateLabel})`
+        );
+
         onClose();
         if (onSuccess) onSuccess();
       } else {
@@ -296,7 +506,7 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
           nivel: plantillaNivel,
           intensidad: plantillaIntensidad,
           Intensidad: plantillaIntensidad,
-          ejercicios: JSON.parse(JSON.stringify(ejercicios)),
+          ejercicios: ejerciciosAClonar,
           orden_customizado: true
         };
 
@@ -322,62 +532,90 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
     }
   };
 
+  const renderOverwriteSelector = () => (
+    <div
+      style={{
+        background: '#fffbeb',
+        border: '1px solid #fde68a',
+        borderRadius: 8,
+        padding: '12px 14px',
+        marginBottom: 16
+      }}
+    >
+      <p style={{ margin: '0 0 8px 0', fontSize: '0.84rem', fontWeight: 600, color: '#92400e' }}>
+        ⚠️ La sesión destino ya tiene {targetExercisesCount} ejercicio(s) programados:
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.84rem', cursor: 'pointer', color: '#78350f' }}>
+          <input
+            type="radio"
+            name="overwriteMode"
+            value="replace"
+            checked={overwriteMode === 'replace'}
+            onChange={() => setOverwriteMode('replace')}
+            style={{ width: 'auto', margin: 0 }}
+          />
+          <span><strong>Sobrescribir:</strong> Reemplazar la rutina completa con los nuevos ejercicios</span>
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.84rem', cursor: 'pointer', color: '#78350f' }}>
+          <input
+            type="radio"
+            name="overwriteMode"
+            value="merge"
+            checked={overwriteMode === 'merge'}
+            onChange={() => setOverwriteMode('merge')}
+            style={{ width: 'auto', margin: 0 }}
+          />
+          <span><strong>Fusionar:</strong> Añadir estos ejercicios a los que ya existen en la sesión</span>
+        </label>
+      </div>
+    </div>
+  );
+
+  const isSubmitDisabled =
+    saving ||
+    (mode === 'cliente' && (!selectedSesion || !selectedCliente)) ||
+    (mode === 'small_group' && !selectedSgSlotKey);
+
   return (
     <div className="modal-overlay" style={{ display: 'flex' }} onClick={onClose}>
-      <div className="modal-content" style={{ maxWidth: 520, borderRadius: 14 }} onClick={e => e.stopPropagation()}>
+      <div className="modal-content" style={{ maxWidth: 560, borderRadius: 14 }} onClick={e => e.stopPropagation()}>
         <button className="modal-close" onClick={onClose} aria-label="Cerrar modal">&times;</button>
         <div className="modal-header" style={{ marginBottom: 14 }}>
-          <h2 style={{ margin: '0 0 5px 0', fontSize: '1.25rem' }}>➡️ Enviar Sesión / Rutina</h2>
+          <h2 style={{ fontSize: '1.25rem' }}>
+            <span className="ui-icon">➡️</span>
+            <span>Enviar Sesión / Rutina</span>
+          </h2>
           <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            Copia los ejercicios a otra sesión pendiente de un cliente o guárdalos como plantilla predefinida.
+            Envía los ejercicios a otra sesión de cliente (PT), a una sesión de Small Group o guárdalos como plantilla.
           </p>
         </div>
 
         {/* Pestañas de Modo */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: 8,
-            background: '#f1f5f9',
-            padding: 5,
-            borderRadius: 10,
-            marginBottom: 18
-          }}
-        >
+        <div className="segmented-switcher cols-3">
           <button
             type="button"
+            className={`segmented-btn ${mode === 'cliente' ? 'active' : ''}`}
             onClick={() => setMode('cliente')}
-            style={{
-              padding: '9px 12px',
-              borderRadius: 7,
-              border: 'none',
-              fontWeight: 700,
-              fontSize: '0.85rem',
-              cursor: 'pointer',
-              background: mode === 'cliente' ? 'var(--accent)' : 'transparent',
-              color: mode === 'cliente' ? '#ffffff' : '#475569',
-              transition: 'all 0.15s ease'
-            }}
           >
-            👤 Sesión de cliente
+            <span className="ui-icon">👤</span>
+            <span>Cliente / PT</span>
           </button>
           <button
             type="button"
-            onClick={() => setMode('plantilla')}
-            style={{
-              padding: '9px 12px',
-              borderRadius: 7,
-              border: 'none',
-              fontWeight: 700,
-              fontSize: '0.85rem',
-              cursor: 'pointer',
-              background: mode === 'plantilla' ? 'var(--accent)' : 'transparent',
-              color: mode === 'plantilla' ? '#ffffff' : '#475569',
-              transition: 'all 0.15s ease'
-            }}
+            className={`segmented-btn ${mode === 'small_group' ? 'active' : ''}`}
+            onClick={() => setMode('small_group')}
           >
-            📋 Guardar como plantilla
+            <span className="ui-icon">👥</span>
+            <span>Small Group</span>
+          </button>
+          <button
+            type="button"
+            className={`segmented-btn ${mode === 'plantilla' ? 'active' : ''}`}
+            onClick={() => setMode('plantilla')}
+          >
+            <span className="ui-icon">📋</span>
+            <span>Plantilla</span>
           </button>
         </div>
 
@@ -435,72 +673,111 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
                     <>
                       <option value="">-- Elige una sesión de destino --</option>
                       {sesiones.map(s => {
-                      const numEj = s.ejercicios ? s.ejercicios.length : 0;
-                      const textEj = numEj > 0 ? `(${numEj} ej. programados)` : '(Vacía)';
-                      let dateStr = '📌 Sin fecha asignada';
-                      if (s.fecha_hora_inicio?.toDate) {
-                        const d = s.fecha_hora_inicio.toDate();
-                        dateStr = `${d.toLocaleDateString('es-ES', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' })} · ${d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })}`;
-                      } else if (s.fecha_hora_inicio) {
-                        const d = new Date(s.fecha_hora_inicio);
-                        dateStr = `${d.toLocaleDateString('es-ES', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' })} · ${d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })}`;
-                      }
-                      const isSG =
-                        String(s.tipo_sesion || '').toLowerCase().includes('small') ||
-                        String(s.tipo_sesion || '').toLowerCase().includes('group');
-                      const tipoLabel = isSG ? '[S.G.]' : '[PT]';
+                        const numEj = s.ejercicios ? s.ejercicios.length : 0;
+                        const textEj = numEj > 0 ? `(${numEj} ej. programados)` : '(Vacía)';
+                        let dateStr = '📌 Sin fecha asignada';
+                        const d = parsearFechaFirestore(s.fecha_hora_inicio);
+                        if (d) {
+                          dateStr = `${d.toLocaleDateString('es-ES', {
+                            weekday: 'short',
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            timeZone: 'UTC'
+                          })} · ${d.toLocaleTimeString('es-ES', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            timeZone: 'UTC'
+                          })}`;
+                        }
+                        const tipoLabel = esTipoSmallGroup(s.tipo_sesion) ? '[S.G.]' : '[PT]';
 
-                      return (
-                        <option key={s.id} value={s.id}>
-                          {dateStr} {tipoLabel} {textEj}
-                        </option>
-                      );
-                    })}
+                        return (
+                          <option key={s.id} value={s.id}>
+                            {dateStr} {tipoLabel} {textEj}
+                          </option>
+                        );
+                      })}
                     </>
                   )}
                 </select>
               </div>
 
-              {/* Si la sesión de destino ya tiene ejercicios, dar a elegir entre sobrescribir o fusionar */}
-              {targetHasExercises && (
+              {targetHasExercises && renderOverwriteSelector()}
+            </div>
+          ) : mode === 'small_group' ? (
+            <div>
+              <div className="form-group" style={{ marginBottom: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <label style={{ fontWeight: 600, fontSize: '0.9rem' }}>
+                    Sesión Small Group Destino *
+                  </label>
+                  {sgSlots.length > 0 && (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      {sgSlots.length} {sgSlots.length === 1 ? 'grupo disponible' : 'grupos disponibles'}
+                    </span>
+                  )}
+                </div>
+
+                <CustomDropdown
+                  options={sgSlots.map(slot => {
+                    const numEj = slot.ejercicios ? slot.ejercicios.length : 0;
+                    const textEj = numEj > 0 ? `${numEj} ej.` : 'Vacía';
+                    const partResumen =
+                      slot.participantes.length > 3
+                        ? `${slot.participantes.slice(0, 3).join(', ')} +${slot.participantes.length - 3}`
+                        : slot.participantes.join(', ');
+                    return {
+                      value: slot.slotKey,
+                      label: `${slot.dateLabel} · ${slot.participantes.length} al. (${textEj})`,
+                      sublabel: `Participantes: ${partResumen}`,
+                      search: `${slot.dateLabel} ${partResumen} ${slot.participantes.join(' ')}`
+                    };
+                  })}
+                  value={selectedSgSlotKey}
+                  onChange={setSelectedSgSlotKey}
+                  placeholder={
+                    loadingSgSlots
+                      ? 'Buscando sesiones de Small Group...'
+                      : sgSlots.length === 0
+                        ? 'No hay sesiones de Small Group pendientes'
+                        : 'Buscar o elegir un Small Group...'
+                  }
+                  searchPlaceholder="Filtrar por día, hora o cliente del grupo..."
+                  disabled={loadingSgSlots || sgSlots.length === 0}
+                />
+
+                {!loadingSgSlots && sgSlots.length === 0 && (
+                  <p style={{ margin: '8px 0 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                    No hay sesiones de Small Group programadas desde hoy en adelante.
+                  </p>
+                )}
+              </div>
+
+              {currentTargetSgSlot && (
                 <div
                   style={{
-                    background: '#fffbeb',
-                    border: '1px solid #fde68a',
+                    background: '#f8fafc',
+                    border: '1px solid var(--border)',
                     borderRadius: 8,
-                    padding: '12px 14px',
-                    marginBottom: 16
+                    padding: '10px 12px',
+                    marginBottom: 16,
+                    fontSize: '0.84rem'
                   }}
                 >
-                  <p style={{ margin: '0 0 8px 0', fontSize: '0.84rem', fontWeight: 600, color: '#92400e' }}>
-                    ⚠️ La sesión destino ya tiene {targetExercisesCount} ejercicio(s) programados:
-                  </p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.84rem', cursor: 'pointer', color: '#78350f' }}>
-                      <input
-                        type="radio"
-                        name="overwriteMode"
-                        value="replace"
-                        checked={overwriteMode === 'replace'}
-                        onChange={() => setOverwriteMode('replace')}
-                        style={{ width: 'auto', margin: 0 }}
-                      />
-                      <span><strong>Sobrescribir:</strong> Reemplazar la rutina completa con los nuevos ejercicios</span>
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.84rem', cursor: 'pointer', color: '#78350f' }}>
-                      <input
-                        type="radio"
-                        name="overwriteMode"
-                        value="merge"
-                        checked={overwriteMode === 'merge'}
-                        onChange={() => setOverwriteMode('merge')}
-                        style={{ width: 'auto', margin: 0 }}
-                      />
-                      <span><strong>Fusionar:</strong> Añadir estos ejercicios a los que ya existen en la sesión</span>
-                    </label>
+                  <div style={{ fontWeight: 700, color: 'var(--primary)', marginBottom: 4 }}>
+                    👥 Participantes en este Small Group ({currentTargetSgSlot.participantes.length}):
+                  </div>
+                  <div style={{ color: 'var(--text-main)', lineHeight: 1.4 }}>
+                    {currentTargetSgSlot.participantes.join(' · ')}
+                  </div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginTop: 4 }}>
+                    La rutina se aplicará automáticamente a todos los participantes del grupo.
                   </div>
                 </div>
               )}
+
+              {targetHasExercises && renderOverwriteSelector()}
             </div>
           ) : (
             <div>
@@ -577,9 +854,13 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
             <button
               type="submit"
               className="btn-primary"
-              disabled={saving || (mode === 'cliente' && (!selectedSesion || !selectedCliente))}
+              disabled={isSubmitDisabled}
             >
-              {saving ? 'Procesando...' : mode === 'cliente' ? 'Confirmar y Enviar' : 'Crear Plantilla'}
+              {saving
+                ? 'Procesando...'
+                : mode === 'plantilla'
+                  ? 'Crear Plantilla'
+                  : 'Confirmar y Enviar'}
             </button>
           </div>
         </form>
@@ -587,3 +868,4 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
     </div>
   );
 };
+

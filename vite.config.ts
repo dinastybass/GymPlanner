@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import fs from 'node:fs';
+import path from 'node:path';
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -43,6 +45,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+        globIgnores: ['**/aistudio/**'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         navigateFallbackDenylist: [/^\/__/, /googleapis\.com/]
       },
@@ -50,7 +53,16 @@ export default defineConfig({
         enabled: true,
         type: 'module'
       }
-    })
+    }),
+    {
+      name: 'exclude-aistudio-assets',
+      closeBundle() {
+        fs.rmSync(path.resolve(process.cwd(), 'dist', 'assets', 'aistudio'), {
+          recursive: true,
+          force: true
+        });
+      }
+    }
   ],
   server: {
     host: '0.0.0.0',

@@ -5,7 +5,14 @@ import { updateDoc, addDoc } from '../services/offlineSyncService';
 import { cargarCatalogoMaestros, extraerListaMaster } from '../services/maestrosService';
 import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
-import { normalizarIntensidad, esSesionCompletada, parsearFechaFirestore } from '../utils/helpers';
+import {
+  normalizarIntensidad,
+  esSesionCompletada,
+  parsearFechaFirestore,
+  obtenerFechaOperativaEfectiva,
+  getWorkingDaysJsSet,
+  getJsDayFromNombre
+} from '../utils/helpers';
 import {
   revertirVencimientosAutomaticos,
   procesarCaducidadSesionesSinFechaPorMeses,
@@ -47,10 +54,7 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
     } catch {
       // Fallback below
     }
-    const d = new Date();
-    if (d.getDay() === 0) d.setDate(d.getDate() + 1);
-    else if (d.getDay() === 6) d.setDate(d.getDate() + 2);
-    return d;
+    return obtenerFechaOperativaEfectiva().targetDate;
   });
 
   useEffect(() => {
@@ -200,13 +204,18 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
   }, [registerChangeListener, fetchDaySessions]);
 
   const handleChangeDay = (offset: number) => {
+    const workingDays = getWorkingDaysJsSet(diasSemanaPills);
     setCurrentDate(prev => {
       const next = new Date(prev);
-      next.setDate(next.getDate() + offset);
-      if (next.getDay() === 6) {
-        next.setDate(next.getDate() + (offset > 0 ? 2 : -1));
-      } else if (next.getDay() === 0) {
-        next.setDate(next.getDate() + (offset > 0 ? 1 : -2));
+      const step = offset >= 0 ? 1 : -1;
+      let remaining = Math.abs(offset);
+      let guard = 0;
+      while (remaining > 0 && guard < 21) {
+        next.setDate(next.getDate() + step);
+        if (workingDays.has(next.getDay())) {
+          remaining--;
+        }
+        guard++;
       }
       return next;
     });
@@ -369,13 +378,28 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
     const isOverdue = !isCompleted && s.fecha < startOfTodayUTC;
 
     let statusClass = 'status';
-    let statusContent = '⚪ Pendiente';
+    let statusContent: React.ReactNode = (
+      <>
+        <span className="ui-icon">⚪</span>
+        <span>Pendiente</span>
+      </>
+    );
     if (isCompleted) {
       statusClass = 'status completed';
-      statusContent = '🟢 Completada';
+      statusContent = (
+        <>
+          <span className="ui-icon">🟢</span>
+          <span>Completada</span>
+        </>
+      );
     } else if (isOverdue) {
       statusClass = 'status overdue';
-      statusContent = '🔴 Vencida';
+      statusContent = (
+        <>
+          <span className="ui-icon">🔴</span>
+          <span>Vencida</span>
+        </>
+      );
     }
 
     const tieneEjercicios = Array.isArray(s.ejercicios) && s.ejercicios.length > 0;
@@ -482,6 +506,7 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
             <div style={{ textAlign: 'right', marginBottom: 6, marginTop: -2 }}>
               <button
                 type="button"
+                className="btn-register-pr"
                 onClick={e => {
                   e.stopPropagation();
                   setModalPR({
@@ -493,18 +518,9 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
                     saving: false
                   });
                 }}
-                style={{
-                  background: '#f0fdf4',
-                  border: '1px solid #bbf7d0',
-                  color: '#166534',
-                  borderRadius: 4,
-                  fontSize: '0.7rem',
-                  padding: '2px 6px',
-                  cursor: 'pointer',
-                  fontWeight: 'bold'
-                }}
               >
-                📈 Registrar PR
+                <span className="ui-icon">📈</span>
+                <span>Registrar PR</span>
               </button>
             </div>
           )}
@@ -539,7 +555,10 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
               s.nombreCliente
             )}
           </span>
-          <span className="card-time">🕒 {s.timeStr}</span>
+          <span className="card-time">
+            <span className="ui-icon">🕒</span>
+            <span>{s.timeStr}</span>
+          </span>
         </div>
 
         <div className={`card-body ${tieneEjercicios ? 'has-data' : ''}`}>
@@ -579,7 +598,10 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
                     item.esSubgrupo ? (
                       <div key={iIdx} className="preview-subgrupo">
                         <div className="subgrupo-header">
-                          <span className="subgrupo-title">🔄 {item.nombre}</span>
+                          <span className="subgrupo-title">
+                            <span className="ui-icon">🔄</span>
+                            <span>{item.nombre}</span>
+                          </span>
                           {item.pauta && <span className="subgrupo-reps">{item.pauta}</span>}
                         </div>
                         {item.ejercicios.map((ej, eIdx) =>
@@ -642,7 +664,8 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
             onClick={() => onNavigate('pantalla_sala')}
             title="Abrir vista optimizada para proyector de sala"
           >
-            📺 <span className="desktop-text">Pantalla Sala</span>
+            <span className="ui-icon">📺</span>
+            <span className="desktop-text">Pantalla Sala</span>
             <span className="mobile-text">Sala</span>
           </button>
         )}
@@ -678,8 +701,9 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
 
         <div className="day-pills">
           {diasSemanaPills.map((dNom, idx) => {
-            const dNum = idx + 1;
-            const isActive = diaSemanaIndex === dNum;
+            const jsDay = getJsDayFromNombre(dNom);
+            const dNum = jsDay === undefined ? idx + 1 : jsDay === 0 ? 7 : jsDay;
+            const isActive = jsDay === undefined ? diaSemanaIndex === dNum : diaSemanaIndex === jsDay;
             const inicialesMap: Record<string, string> = {
               lunes: 'L',
               martes: 'M',
@@ -739,7 +763,10 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
                   onClick={() => setOpenMananaNoComp(!openMananaNoComp)}
                 >
                   <div className="subsection-title">
-                    <span>⚪ No completadas</span>
+                    <span className="subsection-label">
+                      <span className="ui-icon">⚪</span>
+                      <span>No completadas</span>
+                    </span>
                     <span className="subsection-count">{sesionesMananaNoComp.length}</span>
                   </div>
                   <span
@@ -772,7 +799,10 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
                   onClick={() => setOpenMananaComp(!openMananaComp)}
                 >
                   <div className="subsection-title">
-                    <span>🟢 Completadas</span>
+                    <span className="subsection-label">
+                      <span className="ui-icon">🟢</span>
+                      <span>Completadas</span>
+                    </span>
                     <span className="subsection-count">{sesionesMananaComp.length}</span>
                   </div>
                   <span
@@ -833,7 +863,10 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
                   onClick={() => setOpenTardeNoComp(!openTardeNoComp)}
                 >
                   <div className="subsection-title">
-                    <span>⚪ No completadas</span>
+                    <span className="subsection-label">
+                      <span className="ui-icon">⚪</span>
+                      <span>No completadas</span>
+                    </span>
                     <span className="subsection-count">{sesionesTardeNoComp.length}</span>
                   </div>
                   <span
@@ -866,7 +899,10 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
                   onClick={() => setOpenTardeComp(!openTardeComp)}
                 >
                   <div className="subsection-title">
-                    <span>🟢 Completadas</span>
+                    <span className="subsection-label">
+                      <span className="ui-icon">🟢</span>
+                      <span>Completadas</span>
+                    </span>
                     <span className="subsection-count">{sesionesTardeComp.length}</span>
                   </div>
                   <span
@@ -925,7 +961,10 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
                 const clients = smallGroupsMap[rango];
                 return (
                   <div key={rango} className="sg-card">
-                    <div className="sg-time">🕒 {rango}</div>
+                    <div className="sg-time">
+                      <span className="ui-icon">🕒</span>
+                      <span>{rango}</span>
+                    </div>
                     <div className="sg-clients">
                       {clients.map((c, idx) => (
                         <React.Fragment key={idx}>
@@ -967,7 +1006,10 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
               ×
             </button>
             <div className="modal-header">
-              <h2>📈 Registrar PR</h2>
+              <h2>
+                <span className="ui-icon">📈</span>
+                <span>Registrar PR</span>
+              </h2>
               <p>{modalPR.nomEj}</p>
             </div>
             <div className="form-group">

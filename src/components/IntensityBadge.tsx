@@ -25,7 +25,8 @@ export const IntensityBadge: React.FC<IntensityBadgeProps> = ({ intensity = 'MED
         letterSpacing: '0.5px'
       }}
     >
-      ⚡ {val}
+      <span className="ui-icon">⚡</span>
+      <span>{val}</span>
     </span>
   );
 };
