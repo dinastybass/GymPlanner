@@ -23,7 +23,8 @@ import {
   renderIntensityBadge,
   esSesionCompletada,
   esSesionCancelada,
-  parsearFechaFirestore
+  parsearFechaFirestore,
+  obtenerMesPropietarioSemanaUTC
 } from '../utils/helpers';
 import { confirmarDialogo } from '../utils/confirmDialog';
 import { SendRoutineModal } from '../components/SendRoutineModal';
@@ -112,6 +113,13 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [openMonths, setOpenMonths] = useState<Record<string, boolean>>({});
   const [openSinFecha, setOpenSinFecha] = useState(false);
+  const [diasSemanaList, setDiasSemanaList] = useState<string[]>([
+    'Lunes',
+    'Martes',
+    'Miércoles',
+    'Jueves',
+    'Viernes'
+  ]);
   const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
 
   // Inline PR inputs
@@ -217,6 +225,14 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
         if (!isNaN(parsed) && parsed >= 0) {
           setMesesMargenReprog(parsed);
         }
+      }
+
+      const diasArr = extraerListaMaster(maestros, 'Agenda', [
+        'Días de la semana',
+        'Dias de la semana'
+      ]);
+      if (diasArr.length > 0) {
+        setDiasSemanaList(diasArr);
       }
     } catch (e) {
       console.warn('Error cargando maestros en ficha_cliente:', e);
@@ -831,6 +847,10 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
   const alias = clienteActual.Alias || clienteActual.alias || '';
   const estRaw = clienteActual.Estado_Cliente || clienteActual.estado || 'Activo';
   const tipo = clienteActual.Tipo_Cliente || clienteActual.tipo_cliente || 'No especificado';
+  const esClienteSG =
+    String(tipo).toLowerCase().includes('small') ||
+    String(tipo).toLowerCase().includes('group') ||
+    String(tipo).toLowerCase() === 'sg';
   const prog = clienteActual.Programador || clienteActual.programador || 'Sin asignar';
 
   let estClass = 'status-activo';
@@ -871,8 +891,9 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
 
   const gruposMesMap: Record<string, { mes: string; sortKey: number; sesiones: any[] }> = {};
   sesionesFiltradas.forEach(s => {
-    const y = s.fechaObj.getUTCFullYear();
-    const m = s.fechaObj.getUTCMonth();
+    const owner = obtenerMesPropietarioSemanaUTC(s.fechaObj, diasSemanaList);
+    const y = owner.year;
+    const m = owner.month;
     const mesAño = `${mesesNombres[m]} ${y}`;
     if (!gruposMesMap[mesAño]) {
       gruposMesMap[mesAño] = {
@@ -1295,19 +1316,21 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                       className="sin-fecha-actions-group"
                       onClick={e => e.stopPropagation()}
                     >
-                      <button
-                        type="button"
-                        className="btn-primary"
-                        style={{
-                          padding: '5px 10px',
-                          fontSize: '0.78rem',
-                          background: '#d97706',
-                          whiteSpace: 'nowrap'
-                        }}
-                        onClick={crearNuevaSesionSinFecha}
-                      >
-                        + Nueva
-                      </button>
+                      {!esClienteSG && (
+                        <button
+                          type="button"
+                          className="btn-primary"
+                          style={{
+                            padding: '5px 10px',
+                            fontSize: '0.78rem',
+                            background: '#d97706',
+                            whiteSpace: 'nowrap'
+                          }}
+                          onClick={crearNuevaSesionSinFecha}
+                        >
+                          + Nueva
+                        </button>
+                      )}
                       <span
                         className="chevron-icon"
                         style={{
@@ -1454,26 +1477,28 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                                     </td>
                                     <td className="col-acciones" onClick={e => e.stopPropagation()}>
                                       <div className="action-btns">
-                                        <button
-                                          type="button"
-                                          className="action-btn"
-                                          title="Programación"
-                                          onClick={() => onNavigate('programar_sesion', s.id)}
-                                        >
-                                          <svg
-                                            width="14"
-                                            height="14"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
+                                        {!isSG && (
+                                          <button
+                                            type="button"
+                                            className="action-btn"
+                                            title="Programación"
+                                            onClick={() => onNavigate('programar_sesion', s.id)}
                                           >
-                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                                          </svg>
-                                        </button>
+                                            <svg
+                                              width="14"
+                                              height="14"
+                                              viewBox="0 0 24 24"
+                                              fill="none"
+                                              stroke="currentColor"
+                                              strokeWidth="2"
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                            >
+                                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                            </svg>
+                                          </button>
+                                        )}
                                         <button
                                           type="button"
                                           className="action-btn"
@@ -1609,9 +1634,11 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                                     .toString()
                                     .padStart(2, '0')}`;
 
+                                  const tipoSesionLower = (s.tipo_sesion || s.Tipo || '').toLowerCase();
                                   const isSG =
-                                    (s.tipo_sesion || '').toLowerCase().includes('small') ||
-                                    (s.tipo_sesion || '').toLowerCase().includes('group');
+                                    tipoSesionLower.includes('small') ||
+                                    tipoSesionLower.includes('group') ||
+                                    tipoSesionLower === 'sg';
                                   const tipoPill = isSG ? (
                                     <span className="pill pill-sg" title="Small Group">
                                       S.G.
@@ -1730,26 +1757,28 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                                         </td>
                                         <td className="col-acciones" onClick={e => e.stopPropagation()}>
                                           <div className="action-btns">
-                                            <button
-                                              type="button"
-                                              className="action-btn"
-                                              title="Programación"
-                                              onClick={() => onNavigate('programar_sesion', s.id)}
-                                            >
-                                              <svg
-                                                width="14"
-                                                height="14"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                strokeWidth="2"
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
+                                            {!isSG && (
+                                              <button
+                                                type="button"
+                                                className="action-btn"
+                                                title="Programación"
+                                                onClick={() => onNavigate('programar_sesion', s.id)}
                                               >
-                                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                                              </svg>
-                                            </button>
+                                                <svg
+                                                  width="14"
+                                                  height="14"
+                                                  viewBox="0 0 24 24"
+                                                  fill="none"
+                                                  stroke="currentColor"
+                                                  strokeWidth="2"
+                                                  strokeLinecap="round"
+                                                  strokeLinejoin="round"
+                                                >
+                                                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                                </svg>
+                                              </button>
+                                            )}
                                             {puedeReprogramarOCancelar && (
                                               <button
                                                 type="button"

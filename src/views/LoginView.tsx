@@ -129,6 +129,18 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
             {errorMsg}
           </div>
         )}
+
+        <div className="login-legal-footer">
+          <div>GO&amp;Train · GymPlanner - 2026</div>
+          <a
+            href="/privacy.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="legal-footer-link"
+          >
+            Política de Privacidad
+          </a>
+        </div>
       </div>
     </div>
   );

@@ -252,6 +252,20 @@ const AppContent: React.FC = () => {
         )}
       </main>
 
+      <footer className="app-legal-footer">
+        <div className="app-legal-footer-inner">
+          <span>GO&amp;Train · GymPlanner - 2026</span>
+          <a
+            href="/privacy.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="legal-footer-link"
+          >
+            Política de Privacidad
+          </a>
+        </div>
+      </footer>
+
       <ToastNotification />
     </div>
   );

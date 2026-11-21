@@ -8,19 +8,21 @@ import {
   getDoc,
   doc
 } from 'firebase/firestore';
-import { setDoc, deleteDoc, writeBatch } from '../services/offlineSyncService';
-import { getValoresMaestro, obtenerFechaLimiteReprogramacionUTC } from '../services/maestrosService';
+import { setDoc, deleteDoc } from '../services/offlineSyncService';
+import { getValoresMaestro, obtenerFechaLimiteReprogramacionUTC, extraerMapaFestivos } from '../services/maestrosService';
 import { CustomDropdown } from '../components/CustomDropdown';
 import { SendRoutineModal } from '../components/SendRoutineModal';
 import { ReprogramarSesionModal } from '../components/ReprogramarSesionModal';
 import { CancelarEliminarSesionModal } from '../components/CancelarEliminarSesionModal';
+import { PlanificarDiasModal, PlanificarSubmitPayload } from '../components/PlanificarDiasModal';
 import { useUndo } from '../context/UndoContext';
-import { FirestoreOp } from '../services/undoService';
 import {
   esSesionCompletada,
   parsearFechaFirestore,
   obtenerFechaOperativaEfectiva,
-  getJsDayFromNombre
+  getJsDayFromNombre,
+  obtenerMesPropietarioSemanaUTC,
+  obtenerSemanasDelMesOperativo
 } from '../utils/helpers';
 import { confirmarDialogo } from '../utils/confirmDialog';
 import {
@@ -48,20 +50,6 @@ const MES_NAMES_REPROG = [
   'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
   'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
 ];
-
-const MAPA_DIA_JS: Record<string, number> = {
-  domingo: 0,
-  lunes: 1,
-  martes: 2,
-  miercoles: 3,
-  miércoles: 3,
-  jueves: 4,
-  viernes: 5,
-  sabado: 6,
-  sábado: 6
-};
-
-const DIAS_SEMANA_MAPA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
 function normalizarTexto(texto: any): string {
   if (!texto) return '';
@@ -181,7 +169,7 @@ function formatearSesionAgenda(id: string, data: any = {}, mesesMargen = 1) {
 }
 
 export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
-  const { pushAction, registerChangeListener } = useUndo();
+  const { pushAction, registerChangeListener, showToast } = useUndo();
 
   const [currentView, setCurrentView] = useState<'individuales' | 'sg'>(() => {
     try {
@@ -205,7 +193,11 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
       // ignore
     }
     const { targetDate } = obtenerFechaOperativaEfectiva();
-    return new Date(Date.UTC(targetDate.getFullYear(), targetDate.getMonth(), 1));
+    const targetUTC = new Date(
+      Date.UTC(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 0, 0, 0, 0)
+    );
+    const owner = obtenerMesPropietarioSemanaUTC(targetUTC);
+    return new Date(Date.UTC(owner.year, owner.month, 1));
   });
 
   useEffect(() => {
@@ -234,6 +226,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
   const [sgTimeSlotsRaw, setSgTimeSlotsRaw] = useState<string[]>(['Lunes 18:00', 'Martes 17:00']);
   const [ocupacionMaxima, setOcupacionMaxima] = useState<number>(6);
   const [mesesMargenReprog, setMesesMargenReprog] = useState<number>(1);
+  const [festivosMap, setFestivosMap] = useState<Record<string, string>>({});
 
   // Clients & Sessions
   const [globalClientes, setGlobalClientes] = useState<{ id: string; alias: string; nombre: string }[]>([]);
@@ -261,27 +254,11 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     dateStrID: string;
     timeKey: string;
     tipoPlan: 'Individual' | 'Small Group';
+    defaultMes?: string;
   }>({ modo: 'general', dateStrID: '', timeKey: '', tipoPlan: 'Individual' });
 
   // Planificar Días Modal
   const [planModalOpen, setPlanModalOpen] = useState(false);
-  const [planStep, setPlanStep] = useState<1 | 2>(1);
-  const [planTipo, setPlanTipo] = useState<'Individual' | 'Small Group'>('Individual');
-  const [planClienteId, setPlanClienteId] = useState('');
-  const [planSelectedDays, setPlanSelectedDays] = useState<number[]>([]);
-  const [planMes, setPlanMes] = useState(() => {
-    const today = new Date();
-    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-  });
-  const [planSelectedWeeks, setPlanSelectedWeeks] = useState<number[]>([1, 2, 3, 4, 5]);
-  const [planHoraIni, setPlanHoraIni] = useState('17:00');
-  const [planHoraFin, setPlanHoraFin] = useState('18:00');
-  const [planHoraSG, setPlanHoraSG] = useState('');
-  const [planCascadaAtras, setPlanCascadaAtras] = useState(true);
-  const [planClientSessions, setPlanClientSessions] = useState<
-    { id: string; fechaObj: Date; numEj: number }[]
-  >([]);
-  const [pendingCreationData, setPendingCreationData] = useState<any>(null);
   const [savingPlan, setSavingPlan] = useState(false);
 
   // Asignar Sesión Existente Modal
@@ -388,54 +365,48 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
   const separatorRow = rCounter++;
   tardeSlots.forEach(t => { timeToRowMap[t] = rCounter++; });
 
-  // Compute weeks of currentMonthDate
+  // Compute weeks of currentMonthDate using the >50% working days rule
   const getWeeksForMonth = useCallback((monthDate: Date, workingDaysList?: string[]) => {
-    const firstDayOfMonth = new Date(Date.UTC(monthDate.getUTCFullYear(), monthDate.getUTCMonth(), 1));
-    const lastDayOfMonth = new Date(Date.UTC(monthDate.getUTCFullYear(), monthDate.getUTCMonth() + 1, 0));
+    const year = monthDate.getUTCFullYear();
+    const month = monthDate.getUTCMonth();
+    const semanasPropias = obtenerSemanasDelMesOperativo(year, month, workingDaysList);
 
-    const startCalendar = new Date(firstDayOfMonth);
-    startCalendar.setUTCDate(startCalendar.getUTCDate() - startCalendar.getUTCDay() + (startCalendar.getUTCDay() === 0 ? -6 : 1));
-
-    const fridayOfStartWeek = new Date(startCalendar);
-    fridayOfStartWeek.setUTCDate(fridayOfStartWeek.getUTCDate() + 4);
-    if (fridayOfStartWeek < firstDayOfMonth) {
-      startCalendar.setUTCDate(startCalendar.getUTCDate() + 7);
-    }
-
-    const weeks: { weekNum: number; mondayDate: Date; isCurrentWeek: boolean; title: string }[] = [];
-    const tempMon = new Date(startCalendar);
-    let w = 1;
     const { targetDate: fechaOperativa } = obtenerFechaOperativaEfectiva(workingDaysList);
     const hoyReal = new Date(
       Date.UTC(fechaOperativa.getFullYear(), fechaOperativa.getMonth(), fechaOperativa.getDate(), 0, 0, 0, 0)
     );
 
-    while (tempMon <= lastDayOfMonth) {
-      const mDate = new Date(tempMon);
-      const weekEnd = new Date(tempMon);
-      weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
-      const isCurrentWeek = hoyReal >= mDate && hoyReal < weekEnd;
-      weeks.push({
-        weekNum: w,
-        mondayDate: mDate,
-        isCurrentWeek,
-        title: `Semana ${w}`
+    const weeks: { weekNum: number; mondayDate: Date; isCurrentWeek: boolean; title: string }[] =
+      semanasPropias.map(sem => {
+        const mDate = new Date(sem.mondayDate);
+        const weekEnd = new Date(sem.mondayDate);
+        weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
+        const isCurrentWeek = hoyReal >= mDate && hoyReal < weekEnd;
+        return {
+          weekNum: sem.weekNum,
+          mondayDate: mDate,
+          isCurrentWeek,
+          title: `Semana ${sem.weekNum}`
+        };
       });
-      tempMon.setUTCDate(tempMon.getUTCDate() + 7);
-      w++;
-    }
 
     // Extra week (Semana 1 - Next Month)
-    const mDateExtra = new Date(tempMon);
-    const weekEndExtra = new Date(tempMon);
-    weekEndExtra.setUTCDate(weekEndExtra.getUTCDate() + 7);
-    const isCurrentWeekExtra = hoyReal >= mDateExtra && hoyReal < weekEndExtra;
-    weeks.push({
-      weekNum: w,
-      mondayDate: mDateExtra,
-      isCurrentWeek: isCurrentWeekExtra,
-      title: `Semana 1 - ${MES_NAMES[mDateExtra.getUTCMonth()]}`
-    });
+    if (semanasPropias.length > 0) {
+      const lastMon = semanasPropias[semanasPropias.length - 1].mondayDate;
+      const mDateExtra = new Date(lastMon);
+      mDateExtra.setUTCDate(mDateExtra.getUTCDate() + 7);
+      const weekEndExtra = new Date(mDateExtra);
+      weekEndExtra.setUTCDate(weekEndExtra.getUTCDate() + 7);
+      const isCurrentWeekExtra = hoyReal >= mDateExtra && hoyReal < weekEndExtra;
+      const ownerExtra = obtenerMesPropietarioSemanaUTC(mDateExtra, workingDaysList);
+
+      weeks.push({
+        weekNum: semanasPropias.length + 1,
+        mondayDate: mDateExtra,
+        isCurrentWeek: isCurrentWeekExtra,
+        title: `Semana 1 - ${MES_NAMES[ownerExtra.month]}`
+      });
+    }
 
     return weeks;
   }, []);
@@ -459,13 +430,16 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
       await revertirVencimientosAutomaticos();
       await limpiarSesionesAntiguasYEjerciciosHuerfanos();
       await procesarCaducidadSesionesSinFechaPorMeses();
-      const [diasDB, horasIndDB, horasSGDB, ocupacionDB, mesesMargenDB] = await Promise.all([
+      const [diasDB, horasIndDB, horasSGDB, ocupacionDB, mesesMargenDB, festivosDB] = await Promise.all([
         getValoresMaestro('Agenda', 'Días de la semana'),
         getValoresMaestro('Agenda', 'Horarios Sesiones Individuales'),
         getValoresMaestro('Agenda', 'Horarios Small Groups'),
         getValoresMaestro('Agenda', 'Ocupación máxima'),
-        getValoresMaestro('Agenda', 'Meses de margen para reprogramar')
+        getValoresMaestro('Agenda', 'Meses de margen para reprogramar'),
+        getValoresMaestro('Agenda', 'Festivos')
       ]);
+
+      setFestivosMap(extraerMapaFestivos(festivosDB));
 
       if (diasDB.length > 0) {
         setDiasSemana(prev => (JSON.stringify(prev) === JSON.stringify(diasDB) ? prev : diasDB));
@@ -501,7 +475,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
       });
       setGlobalClientes(cliArr);
 
-      const wList = getWeeksForMonth(currentMonthDate);
+      const wList = getWeeksForMonth(currentMonthDate, diasDB.length > 0 ? diasDB : diasSemana);
       const startDate = new Date(wList[0].mondayDate);
       startDate.setUTCHours(0, 0, 0, 0);
       const lastMonday = wList[wList.length - 1].mondayDate;
@@ -988,55 +962,25 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
 
   // Choice modal & Slot double-click handlers
   const handleAbrirModalPlanificarGeneral = () => {
-    setSlotContext({ modo: 'general', dateStrID: '', timeKey: '', tipoPlan: 'Individual' });
+    const mesActualStr = `${currentMonthDate.getUTCFullYear()}-${String(currentMonthDate.getUTCMonth() + 1).padStart(2, '0')}`;
+    setSlotContext({
+      modo: 'general',
+      dateStrID: '',
+      timeKey: '',
+      tipoPlan: currentView === 'sg' ? 'Small Group' : 'Individual',
+      defaultMes: mesActualStr
+    });
     setChoiceModalOpen(true);
   };
 
   const handlePrepararModalAgendarSlot = (dateStrID: string, timeKey: string, tipoPlan: 'Individual' | 'Small Group') => {
-    setSlotContext({ modo: 'slot', dateStrID, timeKey, tipoPlan });
+    const mesActualStr = `${currentMonthDate.getUTCFullYear()}-${String(currentMonthDate.getUTCMonth() + 1).padStart(2, '0')}`;
+    setSlotContext({ modo: 'slot', dateStrID, timeKey, tipoPlan, defaultMes: mesActualStr });
     setChoiceModalOpen(true);
   };
 
   const handleConfirmarCrearNuevaSesion = () => {
     setChoiceModalOpen(false);
-    setPlanStep(1);
-    setPendingCreationData(null);
-
-    if (slotContext.modo === 'slot') {
-      const [y, m, d] = slotContext.dateStrID.split('-');
-      const dateObj = new Date(Date.UTC(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10)));
-      setPlanMes(`${y}-${m}`);
-
-      const dayOfWeek = dateObj.getUTCDay();
-      setPlanSelectedDays([dayOfWeek]);
-
-      const nthWeek = Math.ceil(dateObj.getUTCDate() / 7);
-      setPlanSelectedWeeks([nthWeek]);
-
-      setPlanTipo(slotContext.tipoPlan);
-      if (slotContext.tipoPlan === 'Individual') {
-        setPlanHoraIni(slotContext.timeKey);
-        const [hh, mm] = slotContext.timeKey.split(':');
-        setPlanHoraFin(`${String(parseInt(hh, 10) + 1).padStart(2, '0')}:${mm}`);
-      } else {
-        const nombreDiaClick = DIAS_SEMANA_MAPA[dayOfWeek];
-        const targetValue = `${nombreDiaClick} ${slotContext.timeKey}`;
-        const matched = sgTimeSlotsRaw.find(o => normalizarTexto(o) === normalizarTexto(targetValue));
-        if (matched) setPlanHoraSG(matched);
-      }
-    } else {
-      const today = new Date();
-      setPlanMes(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`);
-      setPlanSelectedDays([]);
-      setPlanSelectedWeeks([1, 2, 3, 4, 5]);
-      setPlanTipo('Individual');
-      const defIni = timeSlots.includes('17:00') ? '17:00' : (timeSlots[0] || '08:00');
-      setPlanHoraIni(defIni);
-      const [hh, mm] = defIni.split(':');
-      setPlanHoraFin(`${String(parseInt(hh, 10) + 1).padStart(2, '0')}:${mm}`);
-      setPlanHoraSG('');
-    }
-
     setPlanModalOpen(true);
   };
 
@@ -1106,33 +1050,6 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
       })
       .finally(() => setAsigLoadingSessions(false));
   }, [asigClienteId, asigModalOpen]);
-
-  // Load sessions for selected client in Planificar Días modal to detect subsequent programmed sessions
-  useEffect(() => {
-    if (!planModalOpen || !planClienteId) {
-      setPlanClientSessions([]);
-      return;
-    }
-    const q = query(collection(db, 'agenda_sesiones'), where('id_cliente', '==', planClienteId));
-    getDocs(q)
-      .then(snap => {
-        const list: { id: string; fechaObj: Date; numEj: number }[] = [];
-        snap.forEach(d => {
-          const data = d.data();
-          if (data.sin_fecha) return;
-          const tipo = String(data.tipo_sesion || '').toLowerCase();
-          if (tipo.includes('small') || tipo.includes('group') || tipo === 'sg') return;
-          if (esSesionCompletada(data)) return;
-          const parsedF = parsearFechaFirestore(data.fecha_hora_inicio);
-          if (!parsedF) return;
-          const numEj = Array.isArray(data.ejercicios) ? data.ejercicios.length : 0;
-          list.push({ id: d.id, fechaObj: parsedF, numEj });
-        });
-        list.sort((a, b) => a.fechaObj.getTime() - b.fechaObj.getTime());
-        setPlanClientSessions(list);
-      })
-      .catch(() => setPlanClientSessions([]));
-  }, [planModalOpen, planClienteId]);
 
   const handleSubmitAsignarExistente = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1247,140 +1164,33 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     }
   };
 
-  // Calculate dates for Planificar Días modal
-  const calcularFechasGeneradas = useCallback((): Date[] => {
-    if (!planMes) return [];
-    const [yearStr, monthStr] = planMes.split('-');
-    const year = parseInt(yearStr, 10);
-    const month = parseInt(monthStr, 10) - 1;
-    const isSG = planTipo === 'Small Group';
-    const fechas: Date[] = [];
-
-    if (isSG) {
-      if (!planHoraSG) return [];
-      const diaTxt = planHoraSG.split(' ')[0];
-      const diaNum = MAPA_DIA_JS[normalizarTexto(diaTxt)];
-      if (diaNum === undefined) return [];
-
-      const date = new Date(Date.UTC(year, month, 1));
-      while (date.getUTCMonth() === month) {
-        if (date.getUTCDay() === diaNum) {
-          fechas.push(new Date(date));
-        }
-        date.setUTCDate(date.getUTCDate() + 1);
-      }
-    } else {
-      if (planSelectedDays.length === 0) return [];
-      const date = new Date(Date.UTC(year, month, 1));
-      while (date.getUTCMonth() === month) {
-        if (planSelectedDays.includes(date.getUTCDay())) {
-          const nth = Math.ceil(date.getUTCDate() / 7);
-          if (planSelectedWeeks.includes(nth)) {
-            fechas.push(new Date(date));
-          }
-        }
-        date.setUTCDate(date.getUTCDate() + 1);
-      }
-    }
-    return fechas;
-  }, [planMes, planTipo, planHoraSG, planSelectedDays, planSelectedWeeks]);
-
-  const fechasPlanCalculadas = calcularFechasGeneradas();
-
-  // Detect subsequent programmed sessions of the selected client after the earliest target date
-  const sesionesPosterioresProgramadas = (() => {
-    if (planTipo !== 'Individual' || !planClienteId || fechasPlanCalculadas.length === 0) {
-      return [];
-    }
-    const [hStr, mStr] = (planHoraIni || '08:00').split(':');
-    const primeraFechaUTC = new Date(fechasPlanCalculadas[0]);
-    primeraFechaUTC.setUTCHours(parseInt(hStr, 10) || 0, parseInt(mStr, 10) || 0, 0, 0);
-
-    return planClientSessions.filter(
-      s => s.fechaObj.getTime() > primeraFechaUTC.getTime() && s.numEj > 0
-    );
-  })();
-
-  // Check overbooking in Planificar modal
-  let hasOverbooking = false;
-  if (planTipo === 'Individual') {
-    fechasPlanCalculadas.forEach(f => {
-      const dateStrID = f.toISOString().split('T')[0];
-      const row1 = timeToRowMap[planHoraIni];
-      if (row1) {
-        if ((aforoGlobalPorFila[`${dateStrID}-${row1}`] || 0) >= ocupacionMaxima) hasOverbooking = true;
-        const row2 = row1 + 1;
-        if (row2 !== separatorRow && (aforoGlobalPorFila[`${dateStrID}-${row2}`] || 0) >= ocupacionMaxima) {
-          hasOverbooking = true;
-        }
-      }
-    });
-  }
-
-  const ejecutarGuardadoNormal = async (
-    fechas: Date[],
-    isSG: boolean,
-    emailAutor: string,
-    idCliente: string,
-    nombreCli: string,
-    horaIni: string,
-    conCascadaAtras = false
-  ) => {
-    const fechasConHora = fechas.map(fOrig => {
-      const fechaGuardar = new Date(fOrig);
-      const [h, m] = horaIni.split(':');
-      fechaGuardar.setUTCHours(parseInt(h, 10), parseInt(m, 10), 0, 0);
-      return fechaGuardar;
-    });
-
-    const res = await crearSesionesConCascadaAtras({
-      idCliente,
-      nombreCli,
-      fechasUTC: fechasConHora,
-      isSG,
-      conCascadaAtras: !isSG && conCascadaAtras,
-      usuario: emailAutor
-    });
-
-    if (res && res.undoOps.length > 0) {
-      pushAction({
-        label: res.toastMessage,
-        undoOps: res.undoOps,
-        redoOps: res.redoOps,
-        showToast: true,
-        toastMessage: res.toastMessage
-      });
-    }
-  };
-
-  const handleSubmitPlanificar = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (fechasPlanCalculadas.length === 0) {
-      alert("Debes seleccionar opciones que devuelvan al menos un día válido en el mes.");
+  const handleSubmitPlanificar = async (payload: PlanificarSubmitPayload) => {
+    const { tipo, clienteId, fechasUTC, horaIni, conCascadaAtras } = payload;
+    if (fechasUTC.length === 0) {
+      alert('Debes seleccionar al menos una fecha o sesión válida en el mes.');
       return;
     }
-    if (!planClienteId) {
-      alert("Por favor, selecciona un cliente.");
+    if (!clienteId) {
+      alert('Por favor, selecciona un cliente.');
       return;
     }
 
-    const isSG = planTipo === 'Small Group';
+    const isSG = tipo === 'Small Group';
     const emailAutor = auth.currentUser?.email || localStorage.getItem('gym_user_name') || 'Usuario';
-    const cliObj = globalClientes.find(c => c.id === planClienteId);
+    const cliObj = globalClientes.find(c => c.id === clienteId);
     const nombreCli = cliObj ? cliObj.alias : 'Cliente';
-    const horaIni = isSG ? planHoraSG.split(' ')[1] : planHoraIni;
 
     setSavingPlan(true);
 
     // If inserting 1 single Individual day, check if client already has a session on that same day
-    if (fechasPlanCalculadas.length === 1 && !isSG) {
-      const f = new Date(fechasPlanCalculadas[0]);
+    if (fechasUTC.length === 1 && !isSG) {
+      const f = new Date(fechasUTC[0]);
       const [h, m] = horaIni.split(':');
       f.setUTCHours(parseInt(h, 10), parseInt(m, 10), 0, 0);
 
       try {
         const colisionMismoDia = await buscarSesionMismoDiaCliente({
-          idCliente: planClienteId,
+          idCliente: clienteId,
           fechaUTC: f
         });
 
@@ -1421,118 +1231,53 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
           return;
         }
       } catch (err) {
-        console.error("Error comprobando colisión en el mismo día:", err);
+        console.error('Error comprobando colisión en el mismo día:', err);
       }
     }
 
     try {
-      const aplicarCascada =
-        !isSG && sesionesPosterioresProgramadas.length > 0 && planCascadaAtras;
-      await ejecutarGuardadoNormal(
-        fechasPlanCalculadas,
-        isSG,
-        emailAutor,
-        planClienteId,
+      const fechasConHora = isSG
+        ? fechasUTC.map(fOrig => {
+            const fechaGuardar = new Date(fOrig);
+            fechaGuardar.setUTCSeconds(0, 0);
+            return fechaGuardar;
+          })
+        : fechasUTC.map(fOrig => {
+            const fechaGuardar = new Date(fOrig);
+            const [h, m] = horaIni.split(':');
+            fechaGuardar.setUTCHours(parseInt(h, 10), parseInt(m, 10), 0, 0);
+            return fechaGuardar;
+          });
+
+      const res = await crearSesionesConCascadaAtras({
+        idCliente: clienteId,
         nombreCli,
-        horaIni,
-        aplicarCascada
-      );
+        fechasUTC: fechasConHora,
+        isSG,
+        conCascadaAtras: !isSG && conCascadaAtras,
+        usuario: emailAutor
+      });
+
+      if (res && res.undoOps.length > 0) {
+        pushAction({
+          label: res.toastMessage,
+          undoOps: res.undoOps,
+          redoOps: res.redoOps,
+          showToast: true,
+          toastMessage: res.toastMessage
+        });
+      } else if (res && res.toastMessage) {
+        showToast(res.toastMessage);
+      }
+
       setPlanModalOpen(false);
       await loadAgenda();
     } catch (error) {
       console.error(error);
-      alert("Hubo un error al generar las citas.");
+      alert('Hubo un error al generar las citas.');
     } finally {
       setSavingPlan(false);
     }
-  };
-
-  const handleEjecutarCreacionIndependiente = async () => {
-    if (!pendingCreationData) return;
-    const { fechas, isSG, emailAutor, idCliente, nombreCli, horaIni } = pendingCreationData;
-    try {
-      await ejecutarGuardadoNormal(fechas, isSG, emailAutor, idCliente, nombreCli, horaIni);
-      setPlanModalOpen(false);
-      await loadAgenda();
-    } catch (e) {
-      console.error(e);
-      alert("Error al guardar la sesión.");
-    }
-    setPendingCreationData(null);
-  };
-
-  const handleEjecutarCreacionCascada = async () => {
-    if (!pendingCreationData) return;
-    const { fechas, emailAutor, idCliente, nombreCli, horaIni, futureSessions } = pendingCreationData;
-    try {
-      const batch = writeBatch(db);
-      const f = new Date(fechas[0]);
-      const [h, m] = horaIni.split(':');
-      f.setUTCHours(parseInt(h, 10), parseInt(m, 10), 0, 0);
-
-      const newDocId = `SES-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      const newDocData = {
-        id_sesion_global: newDocId,
-        id_cliente: idCliente,
-        alias: nombreCli,
-        nombre_cliente: nombreCli,
-        estado: "Pendiente",
-        estado_sesion: "Pendiente",
-        tipo_sesion: "Individual",
-        fecha_hora_inicio: f,
-        ejercicios: futureSessions.length > 0 ? (futureSessions[0].data.ejercicios || []) : [],
-        creado_por: emailAutor,
-        fecha_creacion: new Date(),
-        utc_migrado: true
-      };
-      batch.set(doc(db, "agenda_sesiones", newDocId), newDocData);
-
-      const undoOps: FirestoreOp[] = [{ type: 'delete', collection: 'agenda_sesiones', id: newDocId }];
-      const redoOps: FirestoreOp[] = [{ type: 'set', collection: 'agenda_sesiones', id: newDocId, data: newDocData, merge: false }];
-
-      for (let i = 0; i < futureSessions.length; i++) {
-        const currentSess = futureSessions[i];
-        const nextSess = futureSessions[i + 1];
-
-        undoOps.push({
-          type: 'set',
-          collection: 'agenda_sesiones',
-          id: currentSess.id,
-          data: currentSess.data,
-          merge: false
-        });
-
-        const updateObj = {
-          ejercicios: nextSess ? (nextSess.data.ejercicios || []) : [],
-          ultimo_modificado_por: emailAutor,
-          fecha_modificacion: new Date()
-        };
-        batch.set(doc(db, "agenda_sesiones", currentSess.id), updateObj, { merge: true });
-        redoOps.push({
-          type: 'set',
-          collection: 'agenda_sesiones',
-          id: currentSess.id,
-          data: updateObj,
-          merge: true
-        });
-      }
-
-      await batch.commit();
-      setPlanModalOpen(false);
-      await loadAgenda();
-
-      pushAction({
-        label: `Agendar en cascada (${nombreCli})`,
-        undoOps,
-        redoOps,
-        showToast: true,
-        toastMessage: `📅 Sesión creada de ${nombreCli} (rutinas adelantadas en cascada)`
-      });
-    } catch (e) {
-      console.error(e);
-      alert("Error al recoger las rutinas en cascada.");
-    }
-    setPendingCreationData(null);
   };
 
   // End times options for Planificar modal
@@ -1718,150 +1463,170 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                             {diasSemana.map((dNom, dIdx) => {
                               const dTemp = new Date(wInfo.mondayDate);
                               dTemp.setUTCDate(dTemp.getUTCDate() + dIdx);
-                              const dayNum = dTemp.getUTCDate();
-                              const dateStrID = dTemp.toISOString().split('T')[0];
-                              const isToday = dateStrID === hoyISO;
-                              const isSelected = mobileSelectedDayIdx === dIdx;
-                              const iniciales = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
-                              const inicial = iniciales[dIdx] || dNom.charAt(0);
+                                const dayNum = dTemp.getUTCDate();
+                                const dateStrID = dTemp.toISOString().split('T')[0];
+                                const isToday = dateStrID === hoyISO;
+                                const festivoMotivo = festivosMap[dateStrID];
+                                const isFestivo = Boolean(festivoMotivo);
+                                const isSelected = mobileSelectedDayIdx === dIdx;
+                                const iniciales = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+                                const inicial = iniciales[dIdx] || dNom.charAt(0);
 
-                              const col = dIdx + 2;
-                              const dayKey = `w${wInfo.weekNum}-c${col}`;
-                              const hasEvents = currentView === 'individuales'
-                                ? (dayEventsMap[dayKey] && dayEventsMap[dayKey].length > 0)
-                                : sgTimeSlotsRaw.some(t => t.toLowerCase().startsWith(dNom.toLowerCase()));
+                                const col = dIdx + 2;
+                                const dayKey = `w${wInfo.weekNum}-c${col}`;
+                                const hasEvents = currentView === 'individuales'
+                                  ? (dayEventsMap[dayKey] && dayEventsMap[dayKey].length > 0)
+                                  : sgTimeSlotsRaw.some(t => t.toLowerCase().startsWith(dNom.toLowerCase()));
 
-                              return (
-                                <button
-                                  key={dNom}
-                                  type="button"
-                                  className={`mobile-day-tab ${isSelected ? 'active' : ''} ${isToday ? 'is-today' : ''}`}
-                                  onClick={() => setMobileSelectedDayIdx(dIdx)}
-                                >
-                                  <span className="mobile-day-letter">{inicial}</span>
-                                  <span className="mobile-day-num">{dayNum}</span>
-                                  {hasEvents && <span className="mobile-day-dot" />}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
+                                return (
+                                  <button
+                                    key={dNom}
+                                    type="button"
+                                    className={`mobile-day-tab ${isSelected ? 'active' : ''} ${isToday ? 'is-today' : ''} ${isFestivo ? 'is-festivo' : ''}`}
+                                    onClick={() => setMobileSelectedDayIdx(dIdx)}
+                                    title={isFestivo ? `Día festivo: ${festivoMotivo}` : undefined}
+                                  >
+                                    <span className="mobile-day-letter">{inicial}</span>
+                                    <span className="mobile-day-num">{dayNum}</span>
+                                    {hasEvents && <span className="mobile-day-dot" />}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
 
-                      {/* VISTA MÓVIL DÍA ÚNICO (ESTILO GOOGLE CALENDAR) */}
-                      {mobileCalendarMode === 'dia' && (
-                        <div className="mobile-single-day-view">
-                          {(() => {
-                            const selIdx = mobileSelectedDayIdx < diasSemana.length ? mobileSelectedDayIdx : 0;
-                            const selDayName = diasSemana[selIdx] || 'Lunes';
-                            const selDate = new Date(wInfo.mondayDate);
-                            selDate.setUTCDate(selDate.getUTCDate() + selIdx);
-                            const selDateStrID = selDate.toISOString().split('T')[0];
-                            const selDayNum = selDate.getUTCDate();
-                            const selMonthName = MES_NAMES[selDate.getUTCMonth()];
-                            const isToday = selDateStrID === hoyISO;
+                        {/* VISTA MÓVIL DÍA ÚNICO (ESTILO GOOGLE CALENDAR) */}
+                        {mobileCalendarMode === 'dia' && (
+                          <div className="mobile-single-day-view">
+                            {(() => {
+                              const selIdx = mobileSelectedDayIdx < diasSemana.length ? mobileSelectedDayIdx : 0;
+                              const selDayName = diasSemana[selIdx] || 'Lunes';
+                              const selDate = new Date(wInfo.mondayDate);
+                              selDate.setUTCDate(selDate.getUTCDate() + selIdx);
+                              const selDateStrID = selDate.toISOString().split('T')[0];
+                              const selDayNum = selDate.getUTCDate();
+                              const selMonthName = MES_NAMES[selDate.getUTCMonth()];
+                              const isToday = selDateStrID === hoyISO;
+                              const selFestivoMotivo = festivosMap[selDateStrID];
+                              const isSelFestivo = Boolean(selFestivoMotivo);
 
-                            if (currentView === 'individuales') {
-                              const col = selIdx + 2;
-                              const dayKey = `w${wInfo.weekNum}-c${col}`;
-                              const events = dayEventsMap[dayKey] || [];
+                              if (currentView === 'individuales') {
+                                const col = selIdx + 2;
+                                const dayKey = `w${wInfo.weekNum}-c${col}`;
+                                const events = dayEventsMap[dayKey] || [];
 
-                              return (
-                                <div
-                                  className="calendar-grid mobile-single-grid"
-                                  style={{
-                                    gridTemplateColumns: '55px 1fr',
-                                    gridTemplateRows: `auto repeat(${mananaSlots.length}, 54px) 20px repeat(${tardeSlots.length}, 54px)`
-                                  }}
-                                >
-                                  <div className="day-header" style={{ gridColumn: 1, gridRow: 1, borderRight: '2px solid #64748b' }}>
-                                    Hora
-                                  </div>
-                                  <div className={`day-header ${isToday ? 'today' : ''}`} style={{ gridColumn: 2, gridRow: 1 }}>
-                                    <strong>{selDayName}</strong>
-                                    <span>{selDayNum} {selMonthName}</span>
-                                  </div>
-
-                                  {timeSlots.map(time => {
-                                    const row = timeToRowMap[time];
-                                    return (
-                                      <React.Fragment key={time}>
-                                        <div className="time-label" style={{ gridColumn: 1, gridRow: row }}>
-                                          {time}
+                                return (
+                                  <div
+                                    className="calendar-grid mobile-single-grid"
+                                    style={{
+                                      gridTemplateColumns: '55px 1fr',
+                                      gridTemplateRows: `auto repeat(${mananaSlots.length}, 54px) 20px repeat(${tardeSlots.length}, 54px)`
+                                    }}
+                                  >
+                                    <div className="day-header" style={{ gridColumn: 1, gridRow: 1, borderRight: '2px solid #64748b' }}>
+                                      Hora
+                                    </div>
+                                    <div className={`day-header ${isToday ? 'today' : ''} ${isSelFestivo ? 'festivo' : ''}`} style={{ gridColumn: 2, gridRow: 1 }}>
+                                      <strong>{selDayName}</strong>
+                                      <span>{selDayNum} {selMonthName}</span>
+                                      {isSelFestivo && (
+                                        <div className="festivo-line">
+                                          <span className="festivo-badge" title={selFestivoMotivo}>
+                                            {selFestivoMotivo}
+                                          </span>
                                         </div>
+                                      )}
+                                    </div>
+
+                                    {timeSlots.map(time => {
+                                      const row = timeToRowMap[time];
+                                      return (
+                                        <React.Fragment key={time}>
+                                          <div className="time-label" style={{ gridColumn: 1, gridRow: row }}>
+                                            {time}
+                                          </div>
+                                          <div
+                                            className={`grid-bg-cell ${isToday ? 'today-col' : ''} ${isSelFestivo ? 'festivo-col' : ''}`}
+                                            style={{ gridColumn: 2, gridRow: row }}
+                                            onDoubleClick={() => handlePrepararModalAgendarSlot(selDateStrID, time, 'Individual')}
+                                            title={isSelFestivo ? `Día festivo (${selFestivoMotivo}) · Doble clic para agendar` : 'Doble clic para agendar cita rápida'}
+                                          />
+                                        </React.Fragment>
+                                      );
+                                    })}
+
+                                    <div className="noon-separator" style={{ gridRow: separatorRow }} />
+
+                                    {events.map((evt, eIdx) => {
+                                      const countH1 = aforoGlobalPorFila[`${evt.dateStrID}-${evt.row}`] || 0;
+                                      const countH2 = aforoGlobalPorFila[`${evt.dateStrID}-${evt.row + 1}`] || 0;
+
+                                      let extraClass = 'event-normal';
+                                      if (countH1 >= ocupacionMaxima && countH2 >= ocupacionMaxima) extraClass = 'event-full';
+                                      else if (countH1 >= ocupacionMaxima && countH2 < ocupacionMaxima) extraClass = 'event-warn-top';
+                                      else if (countH1 < ocupacionMaxima && countH2 >= ocupacionMaxima) extraClass = 'event-warn-bottom';
+
+                                      if (evt.isOverlapping) {
+                                        extraClass += evt.position === 'left' ? ' overlap-left' : ' overlap-right';
+                                      }
+
+                                      const timeKey = Object.keys(timeToRowMap).find(k => timeToRowMap[k] === evt.row) || '08:00';
+
+                                      return (
                                         <div
-                                          className={`grid-bg-cell ${isToday ? 'today-col' : ''}`}
-                                          style={{ gridColumn: 2, gridRow: row }}
-                                          onDoubleClick={() => handlePrepararModalAgendarSlot(selDateStrID, time, 'Individual')}
-                                          title="Doble clic para agendar cita rápida"
-                                        />
-                                      </React.Fragment>
-                                    );
-                                  })}
-
-                                  <div className="noon-separator" style={{ gridRow: separatorRow }} />
-
-                                  {events.map((evt, eIdx) => {
-                                    const countH1 = aforoGlobalPorFila[`${evt.dateStrID}-${evt.row}`] || 0;
-                                    const countH2 = aforoGlobalPorFila[`${evt.dateStrID}-${evt.row + 1}`] || 0;
-
-                                    let extraClass = 'event-normal';
-                                    if (countH1 >= ocupacionMaxima && countH2 >= ocupacionMaxima) extraClass = 'event-full';
-                                    else if (countH1 >= ocupacionMaxima && countH2 < ocupacionMaxima) extraClass = 'event-warn-top';
-                                    else if (countH1 < ocupacionMaxima && countH2 >= ocupacionMaxima) extraClass = 'event-warn-bottom';
-
-                                    if (evt.isOverlapping) {
-                                      extraClass += evt.position === 'left' ? ' overlap-left' : ' overlap-right';
-                                    }
-
-                                    const timeKey = Object.keys(timeToRowMap).find(k => timeToRowMap[k] === evt.row) || '08:00';
-
-                                    return (
-                                      <div
-                                        key={`mobile-evt-${evt.row}-${eIdx}`}
-                                        className={`event-card ${extraClass}`}
-                                        style={{
-                                          gridColumn: 2,
-                                          gridRow: `${evt.row} / span 2`
-                                        }}
-                                        onDoubleClick={() => handlePrepararModalAgendarSlot(evt.dateStrID, timeKey, 'Individual')}
-                                        title="Doble clic para agendar otro cliente a esta hora"
-                                      >
-                                        {evt.clientes.map((c, cIdx) => (
-                                          <React.Fragment key={c.idSesion}>
-                                            {cIdx > 0 && ', '}
-                                            <span
-                                              data-session-menu-trigger="true"
-                                              style={{
-                                                color: c.isCompleted ? '#15803d' : c.isPending ? '#dc2626' : 'inherit',
-                                                fontWeight: c.isCompleted ? 700 : undefined,
-                                                cursor: 'pointer',
-                                                textDecoration: 'none',
-                                                transition: 'opacity 0.2s'
-                                              }}
-                                              onClick={(e) => handleOpenSessionMenu(e, c.idSesion)}
-                                              title={c.isCompleted ? 'Completada · Clic para opciones' : c.isPending ? 'Pendiente de programar · Clic para opciones' : 'Clic para opciones de sesión y ficha'}
-                                            >
-                                              {c.nombre}
-                                            </span>
-                                          </React.Fragment>
-                                        ))}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              );
-                            } else {
-                              /* Small Groups single-day */
-                              const todaySlots = sgTimeSlotsRaw
-                                .filter(t => t.toLowerCase().startsWith(selDayName.toLowerCase()))
-                                .map(t => t.split(' ')[1]);
-
-                              return (
-                                <div className="mobile-sg-single-day">
-                                  <div className={`sg-day-header ${isToday ? 'today' : ''}`} style={{ marginBottom: 10, borderRadius: 8 }}>
-                                    <span>{selDayName}</span> <span>{selDayNum} {selMonthName}</span>
+                                          key={`mobile-evt-${evt.row}-${eIdx}`}
+                                          className={`event-card ${extraClass}`}
+                                          style={{
+                                            gridColumn: 2,
+                                            gridRow: `${evt.row} / span 2`
+                                          }}
+                                          onDoubleClick={() => handlePrepararModalAgendarSlot(evt.dateStrID, timeKey, 'Individual')}
+                                          title="Doble clic para agendar otro cliente a esta hora"
+                                        >
+                                          {evt.clientes.map((c, cIdx) => (
+                                            <React.Fragment key={c.idSesion}>
+                                              {cIdx > 0 && ', '}
+                                              <span
+                                                data-session-menu-trigger="true"
+                                                style={{
+                                                  color: c.isCompleted ? '#15803d' : c.isPending ? '#dc2626' : 'inherit',
+                                                  fontWeight: c.isCompleted ? 700 : undefined,
+                                                  cursor: 'pointer',
+                                                  textDecoration: 'none',
+                                                  transition: 'opacity 0.2s'
+                                                }}
+                                                onClick={(e) => handleOpenSessionMenu(e, c.idSesion)}
+                                                title={c.isCompleted ? 'Completada · Clic para opciones' : c.isPending ? 'Pendiente de programar · Clic para opciones' : 'Clic para opciones de sesión y ficha'}
+                                              >
+                                                {c.nombre}
+                                              </span>
+                                            </React.Fragment>
+                                          ))}
+                                        </div>
+                                      );
+                                    })}
                                   </div>
+                                );
+                              } else {
+                                /* Small Groups single-day */
+                                const todaySlots = sgTimeSlotsRaw
+                                  .filter(t => t.toLowerCase().startsWith(selDayName.toLowerCase()))
+                                  .map(t => t.split(' ')[1]);
+
+                                return (
+                                  <div className={`mobile-sg-single-day ${isSelFestivo ? 'festivo' : ''}`}>
+                                    <div className={`sg-day-header ${isToday ? 'today' : ''} ${isSelFestivo ? 'festivo' : ''}`} style={{ marginBottom: 10, borderRadius: 8 }}>
+                                      <strong>{selDayName}</strong>
+                                      <span>{selDayNum} {selMonthName}</span>
+                                      {isSelFestivo && (
+                                        <div className="festivo-line">
+                                          <span className="festivo-badge" title={selFestivoMotivo}>
+                                            {selFestivoMotivo}
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
 
                                   {todaySlots.length === 0 ? (
                                     <div className="sg-slot" style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>
@@ -1976,17 +1741,27 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                             dTemp.setUTCDate(dTemp.getUTCDate() + idx);
                             const dateStrID = dTemp.toISOString().split('T')[0];
                             const isToday = dateStrID === hoyISO;
+                            const festivoMotivo = festivosMap[dateStrID];
+                            const isFestivo = Boolean(festivoMotivo);
                             return (
                               <div
                                 key={diaName}
-                                className={`day-header ${isToday ? 'today' : ''}`}
+                                className={`day-header ${isToday ? 'today' : ''} ${isFestivo ? 'festivo' : ''}`}
                                 style={{ gridColumn: idx + 2, gridRow: 1 }}
+                                title={isFestivo ? `Día festivo (no laborable): ${festivoMotivo}` : undefined}
                               >
                                 <strong>{diaName}</strong>
                                 <span>
                                   {dTemp.getUTCDate()}
                                   {MES_NAMES[dTemp.getUTCMonth()]}
                                 </span>
+                                {isFestivo && (
+                                  <div className="festivo-line">
+                                    <span className="festivo-badge" title={festivoMotivo}>
+                                      {festivoMotivo}
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
@@ -2008,14 +1783,16 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                                   dTemp.setUTCDate(dTemp.getUTCDate() + colIdx);
                                   const dateStrID = dTemp.toISOString().split('T')[0];
                                   const isToday = dateStrID === hoyISO;
+                                  const festivoMotivo = festivosMap[dateStrID];
+                                  const isFestivo = Boolean(festivoMotivo);
 
                                   return (
                                     <div
                                       key={`${dateStrID}-${time}`}
-                                      className={`grid-bg-cell ${isToday ? 'today-col' : ''}`}
+                                      className={`grid-bg-cell ${isToday ? 'today-col' : ''} ${isFestivo ? 'festivo-col' : ''}`}
                                       style={{ gridColumn: col, gridRow: row }}
                                       onDoubleClick={() => handlePrepararModalAgendarSlot(dateStrID, time, 'Individual')}
-                                      title="Doble clic para agendar cita rápida"
+                                      title={isFestivo ? `Día festivo (${festivoMotivo}) · Doble clic para agendar` : 'Doble clic para agendar cita rápida'}
                                     />
                                   );
                                 })}
@@ -2106,15 +1883,25 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                           const monthName = MES_NAMES[dayTemp.getUTCMonth()];
                           const dateStrID = dayTemp.toISOString().split('T')[0];
                           const isToday = dateStrID === hoyISO;
+                          const festivoMotivo = festivosMap[dateStrID];
+                          const isFestivo = Boolean(festivoMotivo);
 
                           const todaySlots = sgTimeSlotsRaw
                             .filter(t => t.toLowerCase().startsWith(dayNameString.toLowerCase()))
                             .map(t => t.split(' ')[1]);
 
                           return (
-                            <div key={dateStrID} className={`sg-day-column ${isToday ? 'today' : ''}`}>
-                              <div className={`sg-day-header ${isToday ? 'today' : ''}`}>
-                                <span>{dayNameString}</span> <span>{dayNum}{monthName}</span>
+                            <div key={dateStrID} className={`sg-day-column ${isToday ? 'today' : ''} ${isFestivo ? 'festivo' : ''}`}>
+                              <div className={`sg-day-header ${isToday ? 'today' : ''} ${isFestivo ? 'festivo' : ''}`}>
+                                <strong>{dayNameString}</strong>
+                                <span>{dayNum}{monthName}</span>
+                                {isFestivo && (
+                                  <div className="festivo-line">
+                                    <span className="festivo-badge" title={festivoMotivo}>
+                                      {festivoMotivo}
+                                    </span>
+                                  </div>
+                                )}
                               </div>
 
                               {todaySlots.length === 0 ? (
@@ -2300,18 +2087,23 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
               </button>
             )}
 
-            <button
-              type="button"
-              className="session-action-item"
-              onClick={() => {
-                const id = activeMenu.idSesion;
-                setActiveMenu(null);
-                onNavigate('programar_sesion', id);
-              }}
-            >
-              <span>🏋️</span>
-              <span>Programación</span>
-            </button>
+            {!(
+              String(activeMenu.acciones.tipo_sesion || '').toLowerCase().includes('small') ||
+              String(activeMenu.acciones.tipo_sesion || '').toLowerCase().includes('group')
+            ) && (
+              <button
+                type="button"
+                className="session-action-item"
+                onClick={() => {
+                  const id = activeMenu.idSesion;
+                  setActiveMenu(null);
+                  onNavigate('programar_sesion', id);
+                }}
+              >
+                <span>🏋️</span>
+                <span>Programación</span>
+              </button>
+            )}
 
             {activeMenu.acciones.puedeReprogramar && (
               <button
@@ -2460,360 +2252,22 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
       )}
 
       {/* MODAL PLANIFICAR DÍAS MASIVOS / PUNTUAL */}
-      {planModalOpen && (
-        <div
-          className="modal-overlay"
-          style={{ display: 'flex' }}
-          onClick={() => setPlanModalOpen(false)}
-        >
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setPlanModalOpen(false)}>
-              &times;
-            </button>
-
-            {planStep === 1 ? (
-              <div>
-                <div style={{ marginBottom: 25 }}>
-                  <h2 style={{ margin: '0 0 5px 0', fontSize: '1.4rem' }}>
-                    Planificar Días del Mes para Cliente
-                  </h2>
-                  <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                    Programa las asistencias de forma masiva o puntual en el calendario.
-                  </p>
-                </div>
-
-                <form onSubmit={handleSubmitPlanificar}>
-                  <div
-                    className="form-group full"
-                    style={{
-                      flexDirection: 'row',
-                      gap: 20,
-                      marginBottom: 15,
-                      padding: 15,
-                      background: 'var(--hover-bg)',
-                      borderRadius: 8,
-                      border: '1px solid var(--border)'
-                    }}
-                  >
-                    <label className="radio-option">
-                      <input
-                        type="radio"
-                        name="plan_tipo"
-                        value="Individual"
-                        checked={planTipo === 'Individual'}
-                        onChange={() => setPlanTipo('Individual')}
-                      />
-                      Sesión Individual
-                    </label>
-                    <label className="radio-option">
-                      <input
-                        type="radio"
-                        name="plan_tipo"
-                        value="Small Group"
-                        checked={planTipo === 'Small Group'}
-                        onChange={() => setPlanTipo('Small Group')}
-                      />
-                      Small Group
-                    </label>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
-                    <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                      <label>Cliente *</label>
-                      <CustomDropdown
-                        options={[...globalClientes]
-                          .sort((a, b) => a.alias.localeCompare(b.alias))
-                          .map(c => ({
-                            value: c.id,
-                            label: c.alias,
-                            search: `${c.alias} ${c.nombre || ''}`
-                          }))}
-                        value={planClienteId}
-                        onChange={setPlanClienteId}
-                        placeholder="Elige un cliente..."
-                        searchPlaceholder="Buscar cliente por nombre o alias..."
-                      />
-                    </div>
-
-                    {planTipo === 'Individual' && (
-                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                        <label style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span>Días de asistencia (puedes elegir varios) *</span>
-                          <span style={{ fontWeight: 'normal', color: 'var(--text-muted)' }}>
-                            {fechasPlanCalculadas.length === 1
-                              ? '1 día'
-                              : `${fechasPlanCalculadas.length} días`}
-                          </span>
-                        </label>
-                        <div className="days-selector">
-                          {diasSemana.map(d => {
-                            const numDia = MAPA_DIA_JS[normalizarTexto(d)] ?? 1;
-                            const isSelected = planSelectedDays.includes(numDia);
-                            return (
-                              <div
-                                key={d}
-                                className={`day-pill ${isSelected ? 'active' : ''}`}
-                                onClick={() => {
-                                  if (isSelected) {
-                                    setPlanSelectedDays(planSelectedDays.filter(x => x !== numDia));
-                                  } else {
-                                    setPlanSelectedDays([...planSelectedDays, numDia]);
-                                  }
-                                }}
-                              >
-                                {d}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="form-group">
-                      <label>Mes a programar</label>
-                      <input
-                        type="month"
-                        required
-                        value={planMes}
-                        onChange={(e) => setPlanMes(e.target.value)}
-                      />
-                    </div>
-
-                    {planTipo === 'Individual' && (
-                      <>
-                        <div className="form-group">
-                          <label>Semanas a programar</label>
-                          <div className="days-selector">
-                            {[1, 2, 3, 4, 5].map(wNum => {
-                              const active = planSelectedWeeks.includes(wNum);
-                              return (
-                                <div
-                                  key={wNum}
-                                  className={`week-pill ${active ? 'active' : ''}`}
-                                  onClick={() => {
-                                    if (active) {
-                                      setPlanSelectedWeeks(planSelectedWeeks.filter(x => x !== wNum));
-                                    } else {
-                                      setPlanSelectedWeeks([...planSelectedWeeks, wNum]);
-                                    }
-                                  }}
-                                >
-                                  S{wNum}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        <div className="form-group">
-                          <label>Hora de inicio</label>
-                          <select
-                            required
-                            value={planHoraIni}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setPlanHoraIni(val);
-                              const [hh, mm] = val.split(':');
-                              const nextTime = `${String(parseInt(hh, 10) + 1).padStart(2, '0')}:${mm}`;
-                              if (horasFinOptions.includes(nextTime)) {
-                                setPlanHoraFin(nextTime);
-                              }
-                            }}
-                          >
-                            {timeSlots.map(t => (
-                              <option key={t} value={t}>
-                                {t}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="form-group">
-                          <label>Hora de fin</label>
-                          <select
-                            required
-                            value={planHoraFin}
-                            onChange={(e) => setPlanHoraFin(e.target.value)}
-                          >
-                            {horasFinOptions.map(t => (
-                              <option key={t} value={t}>
-                                {t}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </>
-                    )}
-
-                    {planTipo === 'Small Group' && (
-                      <div className="form-group full">
-                        <label>Día y Horario del Small Group *</label>
-                        <select
-                          className="form-control"
-                          required
-                          value={planHoraSG}
-                          onChange={(e) => setPlanHoraSG(e.target.value)}
-                        >
-                          <option value="">Selecciona horario y día predefinido...</option>
-                          {sgTimeSlotsRaw.map(entry => (
-                            <option key={entry} value={entry}>
-                              {entry}
-                            </option>
-                          ))}
-                        </select>
-                        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 5 }}>
-                          Se programarán automáticamente todas las sesiones de este día de la semana en el mes seleccionado.
-                        </p>
-                      </div>
-                    )}
-
-                    {hasOverbooking && (
-                      <div className="warning-msg" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span className="ui-icon">⚠️</span>
-                        <span>Atención: Hay un conflicto de overbooking ({ocupacionMaxima} o más clientes).</span>
-                      </div>
-                    )}
-
-                    {planTipo === 'Individual' && sesionesPosterioresProgramadas.length > 0 && (
-                      <div
-                        style={{
-                          gridColumn: '1 / -1',
-                          background: '#f0fdfa',
-                          border: '1px solid #5eead4',
-                          borderRadius: 10,
-                          padding: '12px 14px',
-                          marginTop: 4
-                        }}
-                      >
-                        <label
-                          style={{
-                            display: 'flex',
-                            alignItems: 'flex-start',
-                            gap: 10,
-                            cursor: 'pointer',
-                            margin: 0
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={planCascadaAtras}
-                            onChange={e => setPlanCascadaAtras(e.target.checked)}
-                            style={{ width: 18, height: 18, marginTop: 2, accentColor: '#0d9488' }}
-                          />
-                          <div>
-                            <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f766e' }}>
-                              Hacer cascada hacia atrás de la sesión posterior a esta y siguientes
-                            </div>
-                            <div style={{ fontSize: '0.8rem', color: '#115e59', marginTop: 3, lineHeight: 1.4 }}>
-                              Este cliente tiene{' '}
-                              <strong>
-                                {sesionesPosterioresProgramadas.length}{' '}
-                                {sesionesPosterioresProgramadas.length === 1
-                                  ? 'sesión programada posterior'
-                                  : 'sesiones programadas posteriores'}
-                              </strong>
-                              . Si marcas esta casilla, esta nueva sesión tomará la rutina de la siguiente sesión posterior, y así sucesivamente hacia atrás.
-                            </div>
-                          </div>
-                        </label>
-                      </div>
-                    )}
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 30 }}>
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={() => setPlanModalOpen(false)}
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="submit"
-                      className="btn-primary"
-                      disabled={savingPlan}
-                    >
-                      {savingPlan ? 'Guardando...' : `Programar ${fechasPlanCalculadas.length} Citas`}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            ) : (
-              /* Step 2: Cascade Options on Injection */
-              <div className="conflict-options">
-                <div
-                  style={{
-                    background: '#f0fdfa',
-                    border: '1px solid #14b8a6',
-                    padding: 15,
-                    borderRadius: 8,
-                    marginBottom: 20
-                  }}
-                >
-                  <h4 style={{ color: '#0f766e', margin: '0 0 5px 0' }}>
-                    Opciones de Planificación (Inyección)
-                  </h4>
-                  <p style={{ margin: 0, fontSize: '0.9rem', color: '#115e59' }}>
-                    Has creado una sesión en un hueco y el cliente tiene futuras planificaciones. ¿Qué deseas hacer?
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  className="btn-primary"
-                  style={{
-                    width: '100%',
-                    marginBottom: 10,
-                    textAlign: 'left',
-                    padding: 12,
-                    background: '#0f172a',
-                    display: 'block'
-                  }}
-                  onClick={handleEjecutarCreacionIndependiente}
-                >
-                  <strong>Crear como sesión independiente</strong>
-                  <br />
-                  <span style={{ fontSize: '0.8rem', fontWeight: 'normal' }}>
-                    Se creará la sesión vacía y las rutinas futuras quedarán intactas.
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  className="btn-primary"
-                  style={{
-                    width: '100%',
-                    marginBottom: 10,
-                    textAlign: 'left',
-                    padding: 12,
-                    background: '#16a34a',
-                    display: 'block'
-                  }}
-                  onClick={handleEjecutarCreacionCascada}
-                >
-                  <strong>Recoger en cascada las planificaciones posteriores</strong>
-                  <br />
-                  <span style={{ fontSize: '0.8rem', fontWeight: 'normal' }}>
-                    Esta sesión recogerá la rutina de la siguiente sesión futura, adelantando toda su progresión. La última quedará libre.
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  style={{ width: '100%', textAlign: 'center', padding: 12 }}
-                  onClick={() => {
-                    setPlanStep(1);
-                    setPendingCreationData(null);
-                  }}
-                >
-                  Cancelar y Volver
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <PlanificarDiasModal
+        isOpen={planModalOpen}
+        onClose={() => setPlanModalOpen(false)}
+        clientes={globalClientes}
+        diasSemana={diasSemana}
+        timeSlots={timeSlots}
+        horasFinOptions={horasFinOptions}
+        sgTimeSlotsRaw={sgTimeSlotsRaw}
+        ocupacionMaxima={ocupacionMaxima}
+        aforoGlobalPorFila={aforoGlobalPorFila}
+        timeToRowMap={timeToRowMap}
+        separatorRow={separatorRow}
+        slotContext={slotContext}
+        saving={savingPlan}
+        onSubmitPlan={handleSubmitPlanificar}
+      />
 
       {/* MODAL ASIGNAR SESIÓN EXISTENTE (SIN FECHA O PENDIENTE) */}
       {asigModalOpen && (

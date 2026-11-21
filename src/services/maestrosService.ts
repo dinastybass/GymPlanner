@@ -72,6 +72,58 @@ export function parsearHorarioSmallGroup(valorRaw: string): {
   };
 }
 
+export function parsearFestivoMaestro(valorRaw: string): {
+  fechaISO: string;
+  motivo: string;
+  formateado: string;
+} | null {
+  const raw = String(valorRaw || '').trim();
+  if (!raw) return null;
+
+  // Match YYYY-MM-DD optionally followed by separator and reason
+  const matchISO = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s*(?:[-–—·:|]\s*|\s+)(.*))?$/);
+  if (matchISO) {
+    const [, y, m, d, rest] = matchISO;
+    const fechaISO = `${y}-${m}-${d}`;
+    const motivo = (rest || '').trim();
+    const fechaES = `${d}/${m}/${y}`;
+    return {
+      fechaISO,
+      motivo,
+      formateado: motivo ? `${fechaES} · ${motivo}` : fechaES
+    };
+  }
+
+  // Match DD/MM/YYYY or DD-MM-YYYY optionally followed by separator and reason
+  const matchES = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:\s*(?:[-–—·:|]\s*|\s+)(.*))?$/);
+  if (matchES) {
+    const [, dRaw, mRaw, y, rest] = matchES;
+    const d = dRaw.padStart(2, '0');
+    const m = mRaw.padStart(2, '0');
+    const fechaISO = `${y}-${m}-${d}`;
+    const motivo = (rest || '').trim();
+    const fechaES = `${d}/${m}/${y}`;
+    return {
+      fechaISO,
+      motivo,
+      formateado: motivo ? `${fechaES} · ${motivo}` : fechaES
+    };
+  }
+
+  return null;
+}
+
+export function extraerMapaFestivos(valoresFestivos: string[]): Record<string, string> {
+  const mapa: Record<string, string> = {};
+  (valoresFestivos || []).forEach(v => {
+    const parsed = parsearFestivoMaestro(v);
+    if (parsed) {
+      mapa[parsed.fechaISO] = parsed.motivo || 'Festivo';
+    }
+  });
+  return mapa;
+}
+
 export const ESTRUCTURA_MAESTROS: Record<string, string[]> = {
   "Ejercicios": [
     "Niveles",
@@ -96,6 +148,7 @@ export const ESTRUCTURA_MAESTROS: Record<string, string[]> = {
     "Horarios Sesiones Individuales",
     "Horarios Small Groups",
     "Días de la semana",
+    "Festivos",
     "Ocupación máxima",
     "Meses de margen para reprogramar"
   ],
@@ -238,6 +291,8 @@ export async function cargarTodosLosMaestros(forzar = false): Promise<Record<str
       const valStr =
         sec === 'Agenda' && clv === 'Horarios Small Groups'
           ? parsearHorarioSmallGroup(rawValStr).formateado
+          : sec === 'Agenda' && clv === 'Festivos'
+          ? parsearFestivoMaestro(rawValStr)?.formateado || rawValStr
           : rawValStr;
       if (!mapa[sec][clv].some(existing => existing.id === itemId)) {
         mapa[sec][clv].push({
@@ -338,6 +393,8 @@ export async function guardarValorMaestro(
   const valLimpio =
     seccion === 'Agenda' && clave === 'Horarios Small Groups'
       ? parsearHorarioSmallGroup(valor).formateado
+      : seccion === 'Agenda' && clave === 'Festivos'
+      ? parsearFestivoMaestro(valor)?.formateado || String(valor).trim()
       : String(valor).trim();
   if (!valLimpio) return;
 
@@ -401,6 +458,8 @@ export async function reordenarValoresMaestro(
     const valLimpio =
       seccion === 'Agenda' && clave === 'Horarios Small Groups'
         ? parsearHorarioSmallGroup(rawLimpio).formateado
+        : seccion === 'Agenda' && clave === 'Festivos'
+        ? parsearFestivoMaestro(rawLimpio)?.formateado || rawLimpio
         : rawLimpio;
     const itemId = item.id || generarIdItem(valLimpio);
     nuevosValores[itemId] = {
@@ -729,7 +788,9 @@ const KEY_ALIASES: Record<string, string[]> = {
   'Ocupacion maxima': ['Ocupación máxima'],
   'Ocupación Máxima': ['Ocupación máxima'],
   'Meses para reprogramar': ['Meses de margen para reprogramar'],
-  'Meses reprogramacion': ['Meses de margen para reprogramar']
+  'Meses reprogramacion': ['Meses de margen para reprogramar'],
+  'Días festivos': ['Festivos'],
+  'Dias festivos': ['Festivos']
 };
 
 export function extraerListaMaster(

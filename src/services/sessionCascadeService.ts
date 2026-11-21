@@ -2538,11 +2538,24 @@ export async function crearSesionesConCascadaAtras(params: {
   const redoOps: FirestoreOp[] = [];
   const ahora = new Date();
 
+  let creadasOActualizadas = 0;
+  let primeraFechaCreada: Date | null = null;
+
   if (isSG || !conCascadaAtras) {
     for (let i = 0; i < fechasOrdenadas.length; i++) {
       const fechaGuardar = fechasOrdenadas[i];
 
-      if (!isSG) {
+      if (isSG) {
+        const yaEnEseGrupo = todasSesiones.find(
+          s =>
+            !s.sin_fecha &&
+            s.fechaObj &&
+            esSmallGroupTipo(s.tipo_sesion) &&
+            !esSesionCancelada(s) &&
+            Math.abs(s.fechaObj.getTime() - fechaGuardar.getTime()) < 60000
+        );
+        if (yaEnEseGrupo) continue;
+      } else {
         const existenteDia = todasSesiones.find(
           s =>
             !s.sin_fecha &&
@@ -2573,6 +2586,8 @@ export async function crearSesionesConCascadaAtras(params: {
             data: { ...existenteDia.raw, ...updateExistente },
             merge: false
           });
+          if (!primeraFechaCreada) primeraFechaCreada = fechaGuardar;
+          creadasOActualizadas++;
           continue;
         }
       }
@@ -2601,17 +2616,28 @@ export async function crearSesionesConCascadaAtras(params: {
         data: dataToSave,
         merge: false
       });
+      if (!primeraFechaCreada) primeraFechaCreada = fechaGuardar;
+      creadasOActualizadas++;
+    }
+
+    if (undoOps.length === 0) {
+      return {
+        ok: true,
+        undoOps: [],
+        redoOps: [],
+        toastMessage: `ℹ️ ${nombreCli} ya tenía programadas las sesiones seleccionadas.`
+      };
     }
 
     await batch.commit();
-    const numCitas = fechasOrdenadas.length;
-    const horaTxt = `${String(fechasOrdenadas[0].getUTCHours()).padStart(2, '0')}:${String(
-      fechasOrdenadas[0].getUTCMinutes()
+    const fechaRef = primeraFechaCreada || fechasOrdenadas[0];
+    const horaTxt = `${String(fechaRef.getUTCHours()).padStart(2, '0')}:${String(
+      fechaRef.getUTCMinutes()
     ).padStart(2, '0')}`;
     const labelAccion =
-      numCitas === 1
+      creadasOActualizadas === 1
         ? `Agendar sesión de ${nombreCli} (${horaTxt})`
-        : `Planificar ${numCitas} sesiones de ${nombreCli}`;
+        : `Planificar ${creadasOActualizadas} sesiones de ${nombreCli}`;
 
     return {
       ok: true,

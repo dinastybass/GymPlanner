@@ -82,6 +82,91 @@ export const PantallaSalaView: React.FC<PantallaSalaViewProps> = ({ onBack }) =>
   const [sesionesActivas, setSesionesActivas] = useState<any[]>([]);
   const [shiftDateLabel, setShiftDateLabel] = useState('CARGANDO...');
   const [shiftBlockLabel, setShiftBlockLabel] = useState('TURNO');
+  const keepAwakeVideoRef = React.useRef<HTMLVideoElement | null>(null);
+
+  // Evitar que la TV de la sala apague la pantalla (Screen Wake Lock API + Vídeo oculto en bucle continuo)
+  useEffect(() => {
+    let wakeLock: any = null;
+    let canvasInterval: ReturnType<typeof setInterval> | null = null;
+    let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator && document.visibilityState === 'visible') {
+          if (!wakeLock || wakeLock.released) {
+            wakeLock = await (navigator as any).wakeLock.request('screen');
+          }
+        }
+      } catch {
+        // Algunos navegadores de Smart TV no soportan WakeLock y dependen del vídeo oculto
+      }
+    };
+
+    const startHiddenVideoLoop = () => {
+      const videoEl = keepAwakeVideoRef.current;
+      if (!videoEl) return;
+
+      try {
+        videoEl.muted = true;
+        videoEl.loop = true;
+        videoEl.playsInline = true;
+
+        // Si el navegador soporta captureStream desde un canvas, generamos un stream real de 1fps
+        const canvas = document.createElement('canvas');
+        canvas.width = 2;
+        canvas.height = 2;
+        const ctx = canvas.getContext('2d');
+        if (ctx && typeof (canvas as any).captureStream === 'function') {
+          let toggle = false;
+          const drawTick = () => {
+            toggle = !toggle;
+            ctx.fillStyle = toggle ? '#0f172a' : '#1e293b';
+            ctx.fillRect(0, 0, 2, 2);
+          };
+          drawTick();
+          canvasInterval = setInterval(drawTick, 1000);
+          const stream = (canvas as any).captureStream(1);
+          videoEl.srcObject = stream;
+        }
+
+        const playPromise = videoEl.play();
+        if (playPromise && typeof playPromise.catch === 'function') {
+          playPromise.catch(() => {});
+        }
+      } catch {
+        // Fallback silencioso
+      }
+    };
+
+    const ensureAwake = () => {
+      requestWakeLock();
+      const videoEl = keepAwakeVideoRef.current;
+      if (videoEl && videoEl.paused) {
+        videoEl.play().catch(() => {});
+      }
+    };
+
+    requestWakeLock();
+    startHiddenVideoLoop();
+
+    keepAliveTimer = setInterval(ensureAwake, 25000);
+    document.addEventListener('visibilitychange', ensureAwake);
+    document.addEventListener('click', ensureAwake);
+    document.addEventListener('touchstart', ensureAwake);
+    document.addEventListener('keydown', ensureAwake);
+
+    return () => {
+      if (canvasInterval) clearInterval(canvasInterval);
+      if (keepAliveTimer) clearInterval(keepAliveTimer);
+      document.removeEventListener('visibilitychange', ensureAwake);
+      document.removeEventListener('click', ensureAwake);
+      document.removeEventListener('touchstart', ensureAwake);
+      document.removeEventListener('keydown', ensureAwake);
+      if (wakeLock && typeof wakeLock.release === 'function') {
+        wakeLock.release().catch(() => {});
+      }
+    };
+  }, []);
 
   const actualizarPantallaSala = useCallback(async () => {
     try {
@@ -413,6 +498,18 @@ export const PantallaSalaView: React.FC<PantallaSalaViewProps> = ({ onBack }) =>
           </div>
         ))}
       </main>
+
+      {/* Vídeo oculto en reproducción continua para impedir el reposo o protector de pantalla en Smart TVs */}
+      <video
+        ref={keepAwakeVideoRef}
+        className="tv-keep-awake-video"
+        muted
+        loop
+        playsInline
+        autoPlay
+        aria-hidden="true"
+        src="data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAAu1tZGF0AAACrgYF//+q3EXpvebZSLeWLNgg2SPu73gyNjQgLSBjb3JlIDE0OCByMjc5NSA2YThhOWI2IC0gSC4yNjQvTVBFRy00 AVCIGNvZGVjIC0gQ29weXJpZ2h0IDIwMDMtMjAxNyAtIGh0dHA6Ly93d3cudmlkZW9sYW4ub3JnL3gyNjQuaHRtbCAtIG9wdGlvbnM6IGNhYmFjPTEgcmVmPTMgZGVibG9jaz0xOjA6MCBhbmFseXNlPTB4MzoweDExMyBtZT1oZXggc3VibWU9NyBwcyk9MSBwc3lfcmQ9MS4wMDowLjAwIG1peGVkX3JlZj0xIG1lX3JhbmdlPTE2IGNocm9tYV9tZT0xIHRyZWxsaXM9MSA4eDhkY3Q9MSBjcW09MCBkZWFkem9uZT0yMSwxMSBmYXN0X3Bza2lwPTEgY2hyb21hX3FwX29mZnNldD0tMiB0aHJlYWRzPTYgbG9va2FoZWFkX3RocmVhZHM9MSBzbGljZWRfdGhyZWFkcz0wIG5yPTAgZGVjaW1hdGU9MSBpbnRlcmxhY2VkPTAgYmx1cmF5X2NvbXBhdD0wIGNvbnN0cmFpbmVkX2ludHJhPTAgYmZyYW1lcz0zIGJfHlyaW1pZD0yIGJfYWRhcHQ9MSBiX2JpYXM9MCBkaXJlY3Q9MSB3ZWlnaHRiPTEgb3Blbl9nb3A9MCB3ZWlnaHRwPTIga2V5aW50PTI1MCBrZXlpbnRfbWluPTI1IHNjZW5lY3V0PTQwIGludHJhX3JlZnJlc2g9MCByY19sb29rYWhlYWQ9NDAgcmM9Y3JmIG1idHJlZT0xIGNyZj0yMy4wIHFjb21wPTAuNjAgcXBtaW49MCBxcG1heD02OSBxcHN0ZXA9NCB2YnZfbWF4cmF0ZT0wIHZidl9idWZzaXplPTAgY3JmX21heD0wLjAgbmFsX2hyZD1ub25lIGZpbGxlcj0wIGlwX3JhdGlvPTEuNDAgYXE9MToxLjAw"
+      />
     </div>
   );
 };
