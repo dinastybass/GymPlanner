@@ -11,6 +11,7 @@ import {
   DIAS_SEMANA_SG,
   HORAS_MEDIA_HORA_SG,
   parsearHorarioSmallGroup,
+  parsearFestivoMaestro,
   cargarTodosLosMaestros,
   guardarValorMaestro,
   reordenarValoresMaestro,
@@ -54,6 +55,8 @@ export const MaestrosView: React.FC = () => {
   const [inputValor, setInputValor] = useState('');
   const [sgDia, setSgDia] = useState<string>('Lunes');
   const [sgHora, setSgHora] = useState<string>('18:00');
+  const [festivoFecha, setFestivoFecha] = useState<string>('');
+  const [festivoMotivo, setFestivoMotivo] = useState<string>('');
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingOldValue, setEditingOldValue] = useState<string | null>(null);
   const [savingItem, setSavingItem] = useState(false);
@@ -180,6 +183,8 @@ export const MaestrosView: React.FC = () => {
     setEditingItemId(null);
     setEditingOldValue(null);
     setInputValor('');
+    setFestivoFecha('');
+    setFestivoMotivo('');
   };
 
   const seleccionarClave = (sec: string, clv: string) => {
@@ -196,6 +201,10 @@ export const MaestrosView: React.FC = () => {
       const parsed = parsearHorarioSmallGroup(valor);
       setSgDia(parsed.dia);
       setSgHora(parsed.hora);
+    } else if (currentSection === 'Agenda' && currentKey === 'Festivos') {
+      const parsedFestivo = parsearFestivoMaestro(valor);
+      setFestivoFecha(parsedFestivo?.fechaISO || '');
+      setFestivoMotivo(parsedFestivo?.motivo || '');
     }
   };
 
@@ -203,7 +212,25 @@ export const MaestrosView: React.FC = () => {
     if (!puedeEditarActual()) return;
     const esHorariosSG =
       currentSection === 'Agenda' && currentKey === 'Horarios Small Groups';
-    const val = esHorariosSG ? `${sgDia} ${sgHora}` : inputValor.trim();
+    const esFestivos =
+      currentSection === 'Agenda' && currentKey === 'Festivos';
+
+    let val = '';
+    if (esHorariosSG) {
+      val = `${sgDia} ${sgHora}`;
+    } else if (esFestivos) {
+      if (!festivoFecha) {
+        alert('Selecciona una fecha para el día festivo.');
+        return;
+      }
+      const parsed = parsearFestivoMaestro(
+        festivoMotivo.trim() ? `${festivoFecha} · ${festivoMotivo.trim()}` : festivoFecha
+      );
+      val = parsed ? parsed.formateado : festivoFecha;
+    } else {
+      val = inputValor.trim();
+    }
+
     if (!val) {
       alert('Escribe un valor válido.');
       return;
@@ -887,6 +914,29 @@ export const MaestrosView: React.FC = () => {
             </div>
           )}
 
+          {currentSection === 'Agenda' && currentKey === 'Festivos' && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 8,
+                background: '#f8fafc',
+                border: '1px solid #cbd5e1',
+                color: '#334155',
+                padding: '10px 14px',
+                borderRadius: 10,
+                fontSize: '0.84rem',
+                marginBottom: 14,
+                lineHeight: 1.45
+              }}
+            >
+              <span className="ui-icon" style={{ marginTop: 2 }}>📅</span>
+              <span>
+                <strong>Días Festivos (No laborables):</strong> Los días añadidos aquí se mostrarán sombreados en gris en la pestaña de <strong>Agenda</strong> para identificar fácilmente las jornadas festivas o no laborables.
+              </span>
+            </div>
+          )}
+
           {!esVistaPermisos && !esVistaBackups && editable && (
             <div className="add-item-bar" style={{ flexWrap: 'wrap' }}>
               {currentSection === 'Agenda' && currentKey === 'Horarios Small Groups' ? (
@@ -938,6 +988,54 @@ export const MaestrosView: React.FC = () => {
                         </option>
                       ))}
                     </select>
+                  </div>
+                </div>
+              ) : currentSection === 'Agenda' && currentKey === 'Festivos' ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: '1 1 170px' }}>
+                    <label
+                      style={{
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        color: 'var(--text-muted)',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      Fecha:
+                    </label>
+                    <input
+                      type="date"
+                      className="form-control"
+                      value={festivoFecha}
+                      onChange={e => setFestivoFecha(e.target.value)}
+                      style={{ margin: 0, flex: 1 }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: '2 1 220px' }}>
+                    <label
+                      style={{
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        color: 'var(--text-muted)',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      Motivo (opcional):
+                    </label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="Ej: Año Nuevo, Festivo local..."
+                      value={festivoMotivo}
+                      onChange={e => setFestivoMotivo(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleGuardarItem();
+                        }
+                      }}
+                      style={{ margin: 0, flex: 1 }}
+                    />
                   </div>
                 </div>
               ) : (

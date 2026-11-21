@@ -1023,7 +1023,16 @@ export const EditarPlantillaView: React.FC<EditarPlantillaViewProps> = ({
 
       {/* Modal Añadir / Editar Ejercicio en Plantilla */}
       {modalAddOpen && (
-        <div className="modal-overlay" style={{ display: 'flex' }}>
+        <div
+          className="modal-overlay"
+          style={{ display: 'flex' }}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !exPanelOpen && !matPanelOpen) {
+              e.preventDefault();
+              guardarEjercicio();
+            }
+          }}
+        >
           <div className="modal-content">
             <button
               type="button"

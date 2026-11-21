@@ -194,3 +194,99 @@ export function obtenerFechaOperativaEfectiva(
   return { targetDate: target, rolledOver };
 }
 
+/**
+ * Devuelve el lunes (00:00:00 UTC) de la semana a la que pertenece una fecha (interpretada en UTC).
+ */
+export function obtenerLunesSemanaUTC(dateObj: Date): Date {
+  const d = new Date(
+    Date.UTC(dateObj.getUTCFullYear(), dateObj.getUTCMonth(), dateObj.getUTCDate(), 0, 0, 0, 0)
+  );
+  const day = d.getUTCDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setUTCDate(d.getUTCDate() + diff);
+  return d;
+}
+
+/**
+ * Determina a qué mes (year, month 0-11) pertenece una semana según la regla de mayoría:
+ * Si una semana contiene más de la mitad de los días laborables (configurados en el maestro
+ * "Días de la semana", por defecto lunes a viernes = 5 días) dentro de un mes, toda la semana
+ * pertenece a ese mes.
+ */
+export function obtenerMesPropietarioSemanaUTC(
+  dateInWeekUTC: Date,
+  diasSemana?: string[]
+): { year: number; month: number } {
+  const monday = obtenerLunesSemanaUTC(dateInWeekUTC);
+  const workingDays = getWorkingDaysJsSet(diasSemana);
+
+  const counts = new Map<string, { year: number; month: number; count: number }>();
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setUTCDate(d.getUTCDate() + i);
+    if (!workingDays.has(d.getUTCDay())) continue;
+
+    const y = d.getUTCFullYear();
+    const m = d.getUTCMonth();
+    const key = `${y}-${m}`;
+    const existing = counts.get(key);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      counts.set(key, { year: y, month: m, count: 1 });
+    }
+  }
+
+  let best: { year: number; month: number; count: number } = {
+    year: monday.getUTCFullYear(),
+    month: monday.getUTCMonth(),
+    count: -1
+  };
+
+  counts.forEach(entry => {
+    // Si tiene más días laborables (o en caso de empate par, prioriza el mes entrante)
+    if (entry.count > best.count || (entry.count === best.count && (entry.year > best.year || (entry.year === best.year && entry.month > best.month)))) {
+      best = entry;
+    }
+  });
+
+  return { year: best.year, month: best.month };
+}
+
+/**
+ * Devuelve todas las semanas completas que pertenecen operativamente a un mes (year, month 0-11)
+ * según la regla de mayoría de días del maestro "Días de la semana".
+ */
+export function obtenerSemanasDelMesOperativo(
+  year: number,
+  month: number,
+  diasSemana?: string[]
+): { weekNum: number; mondayDate: Date }[] {
+  const firstDayOfMonth = new Date(Date.UTC(year, month, 1));
+  const lastDayOfMonth = new Date(Date.UTC(year, month + 1, 0));
+
+  // Empezar desde el lunes de la semana del día 1 del mes
+  const cursorMonday = obtenerLunesSemanaUTC(firstDayOfMonth);
+  // Límite hasta el lunes de la semana posterior al último día del mes
+  const limitMonday = obtenerLunesSemanaUTC(lastDayOfMonth);
+  limitMonday.setUTCDate(limitMonday.getUTCDate() + 7);
+
+  const weeks: { weekNum: number; mondayDate: Date }[] = [];
+  let wNum = 1;
+
+  while (cursorMonday <= limitMonday) {
+    const owner = obtenerMesPropietarioSemanaUTC(cursorMonday, diasSemana);
+    if (owner.year === year && owner.month === month) {
+      weeks.push({
+        weekNum: wNum++,
+        mondayDate: new Date(cursorMonday)
+      });
+    }
+    cursorMonday.setUTCDate(cursorMonday.getUTCDate() + 7);
+  }
+
+  return weeks;
+}
+
+

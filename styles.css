@@ -2616,6 +2616,184 @@ textarea.form-control {
   border-color: #7dd3fc;
 }
 
+.plan-modal-header {
+  margin-bottom: 20px;
+}
+
+.plan-modal-header h2 {
+  margin: 0 0 5px 0;
+  font-size: 1.4rem;
+}
+
+.plan-modal-header p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.plan-type-switch {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin-bottom: 16px;
+  padding: 14px 15px;
+  background: var(--hover-bg);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.plan-modal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.plan-modal-grid .form-group.full {
+  grid-column: 1 / -1;
+}
+
+.plan-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.plan-label-count {
+  font-weight: 500;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.plan-quick-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plan-quick-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: 0.15s ease;
+}
+
+.plan-quick-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text-main);
+  border-color: var(--accent);
+}
+
+.plan-dates-box {
+  background: var(--hover-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.plan-dates-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 170px;
+  overflow-y: auto;
+  padding: 2px 0;
+}
+
+.plan-date-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.15s ease;
+  user-select: none;
+}
+
+.plan-date-chip:hover {
+  border-color: #7dd3fc;
+  color: var(--text-main);
+}
+
+.plan-date-chip.active {
+  background: #e0f2fe;
+  color: #0369a1;
+  border-color: #7dd3fc;
+}
+
+.plan-hint-text {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin: 8px 0 0 0;
+  line-height: 1.4;
+}
+
+.plan-cascade-box {
+  grid-column: 1 / -1;
+  background: #f0fdfa;
+  border: 1px solid #5eead4;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-top: 2px;
+}
+
+.plan-cascade-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  margin: 0;
+}
+
+.plan-cascade-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: #0d9488;
+  flex-shrink: 0;
+}
+
+.plan-cascade-title {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #0f766e;
+}
+
+.plan-cascade-desc {
+  font-size: 0.8rem;
+  color: #115e59;
+  margin-top: 3px;
+  line-height: 1.4;
+}
+
+.plan-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+@media (max-width: 640px) {
+  .plan-modal-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+}
+
 .warning-msg {
   background: #fef2f2;
   border: 1px solid #fecaca;
@@ -5655,4 +5833,166 @@ textarea.form-control {
   line-height: 1;
   flex-shrink: 0;
 }
+
+/* ==========================================================================
+   MODAL Y PIE DE PÁGINA DE PROTECCIÓN DE DATOS (RGPD / LOPDGDD)
+   ========================================================================== */
+.app-legal-footer {
+  width: 100%;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  padding: 12px 5%;
+  box-sizing: border-box;
+  margin-top: auto;
+}
+
+.app-legal-footer-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.legal-footer-link {
+  color: var(--accent-dark);
+  text-decoration: underline;
+  font-weight: 600;
+  font-size: 0.8rem;
+  transition: color 0.15s ease;
+}
+
+.legal-footer-link:hover {
+  color: var(--accent);
+}
+
+.login-legal-footer {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* Días Festivos (No laborables) en Agenda */
+.day-header > span {
+  display: block;
+}
+
+.day-header.festivo {
+  background: #e2e8f0 !important;
+  color: #475569 !important;
+  border-bottom-color: #94a3b8 !important;
+}
+
+.day-header.festivo strong,
+.day-header.festivo > span {
+  color: #475569 !important;
+}
+
+.festivo-line {
+  display: block;
+  margin-top: 4px;
+  line-height: 1.1;
+}
+
+.festivo-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  background: #cbd5e1;
+  color: #334155 !important;
+  border-radius: 999px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grid-bg-cell.festivo-col {
+  background-color: #e2e8f0 !important;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(148, 163, 184, 0.18),
+    rgba(148, 163, 184, 0.18) 8px,
+    rgba(226, 232, 240, 0.6) 8px,
+    rgba(226, 232, 240, 0.6) 16px
+  ) !important;
+}
+
+.sg-day-column.festivo {
+  background: #e2e8f0 !important;
+  border-color: #cbd5e1 !important;
+}
+
+.sg-day-header strong {
+  display: block;
+}
+
+.sg-day-header > span {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: normal;
+  color: var(--text-muted);
+}
+
+.sg-day-header.festivo {
+  background: #cbd5e1 !important;
+  color: #334155 !important;
+  border-bottom-color: #94a3b8 !important;
+}
+
+.sg-day-header.festivo strong,
+.sg-day-header.festivo > span {
+  color: #475569 !important;
+}
+
+.sg-day-column.festivo .sg-slot {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+}
+
+.mobile-day-tab.is-festivo {
+  background: #e2e8f0 !important;
+  color: #475569 !important;
+  border-color: #cbd5e1 !important;
+}
+
+.mobile-day-tab.is-festivo.active {
+  background: #64748b !important;
+  color: #ffffff !important;
+  border-color: #475569 !important;
+}
+
+/* Vídeo oculto en Pantalla Sala para mantener la TV encendida */
+.tv-keep-awake-video {
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  width: 2px;
+  height: 2px;
+  opacity: 0.01;
+  pointer-events: none;
+  z-index: -1;
+}
+
+@media (max-width: 900px) {
+  .app-legal-footer {
+    padding-bottom: 84px;
+  }
+}
+
+
 
