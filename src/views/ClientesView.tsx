@@ -16,7 +16,8 @@ interface ClientesViewProps {
 }
 
 export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
-  const { role } = useAuth();
+  const { role, esModuloActivo } = useAuth();
+  const moduloGoKidsActivo = esModuloActivo('go_kids');
   const { pushAction, registerChangeListener } = useUndo();
 
   const [clientesData, setClientesData] = useState<any[]>([]);
@@ -737,42 +738,46 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
                 </select>
               </div>
 
-              <div className="form-section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span className="ui-icon">🧒</span>
-                <span>Servicio Go &amp; Kids</span>
-              </div>
+              {moduloGoKidsActivo && (
+                <>
+                  <div className="form-section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span className="ui-icon">🧒</span>
+                    <span>Servicio Go &amp; Kids</span>
+                  </div>
 
-              <div className="form-group">
-                <label>¿Activo este mes?</label>
-                <select
-                  value={formAlta.kidsActivo}
-                  onChange={e => setFormAlta(prev => ({ ...prev, kidsActivo: e.target.value }))}
-                >
-                  <option value="NO">No</option>
-                  <option value="SI">Sí</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Nº de Niños Contratados</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={10}
-                  disabled={formAlta.kidsActivo !== 'SI'}
-                  value={formAlta.kidsActivo === 'SI' ? formAlta.kidsNum : '0'}
-                  onChange={e => setFormAlta(prev => ({ ...prev, kidsNum: e.target.value }))}
-                />
-              </div>
-              <div className="form-group full">
-                <label>Nombres de los niños registrados</label>
-                <input
-                  type="text"
-                  placeholder="Ej: Hugo y Mateo"
-                  disabled={formAlta.kidsActivo !== 'SI'}
-                  value={formAlta.kidsActivo === 'SI' ? formAlta.kidsNombres : ''}
-                  onChange={e => setFormAlta(prev => ({ ...prev, kidsNombres: e.target.value }))}
-                />
-              </div>
+                  <div className="form-group">
+                    <label>¿Activo este mes?</label>
+                    <select
+                      value={formAlta.kidsActivo}
+                      onChange={e => setFormAlta(prev => ({ ...prev, kidsActivo: e.target.value }))}
+                    >
+                      <option value="NO">No</option>
+                      <option value="SI">Sí</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Nº de Niños Contratados</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={10}
+                      disabled={formAlta.kidsActivo !== 'SI'}
+                      value={formAlta.kidsActivo === 'SI' ? formAlta.kidsNum : '0'}
+                      onChange={e => setFormAlta(prev => ({ ...prev, kidsNum: e.target.value }))}
+                    />
+                  </div>
+                  <div className="form-group full">
+                    <label>Nombres de los niños registrados</label>
+                    <input
+                      type="text"
+                      placeholder="Ej: Hugo y Mateo"
+                      disabled={formAlta.kidsActivo !== 'SI'}
+                      value={formAlta.kidsActivo === 'SI' ? formAlta.kidsNombres : ''}
+                      onChange={e => setFormAlta(prev => ({ ...prev, kidsNombres: e.target.value }))}
+                    />
+                  </div>
+                </>
+              )}
 
               <div className="form-section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span className="ui-icon">🎯</span>

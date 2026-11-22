@@ -24,7 +24,8 @@ import {
   esSesionCompletada,
   esSesionCancelada,
   parsearFechaFirestore,
-  obtenerMesPropietarioSemanaUTC
+  obtenerMesPropietarioSemanaUTC,
+  ordenarEjerciciosSesionVisualmente
 } from '../utils/helpers';
 import { confirmarDialogo } from '../utils/confirmDialog';
 import { SendRoutineModal } from '../components/SendRoutineModal';
@@ -53,7 +54,8 @@ const diasSemanaCortos = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const clonarProfundo = (obj: any) => clonarProfundoPreservandoFechas(obj);
 
 export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, onNavigate }) => {
-  const { userName } = useAuth();
+  const { userName, esModuloActivo } = useAuth();
+  const moduloGoKidsActivo = esModuloActivo('go_kids');
   const { pushAction, registerChangeListener } = useUndo();
 
   const [clienteActual, setClienteActual] = useState<any>(null);
@@ -166,12 +168,14 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
     ejercicios: any[];
     intensity: string;
     tipoSesion: string;
+    ordenCustomizado: boolean;
   }>({
     open: false,
     originSessionId: '',
     ejercicios: [],
     intensity: 'MED',
-    tipoSesion: 'Individual'
+    tipoSesion: 'Individual',
+    ordenCustomizado: false
   });
 
 
@@ -692,12 +696,19 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
       return;
     }
     const intNorm = normalizarIntensidad(sesion.intensidad_sesion || sesion.intensidad || 'MED');
+    const esOrdenCustom = Boolean(sesion.orden_customizado);
+    const ejerciciosOrdenados = ordenarEjerciciosSesionVisualmente(
+      sesion.ejercicios,
+      ordenBloques,
+      esOrdenCustom
+    );
     setSendRoutineData({
       open: true,
       originSessionId: idSesionOrigen,
-      ejercicios: sesion.ejercicios,
+      ejercicios: ejerciciosOrdenados,
       intensity: intNorm || 'MED',
-      tipoSesion: sesion.tipo_sesion || 'Individual'
+      tipoSesion: sesion.tipo_sesion || 'Individual',
+      ordenCustomizado: esOrdenCustom
     });
   };
 
@@ -1145,12 +1156,20 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
             {mobileDetailsOpen ? (
               <>
                 <span className="ui-icon">▲</span>
-                <span>Ocultar objetivos, lesiones y Go&amp;Kids</span>
+                <span>
+                  {moduloGoKidsActivo
+                    ? 'Ocultar objetivos, lesiones y Go&Kids'
+                    : 'Ocultar objetivos y lesiones'}
+                </span>
               </>
             ) : (
               <>
                 <span className="ui-icon">📋</span>
-                <span>Ver objetivos, lesiones y Go&amp;Kids</span>
+                <span>
+                  {moduloGoKidsActivo
+                    ? 'Ver objetivos, lesiones y Go&Kids'
+                    : 'Ver objetivos y lesiones'}
+                </span>
               </>
             )}
           </button>
@@ -1190,24 +1209,26 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
               </div>
             </div>
 
-            <div className="ficha-card">
-              <h3 style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span className="ui-icon">👶</span>
-                <span>Servicio Go&amp;Kids</span>
-              </h3>
-              <div className="info-row">
-                <span className="info-label">Activo este mes</span>
-                <span className="info-val">{kidsActivo}</span>
+            {moduloGoKidsActivo && (
+              <div className="ficha-card">
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span className="ui-icon">👶</span>
+                  <span>Servicio Go&amp;Kids</span>
+                </h3>
+                <div className="info-row">
+                  <span className="info-label">Activo este mes</span>
+                  <span className="info-val">{kidsActivo}</span>
+                </div>
+                <div className="info-row">
+                  <span className="info-label">Niños contratados</span>
+                  <span className="info-val">{kidsNum}</span>
+                </div>
+                <div className="info-row">
+                  <span className="info-label">Niños registrados</span>
+                  <span className="info-val">{kidsNom}</span>
+                </div>
               </div>
-              <div className="info-row">
-                <span className="info-label">Niños contratados</span>
-                <span className="info-val">{kidsNum}</span>
-              </div>
-              <div className="info-row">
-                <span className="info-label">Niños registrados</span>
-                <span className="info-val">{kidsNom}</span>
-              </div>
-            </div>
+            )}
           </div>
         </aside>
 
@@ -2294,35 +2315,39 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
                 />
               </div>
 
-              <div className="form-group">
-                <label>Servicio Go&amp;Kids Activo</label>
-                <select
-                  value={editForm.kidsActivo}
-                  onChange={e => setEditForm(prev => ({ ...prev, kidsActivo: e.target.value }))}
-                >
-                  <option value="NO">No</option>
-                  <option value="SI">Sí</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Nº Niños Contratados</label>
-                <input
-                  type="number"
-                  min={0}
-                  disabled={editForm.kidsActivo !== 'SI'}
-                  value={editForm.kidsActivo === 'SI' ? editForm.kidsNum : '0'}
-                  onChange={e => setEditForm(prev => ({ ...prev, kidsNum: e.target.value }))}
-                />
-              </div>
-              <div className="form-group full">
-                <label>Nombres de los niños registrados</label>
-                <input
-                  type="text"
-                  disabled={editForm.kidsActivo !== 'SI'}
-                  value={editForm.kidsActivo === 'SI' ? editForm.kidsNombres : ''}
-                  onChange={e => setEditForm(prev => ({ ...prev, kidsNombres: e.target.value }))}
-                />
-              </div>
+              {moduloGoKidsActivo && (
+                <>
+                  <div className="form-group">
+                    <label>Servicio Go&amp;Kids Activo</label>
+                    <select
+                      value={editForm.kidsActivo}
+                      onChange={e => setEditForm(prev => ({ ...prev, kidsActivo: e.target.value }))}
+                    >
+                      <option value="NO">No</option>
+                      <option value="SI">Sí</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Nº Niños Contratados</label>
+                    <input
+                      type="number"
+                      min={0}
+                      disabled={editForm.kidsActivo !== 'SI'}
+                      value={editForm.kidsActivo === 'SI' ? editForm.kidsNum : '0'}
+                      onChange={e => setEditForm(prev => ({ ...prev, kidsNum: e.target.value }))}
+                    />
+                  </div>
+                  <div className="form-group full">
+                    <label>Nombres de los niños registrados</label>
+                    <input
+                      type="text"
+                      disabled={editForm.kidsActivo !== 'SI'}
+                      value={editForm.kidsActivo === 'SI' ? editForm.kidsNombres : ''}
+                      onChange={e => setEditForm(prev => ({ ...prev, kidsNombres: e.target.value }))}
+                    />
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="modal-footer">
@@ -2470,6 +2495,7 @@ export const FichaClienteView: React.FC<FichaClienteViewProps> = ({ clientId, on
         defaultTipoSesion={sendRoutineData.tipoSesion}
         defaultClientId={clientId}
         excludeSessionId={sendRoutineData.originSessionId}
+        ordenCustomizadoOrigen={sendRoutineData.ordenCustomizado}
         onSuccess={cargarTodo}
       />
 

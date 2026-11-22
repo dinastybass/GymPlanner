@@ -15,6 +15,7 @@ import { SendRoutineModal } from '../components/SendRoutineModal';
 import { ReprogramarSesionModal } from '../components/ReprogramarSesionModal';
 import { CancelarEliminarSesionModal } from '../components/CancelarEliminarSesionModal';
 import { PlanificarDiasModal, PlanificarSubmitPayload } from '../components/PlanificarDiasModal';
+import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
 import {
   esSesionCompletada,
@@ -169,6 +170,8 @@ function formatearSesionAgenda(id: string, data: any = {}, mesesMargen = 1) {
 }
 
 export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
+  const { esModuloActivo } = useAuth();
+  const moduloSmallGroupActivo = esModuloActivo('small_group');
   const { pushAction, registerChangeListener, showToast } = useUndo();
 
   const [currentView, setCurrentView] = useState<'individuales' | 'sg'>(() => {
@@ -180,6 +183,12 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     }
     return 'individuales';
   });
+
+  useEffect(() => {
+    if (!moduloSmallGroupActivo && currentView === 'sg') {
+      setCurrentView('individuales');
+    }
+  }, [moduloSmallGroupActivo, currentView]);
   const [currentMonthDate, setCurrentMonthDate] = useState<Date>(() => {
     try {
       const saved = sessionStorage.getItem('gym_agenda_month');
@@ -1340,14 +1349,16 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
           <span className="desktop-text">Sesiones individuales</span>
           <span className="mobile-text">Individuales</span>
         </button>
-        <button
-          type="button"
-          className={`filter-btn ${currentView === 'sg' ? 'active' : 'inactive'}`}
-          onClick={() => setCurrentView('sg')}
-        >
-          <span className="desktop-text">Small Groups</span>
-          <span className="mobile-text">Small Groups</span>
-        </button>
+        {moduloSmallGroupActivo && (
+          <button
+            type="button"
+            className={`filter-btn ${currentView === 'sg' ? 'active' : 'inactive'}`}
+            onClick={() => setCurrentView('sg')}
+          >
+            <span className="desktop-text">Small Groups</span>
+            <span className="mobile-text">Small Groups</span>
+          </button>
+        )}
 
         <div className="filters-right-actions">
           <button
@@ -2211,7 +2222,9 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                     Crear nueva sesión
                   </div>
                   <div style={{ fontSize: '0.83rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                    Abre el planificador habitual para generar nuevas citas individuales o de Small Group.
+                    {moduloSmallGroupActivo
+                      ? 'Abre el planificador habitual para generar nuevas citas individuales o de Small Group.'
+                      : 'Abre el planificador habitual para generar nuevas citas individuales.'}
                   </div>
                 </div>
               </button>

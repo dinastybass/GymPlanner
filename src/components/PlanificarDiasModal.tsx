@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { CustomDropdown } from './CustomDropdown';
+import { useAuth } from '../context/AuthContext';
 import {
   esSesionCompletada,
   parsearFechaFirestore,
@@ -112,6 +113,8 @@ export const PlanificarDiasModal: React.FC<PlanificarDiasModalProps> = ({
   saving,
   onSubmitPlan
 }) => {
+  const { esModuloActivo } = useAuth();
+  const moduloSmallGroupActivo = esModuloActivo('small_group');
   const [planTipo, setPlanTipo] = useState<'Individual' | 'Small Group'>('Individual');
   const [planClienteId, setPlanClienteId] = useState('');
   const [planSelectedDays, setPlanSelectedDays] = useState<number[]>([]);
@@ -151,9 +154,10 @@ export const PlanificarDiasModal: React.FC<PlanificarDiasModalProps> = ({
 
       const dayOfWeek = dateObj.getUTCDay();
       setPlanSelectedWeeks([nthWeek]);
-      setPlanTipo(slotContext.tipoPlan);
+      const tipoResuelto = !moduloSmallGroupActivo ? 'Individual' : slotContext.tipoPlan;
+      setPlanTipo(tipoResuelto);
 
-      if (slotContext.tipoPlan === 'Individual') {
+      if (tipoResuelto === 'Individual') {
         setPlanSelectedDays([dayOfWeek]);
         setPlanSelectedSgSlots([]);
         setPlanHoraIni(slotContext.timeKey);
@@ -177,7 +181,7 @@ export const PlanificarDiasModal: React.FC<PlanificarDiasModalProps> = ({
         const owner = obtenerMesPropietarioSemanaUTC(todayUTC, diasSemana);
         setPlanMes(`${owner.year}-${String(owner.month + 1).padStart(2, '0')}`);
       }
-      setPlanTipo(slotContext.tipoPlan || 'Individual');
+      setPlanTipo(!moduloSmallGroupActivo ? 'Individual' : slotContext.tipoPlan || 'Individual');
       setPlanSelectedDays([]);
       setPlanSelectedSgSlots([]);
       setPlanSelectedWeeks([1, 2, 3, 4, 5]);
@@ -436,28 +440,30 @@ export const PlanificarDiasModal: React.FC<PlanificarDiasModalProps> = ({
         </div>
 
         <form onSubmit={handleFormSubmit}>
-          <div className="plan-type-switch">
-            <label className="radio-option">
-              <input
-                type="radio"
-                name="plan_tipo"
-                value="Individual"
-                checked={planTipo === 'Individual'}
-                onChange={() => handleSwitchTipo('Individual')}
-              />
-              Sesión Individual
-            </label>
-            <label className="radio-option">
-              <input
-                type="radio"
-                name="plan_tipo"
-                value="Small Group"
-                checked={planTipo === 'Small Group'}
-                onChange={() => handleSwitchTipo('Small Group')}
-              />
-              Small Group
-            </label>
-          </div>
+          {moduloSmallGroupActivo && (
+            <div className="plan-type-switch">
+              <label className="radio-option">
+                <input
+                  type="radio"
+                  name="plan_tipo"
+                  value="Individual"
+                  checked={planTipo === 'Individual'}
+                  onChange={() => handleSwitchTipo('Individual')}
+                />
+                Sesión Individual
+              </label>
+              <label className="radio-option">
+                <input
+                  type="radio"
+                  name="plan_tipo"
+                  value="Small Group"
+                  checked={planTipo === 'Small Group'}
+                  onChange={() => handleSwitchTipo('Small Group')}
+                />
+                Small Group
+              </label>
+            </div>
+          )}
 
           <div className="plan-modal-grid">
             <div className="form-group full">

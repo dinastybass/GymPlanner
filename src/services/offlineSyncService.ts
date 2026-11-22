@@ -348,6 +348,10 @@ async function ejecutarEscrituraNoBloqueante(
     })
     .catch(err => {
       console.warn('Error en escritura Firestore en segundo plano:', err);
+      // Si estamos online y Firestore rechazó la escritura (ej. permisos), limpiar de la cola para que no quede colgada como pendiente
+      if (isBrowserOnline && err?.code !== 'unavailable') {
+        confirmarMutacionSincronizada(keys, timestampMs);
+      }
     });
 
   if (!isBrowserOnline) {
@@ -376,20 +380,25 @@ export async function updateDoc(
     collectionName,
     data
   );
-  const key = registrarMutacionEnCola({
-    collectionName,
-    docId,
-    type: 'update',
-    data: enrichedData,
-    merge: true,
-    nowMs,
-    fieldTimestamps
-  });
+  const keys: string[] = [];
+  if (!isBrowserOnline) {
+    keys.push(
+      registrarMutacionEnCola({
+        collectionName,
+        docId,
+        type: 'update',
+        data: enrichedData,
+        merge: true,
+        nowMs,
+        fieldTimestamps
+      })
+    );
+  }
 
   const p = fbUpdateDoc(ref, enrichedData).catch(() =>
     fbSetDoc(ref, enrichedData, { merge: true })
   );
-  await ejecutarEscrituraNoBloqueante(p, [key], nowMs);
+  await ejecutarEscrituraNoBloqueante(p, keys, nowMs);
 }
 
 export async function setDoc(
@@ -403,18 +412,23 @@ export async function setDoc(
     collectionName,
     data
   );
-  const key = registrarMutacionEnCola({
-    collectionName,
-    docId,
-    type: 'set',
-    data: enrichedData,
-    merge: isMerge,
-    nowMs,
-    fieldTimestamps
-  });
+  const keys: string[] = [];
+  if (!isBrowserOnline) {
+    keys.push(
+      registrarMutacionEnCola({
+        collectionName,
+        docId,
+        type: 'set',
+        data: enrichedData,
+        merge: isMerge,
+        nowMs,
+        fieldTimestamps
+      })
+    );
+  }
 
   const p = options ? fbSetDoc(ref, enrichedData, options) : fbSetDoc(ref, enrichedData);
-  await ejecutarEscrituraNoBloqueante(p, [key], nowMs);
+  await ejecutarEscrituraNoBloqueante(p, keys, nowMs);
 }
 
 export async function addDoc(
@@ -427,34 +441,44 @@ export async function addDoc(
     collectionName,
     data
   );
-  const key = registrarMutacionEnCola({
-    collectionName,
-    docId,
-    type: 'set',
-    data: enrichedData,
-    merge: false,
-    nowMs,
-    fieldTimestamps
-  });
+  const keys: string[] = [];
+  if (!isBrowserOnline) {
+    keys.push(
+      registrarMutacionEnCola({
+        collectionName,
+        docId,
+        type: 'set',
+        data: enrichedData,
+        merge: false,
+        nowMs,
+        fieldTimestamps
+      })
+    );
+  }
 
   const p = fbSetDoc(newDocRef, enrichedData);
-  await ejecutarEscrituraNoBloqueante(p, [key], nowMs);
+  await ejecutarEscrituraNoBloqueante(p, keys, nowMs);
   return newDocRef;
 }
 
 export async function deleteDoc(ref: DocumentReference<any>): Promise<void> {
   const { collectionName, docId } = extraerInfoRef(ref);
   const nowMs = Date.now();
-  const key = registrarMutacionEnCola({
-    collectionName,
-    docId,
-    type: 'delete',
-    nowMs,
-    fieldTimestamps: {}
-  });
+  const keys: string[] = [];
+  if (!isBrowserOnline) {
+    keys.push(
+      registrarMutacionEnCola({
+        collectionName,
+        docId,
+        type: 'delete',
+        nowMs,
+        fieldTimestamps: {}
+      })
+    );
+  }
 
   const p = fbDeleteDoc(ref);
-  await ejecutarEscrituraNoBloqueante(p, [key], nowMs);
+  await ejecutarEscrituraNoBloqueante(p, keys, nowMs);
 }
 
 export function writeBatch(firestoreInstance: Firestore = db) {
@@ -471,16 +495,18 @@ export function writeBatch(firestoreInstance: Firestore = db) {
         data
       );
       batchTimestamp = Math.max(batchTimestamp, nowMs);
-      const key = registrarMutacionEnCola({
-        collectionName,
-        docId,
-        type: 'set',
-        data: enrichedData,
-        merge: isMerge,
-        nowMs,
-        fieldTimestamps
-      });
-      batchKeys.push(key);
+      if (!isBrowserOnline) {
+        const key = registrarMutacionEnCola({
+          collectionName,
+          docId,
+          type: 'set',
+          data: enrichedData,
+          merge: isMerge,
+          nowMs,
+          fieldTimestamps
+        });
+        batchKeys.push(key);
+      }
       if (options) {
         realBatch.set(ref, enrichedData, options);
       } else {
@@ -495,16 +521,18 @@ export function writeBatch(firestoreInstance: Firestore = db) {
         data
       );
       batchTimestamp = Math.max(batchTimestamp, nowMs);
-      const key = registrarMutacionEnCola({
-        collectionName,
-        docId,
-        type: 'update',
-        data: enrichedData,
-        merge: true,
-        nowMs,
-        fieldTimestamps
-      });
-      batchKeys.push(key);
+      if (!isBrowserOnline) {
+        const key = registrarMutacionEnCola({
+          collectionName,
+          docId,
+          type: 'update',
+          data: enrichedData,
+          merge: true,
+          nowMs,
+          fieldTimestamps
+        });
+        batchKeys.push(key);
+      }
       realBatch.set(ref, enrichedData, { merge: true });
       return this;
     },
@@ -512,14 +540,16 @@ export function writeBatch(firestoreInstance: Firestore = db) {
       const { collectionName, docId } = extraerInfoRef(ref);
       const nowMs = Date.now();
       batchTimestamp = Math.max(batchTimestamp, nowMs);
-      const key = registrarMutacionEnCola({
-        collectionName,
-        docId,
-        type: 'delete',
-        nowMs,
-        fieldTimestamps: {}
-      });
-      batchKeys.push(key);
+      if (!isBrowserOnline) {
+        const key = registrarMutacionEnCola({
+          collectionName,
+          docId,
+          type: 'delete',
+          nowMs,
+          fieldTimestamps: {}
+        });
+        batchKeys.push(key);
+      }
       realBatch.delete(ref);
       return this;
     },
@@ -534,97 +564,87 @@ export function writeBatch(firestoreInstance: Firestore = db) {
 // RECONCILIACIÓN Y MERGE POR HORA EXACTA AL RECONECTAR
 // ============================================================================
 
-/**
- * Cuando el dispositivo vuelve a tener conexión WiFi/datos:
- * 1. Reactiva la red de Firestore (`enableNetwork`).
- * 2. Para cada documento modificado en offline, comprueba la versión del servidor:
- *    - Si otro dispositivo modificó campos distintos de la misma sesión, se fusionan ambos.
- *    - Si otro dispositivo modificó el mismo campo, gana el que tenga el `updated_at_ms` / `_field_ts`
- *      más reciente por hora exacta.
- */
 export async function sincronizarCambiosPendientesAhora(): Promise<void> {
   if (!isBrowserOnline || isCurrentlySyncing) return;
 
   const entries = Array.from(pendingOpsMap.values());
   const countToSync = entries.length;
-  if (countToSync > 0) {
-    isCurrentlySyncing = true;
-    notifyStatusListeners();
-  }
+  if (countToSync === 0) return;
+
+  isCurrentlySyncing = true;
+  notifyStatusListeners();
 
   try {
     await enableNetwork(db);
 
     for (const entry of entries) {
-      const docRef = doc(db, entry.collection, entry.docId);
+      try {
+        const docRef = doc(db, entry.collection, entry.docId);
 
-      if (entry.type === 'delete') {
-        await fbDeleteDoc(docRef);
-        pendingOpsMap.delete(entry.key);
-        continue;
-      }
+        if (entry.type === 'delete') {
+          await fbDeleteDoc(docRef);
+          continue;
+        }
 
-      if (!entry.data) {
-        pendingOpsMap.delete(entry.key);
-        continue;
-      }
+        if (!entry.data) {
+          continue;
+        }
 
-      // Si es actualización parcial o merge, verificar si el servidor tiene algún campo con timestamp más reciente
-      if (entry.merge || entry.type === 'update') {
-        try {
-          const serverSnap = await getDocFromServer(docRef);
-          if (serverSnap.exists()) {
-            const serverData = serverSnap.data() || {};
-            const serverFieldTs: Record<string, number> =
-              serverData._field_ts && typeof serverData._field_ts === 'object'
-                ? serverData._field_ts
-                : {};
-            const serverDocTs = Number(serverData.updated_at_ms || 0);
+        if (entry.merge || entry.type === 'update') {
+          try {
+            const serverSnap = await getDocFromServer(docRef);
+            if (serverSnap.exists()) {
+              const serverData = serverSnap.data() || {};
+              const serverFieldTs: Record<string, number> =
+                serverData._field_ts && typeof serverData._field_ts === 'object'
+                  ? serverData._field_ts
+                  : {};
+              const serverDocTs = Number(serverData.updated_at_ms || 0);
 
-            const mergedPayload: Record<string, any> = {};
-            const mergedFieldTs: Record<string, number> = { ...serverFieldTs };
-            let anyLocalFieldWon = false;
+              const mergedPayload: Record<string, any> = {};
+              const mergedFieldTs: Record<string, number> = { ...serverFieldTs };
+              let anyLocalFieldWon = false;
 
-            for (const [fieldKey, localVal] of Object.entries(entry.data)) {
-              if (fieldKey === 'updated_at_ms' || fieldKey === '_field_ts') continue;
-              const localTs = Number(entry.fieldTimestamps?.[fieldKey] || entry.updatedAtMs || 0);
-              const remoteTs = Number(serverFieldTs[fieldKey] || serverDocTs || 0);
+              for (const [fieldKey, localVal] of Object.entries(entry.data)) {
+                if (fieldKey === 'updated_at_ms' || fieldKey === '_field_ts') continue;
+                const localTs = Number(entry.fieldTimestamps?.[fieldKey] || entry.updatedAtMs || 0);
+                const remoteTs = Number(serverFieldTs[fieldKey] || serverDocTs || 0);
 
-              // Priorizar siempre el último cambio por hora exacta
-              if (localTs >= remoteTs) {
-                mergedPayload[fieldKey] = localVal;
-                mergedFieldTs[fieldKey] = localTs;
-                anyLocalFieldWon = true;
+                if (localTs >= remoteTs) {
+                  mergedPayload[fieldKey] = localVal;
+                  mergedFieldTs[fieldKey] = localTs;
+                  anyLocalFieldWon = true;
+                }
               }
-            }
 
-            if (anyLocalFieldWon) {
-              mergedPayload.updated_at_ms = Math.max(entry.updatedAtMs, serverDocTs);
-              mergedPayload._field_ts = mergedFieldTs;
-              await fbSetDoc(docRef, mergedPayload, { merge: true });
+              if (anyLocalFieldWon) {
+                mergedPayload.updated_at_ms = Math.max(entry.updatedAtMs, serverDocTs);
+                mergedPayload._field_ts = mergedFieldTs;
+                await fbSetDoc(docRef, mergedPayload, { merge: true });
+              }
+            } else {
+              await fbSetDoc(docRef, entry.data, { merge: true });
             }
-          } else {
+          } catch {
             await fbSetDoc(docRef, entry.data, { merge: true });
           }
-        } catch {
-          await fbSetDoc(docRef, entry.data, { merge: true });
+        } else {
+          await fbSetDoc(docRef, entry.data);
         }
-      } else {
-        await fbSetDoc(docRef, entry.data);
+      } catch (entryErr) {
+        console.warn(`Descartando mutación pendiente no aplicable (${entry.key}):`, entryErr);
+      } finally {
+        pendingOpsMap.delete(entry.key);
+        guardarColaPendiente(pendingOpsMap);
+        notifyStatusListeners();
       }
-
-      pendingOpsMap.delete(entry.key);
-      guardarColaPendiente(pendingOpsMap);
-      notifyStatusListeners();
     }
 
     await waitForPendingWrites(db);
     guardarColaPendiente(pendingOpsMap);
 
-    if (countToSync > 0) {
-      isCurrentlySyncing = false;
-      marcarSincronizadoBrevemente(countToSync);
-    }
+    isCurrentlySyncing = false;
+    marcarSincronizadoBrevemente(countToSync);
   } catch (err) {
     console.warn('Aviso durante sincronización offline:', err);
   } finally {

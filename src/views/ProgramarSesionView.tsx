@@ -17,7 +17,8 @@ import {
   renderIntensityBadge,
   formatIntensityOptionLabel,
   DEFAULT_INTENSIDADES_SESION,
-  coincideBusqueda
+  coincideBusqueda,
+  ordenarEjerciciosSesionVisualmente
 } from '../utils/helpers';
 import { confirmarDialogo } from '../utils/confirmDialog';
 import { SendRoutineModal } from '../components/SendRoutineModal';
@@ -35,7 +36,8 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
   sessionId,
   onNavigate
 }) => {
-  const { userName } = useAuth();
+  const { userName, esModuloActivo } = useAuth();
+  const moduloPlantillasActivo = esModuloActivo('plantillas');
   const { pushAction, registerChangeListener } = useUndo();
 
   const [sesionActual, setSesionActual] = useState<any>(null);
@@ -792,12 +794,30 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
 
     setModalAddOpen(false);
     const nomCorto = objetoEjercicio.Acrónimo || objetoEjercicio.Nombre_Ejercicio;
+    const esOrdenCustom = Boolean(sesionActual.orden_customizado);
+    const listaOrdenada = ordenarEjerciciosSesionVisualmente(lista, ordenBloques, esOrdenCustom);
     await guardarCambiosEnFirestore(
-      lista,
-      Boolean(sesionActual.orden_customizado),
+      listaOrdenada,
+      esOrdenCustom,
       eraEdicion ? `Editar ejercicio "${nomCorto}"` : `Añadir ejercicio "${nomCorto}"`
     );
   };
+
+  const guardarEjercicioRef = useRef(guardarEjercicio);
+  guardarEjercicioRef.current = guardarEjercicio;
+
+  useEffect(() => {
+    if (!modalAddOpen) return;
+    const handleWindowKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter') return;
+      if (exPanelOpen) return;
+      e.preventDefault();
+      e.stopPropagation();
+      guardarEjercicioRef.current();
+    };
+    window.addEventListener('keydown', handleWindowKeyDown);
+    return () => window.removeEventListener('keydown', handleWindowKeyDown);
+  }, [modalAddOpen, exPanelOpen]);
 
   // --- Modal Importar Plantilla ---
   const confirmarImportacion = async () => {
@@ -1039,17 +1059,19 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
         </div>
 
         <div className="header-actions">
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => {
-              setSelectedPlantillaId(plantillasDisponibles[0]?.id || '');
-              setModalImportarOpen(true);
-            }}
-          >
-            <span className="ui-icon">📥</span>
-            <span>Importar Plantilla</span>
-          </button>
+          {moduloPlantillasActivo && (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                setSelectedPlantillaId(plantillasDisponibles[0]?.id || '');
+                setModalImportarOpen(true);
+              }}
+            >
+              <span className="ui-icon">📥</span>
+              <span>Importar Plantilla</span>
+            </button>
+          )}
           <button
             type="button"
             className="btn-primary"
@@ -1275,12 +1297,6 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
         <div
           className="modal-overlay"
           style={{ display: 'flex' }}
-          onKeyDown={e => {
-            if (e.key === 'Enter' && !exPanelOpen && !matPanelOpen) {
-              e.preventDefault();
-              guardarEjercicio();
-            }
-          }}
         >
           <div className="modal-content">
             <button
@@ -1407,6 +1423,13 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
                           placeholder="Escribe el nombre o acrónimo..."
                           value={exSearchText}
                           onChange={e => setExSearchText(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && filteredCatalog.length > 0) {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              seleccionarEjercicioCatalogo(filteredCatalog[0]);
+                            }
+                          }}
                           autoFocus
                         />
                       </div>
@@ -1861,11 +1884,12 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
       <SendRoutineModal
         isOpen={sendModalOpen}
         onClose={() => setSendModalOpen(false)}
-        ejercicios={sesionActual?.ejercicios || []}
+        ejercicios={getOrderedExercises()}
         defaultIntensity={intSesActual}
         defaultTipoSesion={sesionActual?.tipo_sesion || 'Individual'}
         defaultClientId={!esSmallGroup && sesionActual?.id_cliente ? sesionActual.id_cliente : undefined}
         excludeSessionId={sessionId}
+        ordenCustomizadoOrigen={Boolean(sesionActual?.orden_customizado)}
         onSuccess={() => {}}
       />
     </div>

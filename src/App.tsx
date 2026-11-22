@@ -74,7 +74,7 @@ function guardarRutaActiva(tab: string, param: string) {
 }
 
 const AppContent: React.FC = () => {
-  const { user, role, isProyector, loading } = useAuth();
+  const { user, role, isProyector, esModuloActivo, loading } = useAuth();
   const isBasico = esRolBasico(role);
   const [initialRoute] = useState<{ tab: string; param: string }>(() => leerRutaInicial());
   const [activeTab, setActiveTab] = useState<string>(initialRoute.tab);
@@ -96,8 +96,19 @@ const AppContent: React.FC = () => {
       setActiveTab('planificacion');
       setRouteParam('');
       guardarRutaActiva('planificacion', '');
+    } else if (
+      (activeTab === 'plantillas' || activeTab === 'editar_plantilla') &&
+      !esModuloActivo('plantillas')
+    ) {
+      setActiveTab('planificacion');
+      setRouteParam('');
+      guardarRutaActiva('planificacion', '');
+    } else if (activeTab === 'pantalla_sala' && !esModuloActivo('tv')) {
+      setActiveTab('planificacion');
+      setRouteParam('');
+      guardarRutaActiva('planificacion', '');
     }
-  }, [isProyector, isBasico, activeTab]);
+  }, [isProyector, isBasico, activeTab, esModuloActivo]);
 
   useEffect(() => {
     const tabInicial = isProyector ? 'pantalla_sala' : isBasico ? 'planificacion' : activeTab;
@@ -147,6 +158,12 @@ const AppContent: React.FC = () => {
     if (isBasico && tab !== 'planificacion') {
       setActiveTab('planificacion');
       setRouteParam('');
+      return;
+    }
+    if ((tab === 'plantillas' || tab === 'editar_plantilla') && !esModuloActivo('plantillas')) {
+      return;
+    }
+    if (tab === 'pantalla_sala' && !esModuloActivo('tv') && !isProyector) {
       return;
     }
     if (tab === activeTab && param === routeParam) return;
