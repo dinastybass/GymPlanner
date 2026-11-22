@@ -728,6 +728,22 @@ export const EditarPlantillaView: React.FC<EditarPlantillaViewProps> = ({
     );
   };
 
+  const guardarEjercicioRef = useRef(guardarEjercicio);
+  guardarEjercicioRef.current = guardarEjercicio;
+
+  useEffect(() => {
+    if (!modalAddOpen) return;
+    const handleWindowKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter') return;
+      if (exPanelOpen) return;
+      e.preventDefault();
+      e.stopPropagation();
+      guardarEjercicioRef.current();
+    };
+    window.addEventListener('keydown', handleWindowKeyDown);
+    return () => window.removeEventListener('keydown', handleWindowKeyDown);
+  }, [modalAddOpen, exPanelOpen]);
+
   if (loading) {
     return (
       <div className="container" style={{ textAlign: 'center', padding: 50, color: 'var(--text-muted)' }}>
@@ -1026,12 +1042,6 @@ export const EditarPlantillaView: React.FC<EditarPlantillaViewProps> = ({
         <div
           className="modal-overlay"
           style={{ display: 'flex' }}
-          onKeyDown={e => {
-            if (e.key === 'Enter' && !exPanelOpen && !matPanelOpen) {
-              e.preventDefault();
-              guardarEjercicio();
-            }
-          }}
         >
           <div className="modal-content">
             <button

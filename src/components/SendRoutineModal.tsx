@@ -5,6 +5,7 @@ import { setDoc, updateDoc, writeBatch } from '../services/offlineSyncService';
 import { EjercicioSesion } from '../types';
 import { CustomDropdown } from './CustomDropdown';
 import { getValoresMaestro } from '../services/maestrosService';
+import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
 import {
   normalizarIntensidad,
@@ -12,7 +13,8 @@ import {
   DEFAULT_INTENSIDADES_SESION,
   parsearFechaFirestore,
   esSesionCompletada,
-  esSesionCancelada
+  esSesionCancelada,
+  ordenarEjerciciosSesionVisualmente
 } from '../utils/helpers';
 
 export interface SendRoutineModalProps {
@@ -23,6 +25,7 @@ export interface SendRoutineModalProps {
   defaultTipoSesion?: string;
   defaultClientId?: string;
   excludeSessionId?: string;
+  ordenCustomizadoOrigen?: boolean;
   onSuccess?: () => void;
 }
 
@@ -56,8 +59,12 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
   defaultTipoSesion = '',
   defaultClientId = '',
   excludeSessionId = '',
+  ordenCustomizadoOrigen,
   onSuccess
 }) => {
+  const { esModuloActivo } = useAuth();
+  const moduloSmallGroupActivo = esModuloActivo('small_group');
+  const moduloPlantillasActivo = esModuloActivo('plantillas');
   const { pushAction, showToast } = useUndo();
   const [mode, setMode] = useState<'cliente' | 'small_group' | 'plantilla'>('cliente');
 
@@ -85,6 +92,12 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
   const [plantillaIntensidad, setPlantillaIntensidad] = useState<string>(
     normalizarIntensidad(defaultIntensity)
   );
+  const [ordenBloques, setOrdenBloques] = useState<string[]>([
+    'BLOQUE 1: MOVILIDAD - ACTIVACIÓN',
+    'BLOQUE 2: FUERZA - PRINCIPAL',
+    'BLOQUE 3: COMPENSATORIO - ACCESORIO',
+    'BLOQUE 4: METABÓLICO - ACONDICIONAMIENTO'
+  ]);
 
   const [saving, setSaving] = useState(false);
 
@@ -227,6 +240,9 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
     getValoresMaestro('Sesiones', 'Intensidad de la Sesión').then(res => {
       if (res && res.length > 0) setIntensidades(res);
     });
+    getValoresMaestro('Ejercicios', 'Bloque de la sesión en que se recomienda').then(res => {
+      if (res && res.length > 0) setOrdenBloques(res);
+    });
   }, [isOpen, defaultIntensity, defaultTipoSesion, excludeSessionId]);
 
   // Cargar sesiones no completadas del cliente seleccionado
@@ -299,6 +315,7 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
   const actualizarSlotSmallGroup = async (
     fechaHoraInicio: any,
     ejerciciosOrigen: any[],
+    esOrdenCustomOrigen: boolean,
     intensidadNorm: string,
     labelDestino: string
   ) => {
@@ -310,12 +327,14 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
 
     const groupDocs: { id: string; data: any }[] = [];
     let prevEjerciciosComunes: any[] = [];
+    let prevOrdenCustomComun = false;
     snapGroup.forEach(d => {
       const dataD = d.data();
       if (!esTipoSmallGroup(dataD.tipo_sesion) || esSesionCancelada(dataD)) return;
       groupDocs.push({ id: d.id, data: dataD });
       if (prevEjerciciosComunes.length === 0 && Array.isArray(dataD.ejercicios) && dataD.ejercicios.length > 0) {
         prevEjerciciosComunes = dataD.ejercicios;
+        prevOrdenCustomComun = Boolean(dataD.orden_customizado);
       }
     });
 
@@ -323,10 +342,19 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
       throw new Error('No se encontraron sesiones activas en ese slot de Small Group.');
     }
 
+    const prevOrdenados = ordenarEjerciciosSesionVisualmente(
+      prevEjerciciosComunes,
+      ordenBloques,
+      prevOrdenCustomComun
+    );
+
     const finalEjercicios =
       overwriteMode === 'merge'
-        ? [...prevEjerciciosComunes, ...ejerciciosOrigen]
+        ? [...prevOrdenados, ...ejerciciosOrigen]
         : ejerciciosOrigen;
+
+    const finalOrdenCustomizado =
+      overwriteMode === 'merge' ? true : Boolean(esOrdenCustomOrigen);
 
     const author = localStorage.getItem('gym_user_name') || 'Usuario';
     const fechaEdicion = new Date();
@@ -339,7 +367,7 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
       ultimo_editor: author,
       fecha_programacion: fechaEdicion,
       fecha_ultima_edicion: fechaEdicion,
-      orden_customizado: true
+      orden_customizado: finalOrdenCustomizado
     };
 
     const batch = writeBatch(db);
@@ -393,7 +421,27 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
     setSaving(true);
     try {
       const intensidadNorm = normalizarIntensidad(defaultIntensity);
-      const ejerciciosAClonar = JSON.parse(JSON.stringify(ejercicios));
+      const rawClonados = JSON.parse(JSON.stringify(ejercicios));
+
+      // Determinar si la sesión origen tenía orden customizado o el orden estándar de bloques
+      let esOrdenCustomOrigen = Boolean(ordenCustomizadoOrigen);
+      if (ordenCustomizadoOrigen === undefined && excludeSessionId) {
+        try {
+          const origSnap = await getDoc(doc(db, 'agenda_sesiones', excludeSessionId));
+          if (origSnap.exists()) {
+            esOrdenCustomOrigen = Boolean(origSnap.data()?.orden_customizado);
+          }
+        } catch {
+          // fallback false
+        }
+      }
+
+      // Ordenar los ejercicios exactamente en el mismo orden visual que tenían en la sesión de origen
+      const ejerciciosAClonar = ordenarEjerciciosSesionVisualmente(
+        rawClonados,
+        ordenBloques,
+        esOrdenCustomOrigen
+      );
 
       if (mode === 'cliente') {
         if (!selectedSesion) {
@@ -414,15 +462,22 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
           await actualizarSlotSmallGroup(
             dataDestino.fecha_hora_inicio,
             ejerciciosAClonar,
+            esOrdenCustomOrigen,
             intensidadNorm,
             `Small Group (${targetClientName})`
           );
         } else {
-          const prevEjercicios = dataDestino.ejercicios || [];
+          const prevEjercicios = ordenarEjerciciosSesionVisualmente(
+            dataDestino.ejercicios || [],
+            ordenBloques,
+            Boolean(dataDestino.orden_customizado)
+          );
           const finalEjercicios =
             overwriteMode === 'merge'
               ? [...prevEjercicios, ...ejerciciosAClonar]
               : ejerciciosAClonar;
+          const finalOrdenCustomizado =
+            overwriteMode === 'merge' ? true : Boolean(esOrdenCustomOrigen);
 
           const author = localStorage.getItem('gym_user_name') || 'Usuario';
           const fechaEdicion = new Date();
@@ -435,7 +490,7 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
             ultimo_editor: author,
             fecha_programacion: fechaEdicion,
             fecha_ultima_edicion: fechaEdicion,
-            orden_customizado: true
+            orden_customizado: finalOrdenCustomizado
           };
 
           await updateDoc(doc(db, 'agenda_sesiones', selectedSesion), updatePayload);
@@ -448,7 +503,7 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
                 collection: 'agenda_sesiones',
                 id: selectedSesion,
                 data: {
-                  ejercicios: prevEjercicios,
+                  ejercicios: dataDestino.ejercicios || [],
                   intensidad: dataDestino.intensidad || 'MED',
                   Intensidad: dataDestino.Intensidad || 'MED',
                   intensidad_sesion: dataDestino.intensidad_sesion || 'MED',
@@ -485,6 +540,7 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
         await actualizarSlotSmallGroup(
           currentTargetSgSlot.fechaHoraInicio,
           ejerciciosAClonar,
+          esOrdenCustomOrigen,
           intensidadNorm,
           `Small Group (${currentTargetSgSlot.dateLabel})`
         );
@@ -507,7 +563,7 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
           intensidad: plantillaIntensidad,
           Intensidad: plantillaIntensidad,
           ejercicios: ejerciciosAClonar,
-          orden_customizado: true
+          orden_customizado: Boolean(esOrdenCustomOrigen)
         };
 
         await setDoc(doc(db, 'plantillas_sesiones', idPlantilla), newPlantilla);
@@ -587,37 +643,56 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
             <span>Enviar Sesión / Rutina</span>
           </h2>
           <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            Envía los ejercicios a otra sesión de cliente (PT), a una sesión de Small Group o guárdalos como plantilla.
+            {moduloSmallGroupActivo && moduloPlantillasActivo
+              ? 'Envía los ejercicios a otra sesión de cliente (PT), a una sesión de Small Group o guárdalos como plantilla.'
+              : moduloSmallGroupActivo
+              ? 'Envía los ejercicios a otra sesión de cliente (PT) o a una sesión de Small Group.'
+              : moduloPlantillasActivo
+              ? 'Envía los ejercicios a otra sesión de cliente (PT) o guárdalos como plantilla.'
+              : 'Envía los ejercicios a otra sesión de cliente (PT).'}
           </p>
         </div>
 
         {/* Pestañas de Modo */}
-        <div className="segmented-switcher cols-3">
-          <button
-            type="button"
-            className={`segmented-btn ${mode === 'cliente' ? 'active' : ''}`}
-            onClick={() => setMode('cliente')}
+        {(moduloSmallGroupActivo || moduloPlantillasActivo) && (
+          <div
+            className="segmented-switcher"
+            style={{
+              gridTemplateColumns: `repeat(${
+                1 + (moduloSmallGroupActivo ? 1 : 0) + (moduloPlantillasActivo ? 1 : 0)
+              }, 1fr)`
+            }}
           >
-            <span className="ui-icon">👤</span>
-            <span>Cliente / PT</span>
-          </button>
-          <button
-            type="button"
-            className={`segmented-btn ${mode === 'small_group' ? 'active' : ''}`}
-            onClick={() => setMode('small_group')}
-          >
-            <span className="ui-icon">👥</span>
-            <span>Small Group</span>
-          </button>
-          <button
-            type="button"
-            className={`segmented-btn ${mode === 'plantilla' ? 'active' : ''}`}
-            onClick={() => setMode('plantilla')}
-          >
-            <span className="ui-icon">📋</span>
-            <span>Plantilla</span>
-          </button>
-        </div>
+            <button
+              type="button"
+              className={`segmented-btn ${mode === 'cliente' ? 'active' : ''}`}
+              onClick={() => setMode('cliente')}
+            >
+              <span className="ui-icon">👤</span>
+              <span>Cliente / PT</span>
+            </button>
+            {moduloSmallGroupActivo && (
+              <button
+                type="button"
+                className={`segmented-btn ${mode === 'small_group' ? 'active' : ''}`}
+                onClick={() => setMode('small_group')}
+              >
+                <span className="ui-icon">👥</span>
+                <span>Small Group</span>
+              </button>
+            )}
+            {moduloPlantillasActivo && (
+              <button
+                type="button"
+                className={`segmented-btn ${mode === 'plantilla' ? 'active' : ''}`}
+                onClick={() => setMode('plantilla')}
+              >
+                <span className="ui-icon">📋</span>
+                <span>Plantilla</span>
+              </button>
+            )}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit}>
           {mode === 'cliente' ? (

@@ -34,14 +34,15 @@ const diasSemanaMap: Record<number, string> = {
 };
 
 export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate }) => {
-  const { hasPermission } = useAuth();
+  const { hasPermission, esModuloActivo } = useAuth();
   const { pushAction, registerChangeListener } = useUndo();
 
   const puedeEditarEstadoSesion = hasPermission('planificacion', 'editar');
   const puedeProgramarSesiones = hasPermission('programar_sesiones', 'ver') && hasPermission('programar_sesiones', 'editar');
   const puedeVerClientes = hasPermission('clientes', 'ver');
   const puedeVerEjercicios = hasPermission('ejercicios', 'ver');
-  const puedeVerPantallaSala = hasPermission('pantalla_sala', 'ver');
+  const puedeVerPantallaSala = esModuloActivo('tv') && hasPermission('pantalla_sala', 'ver');
+  const moduloSmallGroupActivo = esModuloActivo('small_group');
   const puedeRegistrarPR = hasPermission('progreso_pr', 'crear') || hasPermission('progreso_pr', 'editar');
 
   const [currentDate, setCurrentDate] = useState<Date>(() => {
@@ -358,7 +359,8 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
   const sesionesTardeComp = sesionesTarde.filter(s => esSesionCompletada(s));
 
   const sgTimeRanges = Object.keys(smallGroupsMap);
-  const totalSesiones = sesionesManana.length + sesionesTarde.length + sgTimeRanges.length;
+  const totalSesiones =
+    sesionesManana.length + sesionesTarde.length + (moduloSmallGroupActivo ? sgTimeRanges.length : 0);
 
   const nowLocal = new Date();
   const startOfTodayUTC = new Date(
@@ -934,64 +936,68 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
       )}
 
       {/* Small Groups */}
-      <div className="section-header" onClick={() => setOpenSG(!openSG)}>
-        <div className="section-title">
-          <h2>Small Groups</h2>
-          <span>{`${sgTimeRanges.length} sesiones`}</span>
-        </div>
-        <span
-          className="chevron-icon"
-          style={{ transform: openSG ? 'rotate(0deg)' : 'rotate(-90deg)' }}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </span>
-      </div>
-
-      {openSG && (
-        <div className="section-content">
-          <div className="cards-grid">
-            {sgTimeRanges.length === 0 ? (
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                No hay Small Groups programados hoy.
-              </div>
-            ) : (
-              sgTimeRanges.map(rango => {
-                const clients = smallGroupsMap[rango];
-                return (
-                  <div key={rango} className="sg-card">
-                    <div className="sg-time">
-                      <span className="ui-icon">🕒</span>
-                      <span>{rango}</span>
-                    </div>
-                    <div className="sg-clients">
-                      {clients.map((c, idx) => (
-                        <React.Fragment key={idx}>
-                          {idx > 0 && ' · '}
-                          {c.idCli && puedeVerClientes ? (
-                            <a
-                              href={`#ficha_cliente/${c.idCli}`}
-                              className="client-link"
-                              onClick={e => {
-                                e.preventDefault();
-                                onNavigate('ficha_cliente', c.idCli);
-                              }}
-                            >
-                              {c.nomCli}
-                            </a>
-                          ) : (
-                            c.nomCli
-                          )}
-                        </React.Fragment>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })
-            )}
+      {moduloSmallGroupActivo && (
+        <>
+          <div className="section-header" onClick={() => setOpenSG(!openSG)}>
+            <div className="section-title">
+              <h2>Small Groups</h2>
+              <span>{`${sgTimeRanges.length} sesiones`}</span>
+            </div>
+            <span
+              className="chevron-icon"
+              style={{ transform: openSG ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </span>
           </div>
-        </div>
+
+          {openSG && (
+            <div className="section-content">
+              <div className="cards-grid">
+                {sgTimeRanges.length === 0 ? (
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                    No hay Small Groups programados hoy.
+                  </div>
+                ) : (
+                  sgTimeRanges.map(rango => {
+                    const clients = smallGroupsMap[rango];
+                    return (
+                      <div key={rango} className="sg-card">
+                        <div className="sg-time">
+                          <span className="ui-icon">🕒</span>
+                          <span>{rango}</span>
+                        </div>
+                        <div className="sg-clients">
+                          {clients.map((c, idx) => (
+                            <React.Fragment key={idx}>
+                              {idx > 0 && ' · '}
+                              {c.idCli && puedeVerClientes ? (
+                                <a
+                                  href={`#ficha_cliente/${c.idCli}`}
+                                  className="client-link"
+                                  onClick={e => {
+                                    e.preventDefault();
+                                    onNavigate('ficha_cliente', c.idCli);
+                                  }}
+                                >
+                                  {c.nomCli}
+                                </a>
+                              ) : (
+                                c.nomCli
+                              )}
+                            </React.Fragment>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Modal Registrar PR */}

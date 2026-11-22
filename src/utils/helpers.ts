@@ -289,4 +289,40 @@ export function obtenerSemanasDelMesOperativo(
   return weeks;
 }
 
+/**
+ * Devuelve la lista de ejercicios en el mismo orden visual en que se muestra en pantalla:
+ * - Si `ordenCustomizado` es true, respeta exactamente el orden del array.
+ * - Si `ordenCustomizado` es false/undefined, ordena por `ordenBloques` manteniendo el orden
+ *   relativo de los ejercicios dentro de cada bloque.
+ */
+export function ordenarEjerciciosSesionVisualmente(
+  ejerciciosRaw: any[],
+  ordenBloques: string[],
+  ordenCustomizado?: boolean
+): any[] {
+  if (!Array.isArray(ejerciciosRaw)) return [];
+  const copia = [...ejerciciosRaw];
+  if (ordenCustomizado || !Array.isArray(ordenBloques) || ordenBloques.length === 0) {
+    return copia;
+  }
+
+  return copia
+    .map((ej, idx) => ({ ej, idx }))
+    .sort((a, b) => {
+      const bA = a.ej?.Bloque || 'General';
+      const bB = b.ej?.Bloque || 'General';
+      const idxA = ordenBloques.indexOf(bA);
+      const idxB = ordenBloques.indexOf(bB);
+      if (idxA !== -1 && idxB !== -1) {
+        return idxA !== idxB ? idxA - idxB : a.idx - b.idx;
+      }
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      const cmp = bA.localeCompare(bB);
+      return cmp !== 0 ? cmp : a.idx - b.idx;
+    })
+    .map(item => item.ej);
+}
+
+
 

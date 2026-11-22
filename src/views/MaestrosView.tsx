@@ -26,9 +26,14 @@ import {
   cargarUsuariosAutenticacion,
   PermisosPorDefectoParaRol,
   esRolAdmin,
+  esRolSuperAdmin,
   esRolBasico,
-  esRolProyectorSala
+  esRolProyectorSala,
+  esCorreoSuperAdmin,
+  esCorreoProyectorSala,
+  CATALOGO_MODULOS_APP
 } from '../services/maestrosService';
+import { ModulosAppSuperAdminPanel } from '../components/ModulosAppSuperAdminPanel';
 import {
   VersionBackupItem,
   GoogleDriveBackupConfig,
@@ -43,7 +48,7 @@ import { PermisoAccion } from '../types';
 const clonarProfundo = (obj: any) => (obj ? JSON.parse(JSON.stringify(obj)) : obj);
 
 export const MaestrosView: React.FC = () => {
-  const { role } = useAuth();
+  const { role, isSuperAdmin, esModuloActivo, modulosActivos } = useAuth();
   const { pushAction, registerChangeListener } = useUndo();
 
   const [mapaMaestros, setMapaMaestros] = useState<
@@ -119,8 +124,9 @@ export const MaestrosView: React.FC = () => {
 
   const puedeEditarActual = () => {
     if (currentSection === 'Copias de Seguridad') return false;
+    if (currentSection === 'SuperAdmin') return false;
     if (currentSection === 'Gestión de Perfiles' && currentKey === 'Permisos') return false;
-    if (esAdmin) return true;
+    if (esAdmin || isSuperAdmin) return true;
     return currentSection === 'Ejercicios';
   };
 
@@ -804,11 +810,19 @@ export const MaestrosView: React.FC = () => {
     currentSection === 'Gestión de Perfiles' && currentKey === 'Permisos';
   const esVistaRoles = currentSection === 'Gestión de Perfiles' && currentKey === 'Roles';
   const esVistaBackups = currentSection === 'Copias de Seguridad';
+  const esVistaModulosApp =
+    isSuperAdmin && currentSection === 'SuperAdmin' && currentKey === 'Módulos de la App';
   const rolesDisponibles = getRolesDisponibles();
+
+  const catalogoPermisosFiltrado = CATALOGO_PERMISOS_APP.filter(p => {
+    if (p.id === 'plantillas' && !esModuloActivo('plantillas')) return false;
+    if (p.id === 'pantalla_sala' && !esModuloActivo('tv')) return false;
+    return true;
+  });
 
   const descPorAccion: Record<string, { categoria: string; descripcion: string }> = {};
   if (esVistaPermisos) {
-    CATALOGO_PERMISOS_APP.forEach(p => {
+    catalogoPermisosFiltrado.forEach(p => {
       descPorAccion[p.id] = { categoria: p.categoria, descripcion: p.descripcion };
       descPorAccion[p.nombre.toLowerCase()] = {
         categoria: p.categoria,
@@ -816,6 +830,10 @@ export const MaestrosView: React.FC = () => {
       };
     });
   }
+
+  const totalModulosActivosCount = CATALOGO_MODULOS_APP.filter(
+    m => modulosActivos[m.id] !== false
+  ).length;
 
   return (
     <div className="container">
@@ -831,30 +849,59 @@ export const MaestrosView: React.FC = () => {
       <div className="maestros-grid">
         {/* Left Sidebar */}
         <aside className="sidebar-card">
-          {Object.entries(ESTRUCTURA_MAESTROS).map(([seccion, claves]) => (
-            <div key={seccion} className="section-group">
-              <div className="section-group-title">{seccion}</div>
-              {claves.map(clv => {
-                const count = mapaMaestros[seccion]?.[clv]?.length || 0;
-                const isActive = seccion === currentSection && clv === currentKey;
-                const esItemBackup = seccion === 'Copias de Seguridad';
-                const esItemPermisos = seccion === 'Gestión de Perfiles' && clv === 'Permisos';
-                return (
-                  <button
-                    key={clv}
-                    type="button"
-                    className={`key-btn ${isActive ? 'active' : ''}`}
-                    onClick={() => seleccionarClave(seccion, clv)}
-                  >
-                    <span>{clv}</span>
-                    {!esItemPermisos && (
-                      <span className="key-count">{esItemBackup ? versionesBackup.length : count}</span>
-                    )}
-                  </button>
-                );
-              })}
+          {isSuperAdmin && (
+            <div className="section-group">
+              <div className="section-group-title" style={{ color: '#0f766e' }}>
+                SuperAdmin
+              </div>
+              <button
+                type="button"
+                className={`key-btn ${esVistaModulosApp ? 'active' : ''}`}
+                onClick={() => seleccionarClave('SuperAdmin', 'Módulos de la App')}
+              >
+                <span>Módulos de la App</span>
+                <span className="key-count">
+                  {totalModulosActivosCount}/{CATALOGO_MODULOS_APP.length}
+                </span>
+              </button>
             </div>
-          ))}
+          )}
+          {Object.entries(ESTRUCTURA_MAESTROS).map(([seccion, claves]) => {
+            const clavesVisibles = claves.filter(clv => {
+              if (
+                seccion === 'Agenda' &&
+                clv === 'Horarios Small Groups' &&
+                !esModuloActivo('small_group')
+              ) {
+                return false;
+              }
+              return true;
+            });
+            return (
+              <div key={seccion} className="section-group">
+                <div className="section-group-title">{seccion}</div>
+                {clavesVisibles.map(clv => {
+                  const count = mapaMaestros[seccion]?.[clv]?.length || 0;
+                  const isActive = seccion === currentSection && clv === currentKey;
+                  const esItemBackup = seccion === 'Copias de Seguridad';
+                  const esItemPermisos = seccion === 'Gestión de Perfiles' && clv === 'Permisos';
+                  return (
+                    <button
+                      key={clv}
+                      type="button"
+                      className={`key-btn ${isActive ? 'active' : ''}`}
+                      onClick={() => seleccionarClave(seccion, clv)}
+                    >
+                      <span>{clv}</span>
+                      {!esItemPermisos && (
+                        <span className="key-count">{esItemBackup ? versionesBackup.length : count}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
         </aside>
 
         {/* Right Panel */}
@@ -874,14 +921,14 @@ export const MaestrosView: React.FC = () => {
               </div>
               <h2>{currentKey}</h2>
             </div>
-            {!esVistaBackups && !esVistaPermisos && (
+            {!esVistaBackups && !esVistaPermisos && !esVistaModulosApp && (
               <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                 {itemsActuales.length} {itemsActuales.length === 1 ? 'valor' : 'valores'}
               </span>
             )}
           </div>
 
-          {!esAdmin && currentSection !== 'Ejercicios' && (
+          {!esAdmin && !isSuperAdmin && currentSection !== 'Ejercicios' && (
             <div className="readonly-banner">
               <span className="ui-icon">🔒</span>
               <span>
@@ -1090,7 +1137,7 @@ export const MaestrosView: React.FC = () => {
             </div>
           )}
 
-          {!esVistaBackups && !esVistaPermisos && (
+          {!esVistaBackups && !esVistaPermisos && !esVistaModulosApp && (
             <div className="table-responsive">
               <table className="maestros-table">
                 <thead>
@@ -1230,6 +1277,9 @@ export const MaestrosView: React.FC = () => {
             </table>
           </div>
           )}
+
+          {/* Extra Panel: SuperAdmin Módulos de la App */}
+          {esVistaModulosApp && <ModulosAppSuperAdminPanel />}
 
           {/* Extra Panel: Copias de Seguridad */}
           {esVistaBackups && (
@@ -1581,8 +1631,9 @@ export const MaestrosView: React.FC = () => {
 
               <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: 0, marginBottom: 16 }}>
                 Asigna qué rol tiene cada cuenta de acceso de Firebase Authentication. La cuenta{' '}
-                <code>invitado@goandtrain.com</code> utiliza el rol <strong>Proyector Sala</strong>{' '}
-                con acceso exclusivo a Pantalla Sala.
+                <code>tvsala@goandtrain.com</code> utiliza el rol <strong>Proyector Sala</strong>{' '}
+                con acceso exclusivo a Pantalla Sala, y <code>ccalvotriana@gmail.com</code> cuenta con el rol{' '}
+                <strong>SuperAdmin</strong>.
               </p>
 
               <div className="table-responsive" style={{ marginBottom: 18 }}>
@@ -1597,12 +1648,21 @@ export const MaestrosView: React.FC = () => {
                   </thead>
                   <tbody>
                     {usuariosAuthGlobal.map(u => {
+                      const esUserSuperAdmin =
+                        esRolSuperAdmin(u.rol) || esCorreoSuperAdmin(u.email || u.id);
                       const esProyector =
                         esRolProyectorSala(u.rol) ||
-                        u.email.toLowerCase() === 'invitado@goandtrain.com';
+                        esCorreoProyectorSala(u.email || u.id);
                       const esBasico = esRolBasico(u.rol);
+                      const rolEfectivo = esUserSuperAdmin
+                        ? 'SuperAdmin'
+                        : esProyector
+                        ? 'Proyector Sala'
+                        : u.rol;
                       const opcionesRol = [...rolesDisponibles];
-                      if (u.rol && !opcionesRol.includes(u.rol)) opcionesRol.push(u.rol);
+                      if (rolEfectivo && !opcionesRol.includes(rolEfectivo)) {
+                        opcionesRol.push(rolEfectivo);
+                      }
 
                       return (
                         <tr key={u.id} className="maestros-row">
@@ -1614,7 +1674,19 @@ export const MaestrosView: React.FC = () => {
                             {u.email || u.id}
                           </td>
                           <td>
-                            {esProyector ? (
+                            {esUserSuperAdmin ? (
+                              <span
+                                className="pill"
+                                style={{
+                                  background: '#f0fdfa',
+                                  color: '#0f766e',
+                                  border: '1px solid #99f6e4',
+                                  fontWeight: 700
+                                }}
+                              >
+                                SuperAdmin
+                              </span>
+                            ) : esProyector ? (
                               <span
                                 className="pill"
                                 style={{
@@ -1649,8 +1721,8 @@ export const MaestrosView: React.FC = () => {
                                 fontSize: '0.85rem',
                                 fontWeight: 600
                               }}
-                              disabled={!esAdmin}
-                              value={u.rol}
+                              disabled={!esAdmin || esUserSuperAdmin || esCorreoProyectorSala(u.email || u.id)}
+                              value={rolEfectivo}
                               onChange={e => cambiarRolUsuario(u.id, e.target.value)}
                             >
                               {opcionesRol.map(r => (
@@ -1789,12 +1861,12 @@ export const MaestrosView: React.FC = () => {
                 {rolesDisponibles.map(r => {
                   const active = r === rolSeleccionadoPermisos;
                   const mapaR = matrizPermisosGlobal[r] || PermisosPorDefectoParaRol(r);
-                  const totalChecks = CATALOGO_PERMISOS_APP.length * 4;
+                  const totalChecks = catalogoPermisosFiltrado.length * 4;
                   let activosCount = 0;
                   if (esRolAdmin(r)) {
                     activosCount = totalChecks;
                   } else {
-                    CATALOGO_PERMISOS_APP.forEach(p => {
+                    catalogoPermisosFiltrado.forEach(p => {
                       const obj = mapaR[p.id] || {
                         ver: false,
                         editar: false,
@@ -1837,7 +1909,7 @@ export const MaestrosView: React.FC = () => {
                   matrizPermisosGlobal[rolActivo] || PermisosPorDefectoParaRol(rolActivo);
 
                 const porCategoria: Record<string, typeof CATALOGO_PERMISOS_APP> = {};
-                CATALOGO_PERMISOS_APP.forEach(p => {
+                catalogoPermisosFiltrado.forEach(p => {
                   if (!porCategoria[p.categoria]) porCategoria[p.categoria] = [];
                   porCategoria[p.categoria].push(p);
                 });

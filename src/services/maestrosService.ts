@@ -6,7 +6,7 @@ import {
   doc,
   deleteField,
 } from 'firebase/firestore';
-import { setDoc, updateDoc } from './offlineSyncService';
+import { setDoc, updateDoc, deleteDoc } from './offlineSyncService';
 import { CatalogoPermiso, MatrizPermisos, PermisoAccion, UsuarioApp } from '../types';
 
 const CACHE_KEY = 'gym_maestros_doc_map_v8';
@@ -522,7 +522,29 @@ export async function eliminarValorMaestro(
   limpiarCacheMaestros();
 }
 
+export const SUPERADMIN_EMAIL = 'ccalvotriana@gmail.com';
+export const PROYECTOR_SALA_EMAIL = 'tvsala@goandtrain.com';
+
+export function esCorreoSuperAdmin(email?: string | null): boolean {
+  return String(email || '').trim().toLowerCase() === SUPERADMIN_EMAIL;
+}
+
+export function esCorreoProyectorSala(email?: string | null): boolean {
+  const e = String(email || '').trim().toLowerCase();
+  return e === PROYECTOR_SALA_EMAIL || e.startsWith('tvsala@');
+}
+
+export function esRolSuperAdmin(nombreRol: string): boolean {
+  const rNorm = String(nombreRol || '')
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  return rNorm === 'superadmin' || rNorm === 'super_admin' || rNorm === 'superadministrador';
+}
+
 export function esRolAdmin(nombreRol: string): boolean {
+  if (esRolSuperAdmin(nombreRol)) return true;
   const rNorm = String(nombreRol || '')
     .trim()
     .toLowerCase()
@@ -537,7 +559,7 @@ export function esRolProyectorSala(nombreRol: string): boolean {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
-  return rNorm === 'proyector sala' || rNorm === 'proyector_sala' || rNorm === 'proyector' || rNorm === 'invitado';
+  return rNorm === 'proyector sala' || rNorm === 'proyector_sala' || rNorm === 'proyector' || rNorm === 'tvsala';
 }
 
 export function esRolBasico(nombreRol: string): boolean {
@@ -547,6 +569,184 @@ export function esRolBasico(nombreRol: string): boolean {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
   return rNorm === 'basico' || rNorm === 'rol basico';
+}
+
+export type ModuloAppId = 'plantillas' | 'tv' | 'small_group' | 'go_kids';
+
+export interface ModuloAppMeta {
+  id: ModuloAppId;
+  nombre: string;
+  icono: string;
+  descripcion: string;
+  alcance: string[];
+}
+
+export const CATALOGO_MODULOS_FIJOS: {
+  id: string;
+  nombre: string;
+  icono: string;
+  descripcion: string;
+}[] = [
+  {
+    id: 'planificacion',
+    nombre: 'Hoy y Planificación',
+    icono: '📅',
+    descripcion: 'Panel diario de sesiones, seguimiento de entrenamientos y estados de sesión.'
+  },
+  {
+    id: 'clientes',
+    nombre: 'Clientes',
+    icono: '👥',
+    descripcion: 'Directorio de clientes, fichas personales, objetivos, historial de sesiones y marcas PR.'
+  },
+  {
+    id: 'ejercicios',
+    nombre: 'Ejercicios',
+    icono: '🏋️',
+    descripcion: 'Catálogo de ejercicios, bloques, materiales, vídeos y categorización técnica.'
+  },
+  {
+    id: 'agenda',
+    nombre: 'Agenda',
+    icono: '🗓️',
+    descripcion: 'Calendario semanal, planificación mensual de citas, reprogramaciones y festivos.'
+  },
+  {
+    id: 'configuracion',
+    nombre: 'Configuración',
+    icono: '⚙️',
+    descripcion: 'Maestros del sistema, gestión de perfiles, roles, permisos y copias de seguridad.'
+  }
+];
+
+export const CATALOGO_MODULOS_APP: ModuloAppMeta[] = [
+  {
+    id: 'plantillas',
+    nombre: 'Plantillas',
+    icono: '📋',
+    descripcion: 'Catálogo de plantillas predefinidas, importación en sesiones y envío como plantilla.',
+    alcance: [
+      'Pestaña Plantillas en la barra de navegación',
+      'Botón Importar Plantilla al programar una sesión',
+      'Pestaña Plantilla en Enviar Programación'
+    ]
+  },
+  {
+    id: 'tv',
+    nombre: 'TV / Pantalla Sala',
+    icono: '📺',
+    descripcion: 'Proyección de entrenamientos en tiempo real para la pantalla de TV del gimnasio.',
+    alcance: [
+      'Botón Pantalla Sala en la vista Hoy',
+      'Vista de proyección de TV y acceso para tvsala@goandtrain.com'
+    ]
+  },
+  {
+    id: 'small_group',
+    nombre: 'Small Group',
+    icono: '👟',
+    descripcion: 'Gestión de horarios, reservas grupales y programación conjunta de sesiones Small Group.',
+    alcance: [
+      'Vista y pestaña Small Groups en Agenda y bloque Small Groups en Hoy',
+      'Opción Small Group en Planificar Días del Mes y Enviar Programación',
+      'Maestro Horarios Small Groups en Configuración -> Agenda'
+    ]
+  },
+  {
+    id: 'go_kids',
+    nombre: 'Servicio Go&Kids',
+    icono: '🧒',
+    descripcion: 'Control del servicio infantil Go&Kids, niños contratados y nombres en las fichas de cliente.',
+    alcance: [
+      'Tarjeta Servicio Go&Kids en la Ficha de Cliente',
+      'Campos de contratación y nombres de niños en alta y edición de clientes'
+    ]
+  }
+];
+
+export const MODULOS_ACTIVOS_DEFAULT: Record<ModuloAppId, boolean> = {
+  plantillas: true,
+  tv: true,
+  small_group: true,
+  go_kids: true
+};
+
+const MODULOS_CACHE_KEY = 'gym_modulos_activos_cache_v1';
+
+export function limpiarCacheModulosActivos(): void {
+  try {
+    sessionStorage.removeItem(MODULOS_CACHE_KEY);
+  } catch (e) {
+    // ignore
+  }
+}
+
+export async function cargarModulosActivos(
+  forzar = false
+): Promise<Record<ModuloAppId, boolean>> {
+  if (!forzar) {
+    try {
+      const cached = sessionStorage.getItem(MODULOS_CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && typeof parsed === 'object') {
+          return {
+            plantillas: parsed.plantillas !== false,
+            tv: parsed.tv !== false,
+            small_group: parsed.small_group !== false,
+            go_kids: parsed.go_kids !== false
+          };
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  try {
+    const snap = await getDoc(doc(db, 'maestros', 'config_modulos_app'));
+    if (!snap.exists()) {
+      const init = { ...MODULOS_ACTIVOS_DEFAULT };
+      try {
+        sessionStorage.setItem(MODULOS_CACHE_KEY, JSON.stringify(init));
+      } catch (e) {}
+      return init;
+    }
+    const raw = snap.data()?.modulos || {};
+    const result: Record<ModuloAppId, boolean> = {
+      plantillas: raw.plantillas !== false,
+      tv: raw.tv !== false,
+      small_group: raw.small_group !== false,
+      go_kids: raw.go_kids !== false
+    };
+    try {
+      sessionStorage.setItem(MODULOS_CACHE_KEY, JSON.stringify(result));
+    } catch (e) {}
+    return result;
+  } catch (e) {
+    console.warn('Error cargando config_modulos_app:', e);
+    return { ...MODULOS_ACTIVOS_DEFAULT };
+  }
+}
+
+export async function guardarModulosActivos(
+  nuevosModulos: Record<ModuloAppId, boolean>
+): Promise<void> {
+  const limpio: Record<ModuloAppId, boolean> = {
+    plantillas: nuevosModulos.plantillas !== false,
+    tv: nuevosModulos.tv !== false,
+    small_group: nuevosModulos.small_group !== false,
+    go_kids: nuevosModulos.go_kids !== false
+  };
+  await setDoc(doc(db, 'maestros', 'config_modulos_app'), {
+    schema_version: 1,
+    modulos: limpio,
+    updated_at: new Date().toISOString()
+  });
+  limpiarCacheModulosActivos();
+  try {
+    sessionStorage.setItem(MODULOS_CACHE_KEY, JSON.stringify(limpio));
+  } catch (e) {}
 }
 
 export function normalizarPermisosAccion(
@@ -741,8 +941,43 @@ export async function guardarMatrizPermisos(nuevaMatriz: MatrizPermisos): Promis
   });
 }
 
+export async function asegurarUsuariosEspecialesApp(): Promise<void> {
+  try {
+    const tvRef = doc(db, 'usuarios_app', PROYECTOR_SALA_EMAIL);
+    const tvSnap = await getDoc(tvRef);
+    const tvData = tvSnap.exists() ? tvSnap.data() : null;
+    if (
+      !tvData ||
+      tvData.rol !== 'Proyector Sala' ||
+      tvData.es_programador !== false ||
+      tvData.email !== PROYECTOR_SALA_EMAIL
+    ) {
+      await setDoc(
+        tvRef,
+        {
+          email: PROYECTOR_SALA_EMAIL,
+          nombre: tvData?.nombre && tvData.nombre !== 'tvsala' ? tvData.nombre : 'TV Sala',
+          alias: tvData?.alias || 'TV Sala',
+          rol: 'Proyector Sala',
+          es_programador: false
+        },
+        { merge: true }
+      );
+    }
+
+    const oldInvitadoRef = doc(db, 'usuarios_app', 'invitado@goandtrain.com');
+    const oldInvitadoSnap = await getDoc(oldInvitadoRef);
+    if (oldInvitadoSnap.exists()) {
+      await deleteDoc(oldInvitadoRef);
+    }
+  } catch (e) {
+    console.warn('No se pudo asegurar tvsala@goandtrain.com en usuarios_app:', e);
+  }
+}
+
 export async function cargarUsuariosAutenticacion(): Promise<UsuarioApp[]> {
   try {
+    await asegurarUsuariosEspecialesApp();
     const snap = await getDocs(collection(db, "usuarios_app"));
     const lista: UsuarioApp[] = [];
     snap.forEach(docSnap => {
@@ -845,7 +1080,7 @@ export async function getListaProgramadores(forzar = false): Promise<string[]> {
       const d = docSnap.data();
       if (d.es_programador === false) return;
       if (esRolProyectorSala(d.rol || '')) return;
-      if (String(d.email || docSnap.id || '').trim().toLowerCase() === 'invitado@goandtrain.com') {
+      if (esCorreoProyectorSala(d.email || docSnap.id)) {
         return;
       }
       const nombre = String(d.alias || d.nombre_corto || d.nombre || '').trim();
