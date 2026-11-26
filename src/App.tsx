@@ -17,7 +17,7 @@ import { EditarPlantillaView } from './views/EditarPlantillaView';
 import { MaestrosView } from './views/MaestrosView';
 import { ProgramacionesPendientesView } from './views/ProgramacionesPendientesView';
 import { PantallaSalaView } from './views/PantallaSalaView';
-import { esRolProyectorSala, esRolBasico } from './services/maestrosService';
+import { esRolProyectorSala } from './services/maestrosService';
 import { precargarDatosOfflineEnSegundoPlano } from './services/offlineSyncService';
 import { asegurarBackupDiarioAutomaticoEnDrive } from './services/backupService';
 
@@ -74,45 +74,102 @@ function guardarRutaActiva(tab: string, param: string) {
 }
 
 const AppContent: React.FC = () => {
-  const { user, role, isProyector, esModuloActivo, loading } = useAuth();
-  const isBasico = esRolBasico(role);
+  const { user, role, permissions, isProyector, esModuloActivo, hasPermission, loading } = useAuth();
   const [initialRoute] = useState<{ tab: string; param: string }>(() => leerRutaInicial());
   const [activeTab, setActiveTab] = useState<string>(initialRoute.tab);
   const [routeParam, setRouteParam] = useState<string>(initialRoute.param);
   const [historyStack, setHistoryStack] = useState<Array<{ tab: string; param: string }>>([]);
 
+  const canAccessTab = React.useCallback(
+    (tab: string): boolean => {
+      if (isProyector) return tab === 'pantalla_sala';
+      switch (tab) {
+        case 'planificacion':
+          return hasPermission('planificacion', 'ver');
+        case 'programar_sesion':
+          return hasPermission('programar_sesiones', 'ver');
+        case 'agenda':
+          return hasPermission('agenda', 'ver');
+        case 'pendientes':
+          return hasPermission('programaciones_pendientes', 'ver');
+        case 'clientes':
+        case 'ficha_cliente':
+          return hasPermission('clientes', 'ver');
+        case 'ejercicios':
+        case 'ficha_ejercicio':
+          return hasPermission('ejercicios', 'ver');
+        case 'plantillas':
+        case 'editar_plantilla':
+          return esModuloActivo('plantillas') && hasPermission('plantillas', 'ver');
+        case 'maestros':
+          return (
+            hasPermission('maestros', 'ver') ||
+            hasPermission('perfiles_roles', 'ver') ||
+            hasPermission('copias_seguridad', 'ver')
+          );
+        case 'pantalla_sala':
+          return esModuloActivo('tv') && hasPermission('pantalla_sala', 'ver');
+        default:
+          return false;
+      }
+    },
+    [isProyector, hasPermission, esModuloActivo, permissions, role]
+  );
+
+  const obtenerTabPermitidaPorDefecto = React.useCallback((): string => {
+    if (isProyector) return 'pantalla_sala';
+    const ordenCandidatas = [
+      'planificacion',
+      'agenda',
+      'clientes',
+      'ejercicios',
+      'plantillas',
+      'maestros',
+      'pantalla_sala'
+    ];
+    for (const candidata of ordenCandidatas) {
+      if (canAccessTab(candidata)) return candidata;
+    }
+    return 'planificacion';
+  }, [isProyector, canAccessTab]);
+
   useEffect(() => {
-    if (!user) return;
+    if (!user || isProyector) return;
     // Precargar datos en caché local IndexedDB para uso sin WiFi
     precargarDatosOfflineEnSegundoPlano();
-    // Verificar/ejecutar backup diario automático a Google Drive en segundo plano
-    asegurarBackupDiarioAutomaticoEnDrive();
-  }, [user]);
-
-  useEffect(() => {
-    if (isProyector) {
-      setActiveTab('pantalla_sala');
-    } else if (isBasico && activeTab !== 'planificacion') {
-      setActiveTab('planificacion');
-      setRouteParam('');
-      guardarRutaActiva('planificacion', '');
-    } else if (
-      (activeTab === 'plantillas' || activeTab === 'editar_plantilla') &&
-      !esModuloActivo('plantillas')
-    ) {
-      setActiveTab('planificacion');
-      setRouteParam('');
-      guardarRutaActiva('planificacion', '');
-    } else if (activeTab === 'pantalla_sala' && !esModuloActivo('tv')) {
-      setActiveTab('planificacion');
-      setRouteParam('');
-      guardarRutaActiva('planificacion', '');
+    // Verificar/ejecutar backup diario automático a Google Drive en segundo plano si tiene permiso
+    if (hasPermission('copias_seguridad', 'crear')) {
+      asegurarBackupDiarioAutomaticoEnDrive();
     }
-  }, [isProyector, isBasico, activeTab, esModuloActivo]);
+  }, [user, isProyector, hasPermission]);
 
   useEffect(() => {
-    const tabInicial = isProyector ? 'pantalla_sala' : isBasico ? 'planificacion' : activeTab;
-    const paramInicial = isProyector || isBasico ? '' : routeParam;
+    if (!user || loading) return;
+    if (isProyector) {
+      if (activeTab !== 'pantalla_sala') {
+        setActiveTab('pantalla_sala');
+        setRouteParam('');
+      }
+      return;
+    }
+    if (!canAccessTab(activeTab)) {
+      const fallbackTab = obtenerTabPermitidaPorDefecto();
+      if (activeTab !== fallbackTab) {
+        setActiveTab(fallbackTab);
+        setRouteParam('');
+        guardarRutaActiva(fallbackTab, '');
+        window.history.replaceState({ tab: fallbackTab, param: '' }, '', `#${fallbackTab}`);
+      }
+    }
+  }, [user, loading, isProyector, activeTab, canAccessTab, obtenerTabPermitidaPorDefecto]);
+
+  useEffect(() => {
+    const tabInicial = isProyector
+      ? 'pantalla_sala'
+      : canAccessTab(activeTab)
+      ? activeTab
+      : obtenerTabPermitidaPorDefecto();
+    const paramInicial = isProyector || tabInicial !== activeTab ? '' : routeParam;
     const hashInicial = paramInicial
       ? `#${tabInicial}/${encodeURIComponent(paramInicial)}`
       : `#${tabInicial}`;
@@ -125,14 +182,16 @@ const AppContent: React.FC = () => {
         setActiveTab('pantalla_sala');
         return;
       }
-      if (isBasico) {
-        setActiveTab('planificacion');
-        setRouteParam('');
-        return;
-      }
       if (event.state && event.state.tab && VALID_TABS.has(event.state.tab)) {
         const nextTab = event.state.tab;
         const nextParam = event.state.param || '';
+        if (!canAccessTab(nextTab)) {
+          const fallback = obtenerTabPermitidaPorDefecto();
+          setActiveTab(fallback);
+          setRouteParam('');
+          guardarRutaActiva(fallback, '');
+          return;
+        }
         setActiveTab(nextTab);
         setRouteParam(nextParam);
         guardarRutaActiva(nextTab, nextParam);
@@ -140,30 +199,26 @@ const AppContent: React.FC = () => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
         const fromHash = leerRutaInicial();
-        setActiveTab(fromHash.tab);
-        setRouteParam(fromHash.param);
-        guardarRutaActiva(fromHash.tab, fromHash.param);
+        const targetTab = canAccessTab(fromHash.tab)
+          ? fromHash.tab
+          : obtenerTabPermitidaPorDefecto();
+        const targetParam = targetTab === fromHash.tab ? fromHash.param : '';
+        setActiveTab(targetTab);
+        setRouteParam(targetParam);
+        guardarRutaActiva(targetTab, targetParam);
       }
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [isProyector, isBasico]);
+  }, [isProyector, canAccessTab, obtenerTabPermitidaPorDefecto]);
 
   const handleNavigate = (tab: string, param = '') => {
     if (isProyector && tab !== 'pantalla_sala') {
       setActiveTab('pantalla_sala');
       return;
     }
-    if (isBasico && tab !== 'planificacion') {
-      setActiveTab('planificacion');
-      setRouteParam('');
-      return;
-    }
-    if ((tab === 'plantillas' || tab === 'editar_plantilla') && !esModuloActivo('plantillas')) {
-      return;
-    }
-    if (tab === 'pantalla_sala' && !esModuloActivo('tv') && !isProyector) {
+    if (!canAccessTab(tab)) {
       return;
     }
     if (tab === activeTab && param === routeParam) return;
@@ -211,15 +266,11 @@ const AppContent: React.FC = () => {
             setActiveTab('pantalla_sala');
             setRouteParam('');
             guardarRutaActiva('pantalla_sala', '');
-          } else if (esRolBasico(loggedInRole)) {
-            setActiveTab('planificacion');
-            setRouteParam('');
-            guardarRutaActiva('planificacion', '');
           } else {
             const rutaPrevia = leerRutaInicial();
-            setActiveTab(rutaPrevia.tab);
-            setRouteParam(rutaPrevia.param);
-            guardarRutaActiva(rutaPrevia.tab, rutaPrevia.param);
+            setActiveTab(rutaPrevia.tab || 'planificacion');
+            setRouteParam(rutaPrevia.param || '');
+            guardarRutaActiva(rutaPrevia.tab || 'planificacion', rutaPrevia.param || '');
           }
         }}
       />

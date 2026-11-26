@@ -4,7 +4,8 @@ import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import {
   cargarCatalogoMaestros,
-  extraerListaMaster
+  extraerListaMaster,
+  onCatalogoMaestrosChanged
 } from '../services/maestrosService';
 import {
   esSesionCompletada,
@@ -260,33 +261,43 @@ export const PantallaSalaView: React.FC<PantallaSalaViewProps> = ({ onBack }) =>
     }
   }, []);
 
+  const aplicarMaestros = useCallback(async () => {
+    try {
+      const maestros = await cargarCatalogoMaestros();
+      const bloques = extraerListaMaster(maestros, 'Ejercicios', [
+        'Bloque de la sesión en que se recomienda',
+        'Bloque de recomendación'
+      ]);
+      if (bloques.length > 0) setOrdenBloques(bloques);
+
+      const dias = extraerListaMaster(maestros, 'Agenda', [
+        'Días de la semana',
+        'Dias de la semana'
+      ]);
+      if (dias.length > 0) {
+        diasSemanaRef.current = dias;
+      }
+    } catch (e) {
+      console.warn('Error cargando maestros en pantalla_sala:', e);
+    }
+  }, []);
+
   useEffect(() => {
     const init = async () => {
-      try {
-        const maestros = await cargarCatalogoMaestros();
-        const bloques = extraerListaMaster(maestros, 'Ejercicios', [
-          'Bloque de la sesión en que se recomienda',
-          'Bloque de recomendación'
-        ]);
-        if (bloques.length > 0) setOrdenBloques(bloques);
-
-        const dias = extraerListaMaster(maestros, 'Agenda', [
-          'Días de la semana',
-          'Dias de la semana'
-        ]);
-        if (dias.length > 0) {
-          diasSemanaRef.current = dias;
-        }
-      } catch (e) {
-        console.warn('Error cargando maestros en pantalla_sala:', e);
-      }
+      await aplicarMaestros();
       await actualizarPantallaSala();
     };
     init();
 
     const interval = setInterval(actualizarPantallaSala, 60000);
     return () => clearInterval(interval);
-  }, [actualizarPantallaSala]);
+  }, [aplicarMaestros, actualizarPantallaSala]);
+
+  useEffect(() => {
+    return onCatalogoMaestrosChanged(() => {
+      aplicarMaestros();
+    });
+  }, [aplicarMaestros]);
 
   const handleCloseOrLogout = async () => {
     if (isProyector) {

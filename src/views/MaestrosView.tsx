@@ -20,11 +20,15 @@ import {
   reasignarOQuitarDependencia,
   limpiarNombreDoc,
   limpiarCacheMaestros,
+  limpiarCacheProgramadores,
+  onCatalogoMaestrosChanged,
   asegurarRolesYPermisosIniciales,
   cargarMatrizPermisos,
   guardarMatrizPermisos,
   cargarUsuariosAutenticacion,
+  guardarUsuarioAppEnFirestore,
   PermisosPorDefectoParaRol,
+  obtenerPermisosRolDesdeMatriz,
   esRolAdmin,
   esRolSuperAdmin,
   esRolBasico,
@@ -48,7 +52,7 @@ import { PermisoAccion } from '../types';
 const clonarProfundo = (obj: any) => (obj ? JSON.parse(JSON.stringify(obj)) : obj);
 
 export const MaestrosView: React.FC = () => {
-  const { role, isSuperAdmin, esModuloActivo, modulosActivos } = useAuth();
+  const { role, isSuperAdmin, esModuloActivo, modulosActivos, hasPermission } = useAuth();
   const { pushAction, registerChangeListener } = useUndo();
 
   const [mapaMaestros, setMapaMaestros] = useState<
@@ -103,7 +107,20 @@ export const MaestrosView: React.FC = () => {
     processing: false
   });
 
-  const esAdmin = esRolAdmin(role);
+  const esAdmin = esRolAdmin(role) || isSuperAdmin;
+  const puedeVerMaestros = esAdmin || hasPermission('maestros', 'ver');
+  const puedeEditarMaestros = esAdmin || hasPermission('maestros', 'editar');
+  const puedeCrearMaestros = esAdmin || hasPermission('maestros', 'crear');
+  const puedeBorrarMaestros = esAdmin || hasPermission('maestros', 'borrar');
+
+  const puedeVerPerfiles = esAdmin || hasPermission('perfiles_roles', 'ver');
+  const puedeEditarPerfiles = esAdmin || hasPermission('perfiles_roles', 'editar');
+  const puedeCrearPerfiles = esAdmin || hasPermission('perfiles_roles', 'crear');
+  const puedeBorrarPerfiles = esAdmin || hasPermission('perfiles_roles', 'borrar');
+
+  const puedeVerBackups = esAdmin || hasPermission('copias_seguridad', 'ver');
+  const puedeCrearBackups = esAdmin || hasPermission('copias_seguridad', 'crear');
+  const puedeEditarBackups = esAdmin || hasPermission('copias_seguridad', 'editar');
 
   // Backups & Restore state
   const [versionesBackup, setVersionesBackup] = useState<VersionBackupItem[]>([]);
@@ -125,9 +142,42 @@ export const MaestrosView: React.FC = () => {
   const puedeEditarActual = () => {
     if (currentSection === 'Copias de Seguridad') return false;
     if (currentSection === 'SuperAdmin') return false;
-    if (currentSection === 'Gestión de Perfiles' && currentKey === 'Permisos') return false;
-    if (esAdmin || isSuperAdmin) return true;
-    return currentSection === 'Ejercicios';
+    if (currentSection === 'Gestión de Perfiles') {
+      if (currentKey === 'Permisos') return false;
+      return esAdmin || puedeEditarPerfiles || puedeCrearPerfiles || puedeBorrarPerfiles;
+    }
+    if (esAdmin || puedeEditarMaestros || puedeCrearMaestros || puedeBorrarMaestros) return true;
+    return currentSection === 'Ejercicios' && hasPermission('ejercicios', 'editar');
+  };
+
+  const puedeCrearEnSeccionActual = () => {
+    if (currentSection === 'Copias de Seguridad' || currentSection === 'SuperAdmin') return false;
+    if (currentSection === 'Gestión de Perfiles') {
+      if (currentKey === 'Permisos') return false;
+      return esAdmin || puedeCrearPerfiles;
+    }
+    if (esAdmin || puedeCrearMaestros) return true;
+    return currentSection === 'Ejercicios' && (hasPermission('ejercicios', 'crear') || hasPermission('ejercicios', 'editar'));
+  };
+
+  const puedeRenombrarEnSeccionActual = () => {
+    if (currentSection === 'Copias de Seguridad' || currentSection === 'SuperAdmin') return false;
+    if (currentSection === 'Gestión de Perfiles') {
+      if (currentKey === 'Permisos') return false;
+      return esAdmin || puedeEditarPerfiles;
+    }
+    if (esAdmin || puedeEditarMaestros) return true;
+    return currentSection === 'Ejercicios' && hasPermission('ejercicios', 'editar');
+  };
+
+  const puedeBorrarEnSeccionActual = () => {
+    if (currentSection === 'Copias de Seguridad' || currentSection === 'SuperAdmin') return false;
+    if (currentSection === 'Gestión de Perfiles') {
+      if (currentKey === 'Permisos') return false;
+      return esAdmin || puedeBorrarPerfiles;
+    }
+    if (esAdmin || puedeBorrarMaestros) return true;
+    return currentSection === 'Ejercicios' && (hasPermission('ejercicios', 'borrar') || hasPermission('ejercicios', 'editar'));
   };
 
   const getItemsActuales = useCallback((): { id: string; valor: string; orden: number }[] => {
@@ -139,40 +189,49 @@ export const MaestrosView: React.FC = () => {
 
   const getRolesDisponibles = useCallback((): string[] => {
     const itemsRoles = mapaMaestros['Gestión de Perfiles']?.Roles || [];
-    const lista = itemsRoles.map(x => x.valor);
+    const lista = itemsRoles.map(x => x.valor).filter(r => !esRolSuperAdmin(r));
     if (lista.length === 0) return ['admin', 'programador', 'Básico', 'Proyector Sala'];
     if (!lista.some(r => esRolBasico(r))) {
       lista.push('Básico');
+    }
+    if (!lista.some(r => esRolProyectorSala(r))) {
+      lista.push('Proyector Sala');
     }
     return lista;
   }, [mapaMaestros]);
 
   const recargarTodo = useCallback(async () => {
+    if (esAdmin || isSuperAdmin) {
+      try {
+        await asegurarRolesYPermisosIniciales();
+      } catch (e) {
+        console.warn('No se pudo inicializar roles/permisos por defecto:', e);
+      }
+    }
     try {
-      await asegurarRolesYPermisosIniciales();
+      const [maestros, matriz, users, listaBackups, cfgDrive] = await Promise.all([
+        cargarTodosLosMaestros(true),
+        cargarMatrizPermisos(),
+        cargarUsuariosAutenticacion(),
+        listarVersionesBackup(),
+        cargarConfigGoogleDrive()
+      ]);
+      setMapaMaestros(maestros);
+      setMatrizPermisosGlobal(matriz);
+      setUsuariosAuthGlobal(users);
+      if (cfgDrive) {
+        setDriveConfig(cfgDrive);
+      }
+      setVersionesBackup(listaBackups);
+      setVersionSeleccionadaId(prev =>
+        prev && listaBackups.some(v => v.id === prev)
+          ? prev
+          : listaBackups[0]?.id || ''
+      );
     } catch (e) {
-      console.warn('No se pudo inicializar roles/permisos por defecto:', e);
+      console.warn('Aviso al recargar maestros:', e);
     }
-    const [maestros, matriz, users, listaBackups, cfgDrive] = await Promise.all([
-      cargarTodosLosMaestros(true),
-      cargarMatrizPermisos(),
-      cargarUsuariosAutenticacion(),
-      listarVersionesBackup(),
-      cargarConfigGoogleDrive()
-    ]);
-    setMapaMaestros(maestros);
-    setMatrizPermisosGlobal(matriz);
-    setUsuariosAuthGlobal(users);
-    if (cfgDrive) {
-      setDriveConfig(cfgDrive);
-    }
-    setVersionesBackup(listaBackups);
-    setVersionSeleccionadaId(prev =>
-      prev && listaBackups.some(v => v.id === prev)
-        ? prev
-        : listaBackups[0]?.id || ''
-    );
-  }, []);
+  }, [esAdmin, isSuperAdmin]);
 
   useEffect(() => {
     recargarTodo();
@@ -184,6 +243,14 @@ export const MaestrosView: React.FC = () => {
       recargarTodo();
     });
   }, [registerChangeListener, recargarTodo]);
+
+  useEffect(() => {
+    return onCatalogoMaestrosChanged((evt) => {
+      if (evt.source === 'external_tab') {
+        recargarTodo();
+      }
+    });
+  }, [recargarTodo]);
 
   const cancelarEdicion = () => {
     setEditingItemId(null);
@@ -486,47 +553,73 @@ export const MaestrosView: React.FC = () => {
 
   // --- Perfiles: Roles y Usuarios ---
   const cambiarRolUsuario = async (docId: string, nuevoRol: string) => {
-    if (!esAdmin) return;
+    if (!esAdmin && !puedeEditarPerfiles) return;
     try {
-      const userRef = doc(db, 'usuarios_app', docId);
-      const prevSnap = await getDoc(userRef);
-      const prevData = prevSnap.exists() ? clonarProfundo(prevSnap.data()) : null;
+      const prevUser = usuariosAuthGlobal.find(
+        u => u.id === docId || (u.email && u.email.toLowerCase() === docId.toLowerCase())
+      );
 
       const esProyector = esRolProyectorSala(nuevoRol);
       const esBasico = esRolBasico(nuevoRol);
-      const updatePayload: any = { rol: nuevoRol };
-      if (esProyector || esBasico) updatePayload.es_programador = false;
+      const updatePayload: any = {
+        email: prevUser?.email || (docId.includes('@') ? docId : ''),
+        nombre: prevUser?.nombre || docId,
+        alias: prevUser?.alias || prevUser?.nombre || docId,
+        rol: nuevoRol,
+        es_programador: !(esProyector || esBasico)
+      };
 
-      await setDoc(userRef, updatePayload, { merge: true });
-      sessionStorage.removeItem('gym_programadores_cache_v1');
+      // Actualizar estado visual de inmediato
+      setUsuariosAuthGlobal(prev =>
+        prev.map(u =>
+          u.id === docId || (u.email && u.email.toLowerCase() === docId.toLowerCase())
+            ? {
+                ...u,
+                rol: nuevoRol,
+                es_programador: !(esProyector || esBasico)
+              }
+            : u
+        )
+      );
 
-      if (prevData) {
-        pushAction({
-          label: `Cambiar rol de ${docId} a "${nuevoRol}"`,
-          undoOps: [{ type: 'set', collection: 'usuarios_app', id: docId, data: prevData }],
-          redoOps: [
-            {
-              type: 'set',
-              collection: 'usuarios_app',
-              id: docId,
-              data: { ...prevData, ...updatePayload }
-            }
-          ],
-          showToast: true,
-          toastMessage: `✓ Rol de ${prevData.nombre || docId} actualizado a "${nuevoRol}"`
-        });
-      }
+      const { prevUserDocData, nextUserDocData, targetDocId } =
+        await guardarUsuarioAppEnFirestore(docId, updatePayload);
+      limpiarCacheProgramadores();
+
+      pushAction({
+        label: `Cambiar rol de ${prevUser?.nombre || docId} a "${nuevoRol}"`,
+        undoOps: [
+          prevUserDocData
+            ? {
+                type: 'set',
+                collection: 'usuarios_app',
+                id: targetDocId,
+                data: prevUserDocData
+              }
+            : { type: 'delete', collection: 'usuarios_app', id: targetDocId }
+        ],
+        redoOps: [
+          {
+            type: 'set',
+            collection: 'usuarios_app',
+            id: targetDocId,
+            data: nextUserDocData
+          }
+        ],
+        showToast: true,
+        toastMessage: `✓ Rol de ${prevUser?.nombre || docId} actualizado a "${nuevoRol}"`
+      });
 
       const users = await cargarUsuariosAutenticacion();
       setUsuariosAuthGlobal(users);
     } catch (e) {
-      console.error(e);
+      console.warn('Error al actualizar el rol del usuario:', e);
       alert('No se pudo actualizar el rol del usuario.');
     }
   };
 
   const vincularNuevoUsuarioAuth = async () => {
-    if (!esAdmin) return;
+    if (!esAdmin && !puedeCrearPerfiles) return;
     const email = newUserEmail.trim().toLowerCase();
     const nombre = newUserNombre.trim();
     const rol = newUserRol;
@@ -539,11 +632,13 @@ export const MaestrosView: React.FC = () => {
       alert('Introduce el nombre o alias del usuario.');
       return;
     }
+    if (esCorreoSuperAdmin(email)) {
+      setNewUserEmail('');
+      setNewUserNombre('');
+      return;
+    }
 
     try {
-      const userRef = doc(db, 'usuarios_app', email);
-      const prevSnap = await getDoc(userRef);
-      const prevData = prevSnap.exists() ? clonarProfundo(prevSnap.data()) : null;
       const esProyector = esRolProyectorSala(rol);
       const esBasico = esRolBasico(rol);
 
@@ -555,28 +650,62 @@ export const MaestrosView: React.FC = () => {
         es_programador: !(esProyector || esBasico)
       };
 
-      await setDoc(userRef, nuevoDoc, { merge: true });
-      sessionStorage.removeItem('gym_programadores_cache_v1');
-
-      pushAction({
-        label: `Vincular usuario "${nombre}" (${rol})`,
-        undoOps: [
-          prevData
-            ? { type: 'set', collection: 'usuarios_app', id: email, data: prevData }
-            : { type: 'delete', collection: 'usuarios_app', id: email }
-        ],
-        redoOps: [{ type: 'set', collection: 'usuarios_app', id: email, data: nuevoDoc }],
-        showToast: true,
-        toastMessage: `✓ Usuario "${nombre}" vinculado con rol "${rol}"`
+      // Actualización optimista inmediata en la tabla
+      setUsuariosAuthGlobal(prev => {
+        const filtrados = prev.filter(
+          u => u.id.toLowerCase() !== email && (u.email || '').toLowerCase() !== email
+        );
+        const nuevaLista = [
+          ...filtrados,
+          {
+            id: email,
+            email,
+            nombre,
+            alias: nombre,
+            rol,
+            es_programador: !(esProyector || esBasico)
+          }
+        ];
+        nuevaLista.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
+        return nuevaLista;
       });
 
       setNewUserEmail('');
       setNewUserNombre('');
+
+      const { prevUserDocData, nextUserDocData, targetDocId } =
+        await guardarUsuarioAppEnFirestore(email, nuevoDoc);
+      limpiarCacheProgramadores();
+
+      pushAction({
+        label: `Vincular usuario "${nombre}" (${rol})`,
+        undoOps: [
+          prevUserDocData
+            ? {
+                type: 'set',
+                collection: 'usuarios_app',
+                id: targetDocId,
+                data: prevUserDocData
+              }
+            : { type: 'delete', collection: 'usuarios_app', id: targetDocId }
+        ],
+        redoOps: [
+          {
+            type: 'set',
+            collection: 'usuarios_app',
+            id: targetDocId,
+            data: nextUserDocData
+          }
+        ],
+        showToast: true,
+        toastMessage: `✓ Usuario "${nombre}" vinculado con rol "${rol}"`
+      });
+
       const users = await cargarUsuariosAutenticacion();
       setUsuariosAuthGlobal(users);
     } catch (e) {
-      console.error(e);
-      alert('Error al vincular el usuario en usuarios_app.');
+      console.warn('Error al vincular el usuario:', e);
+      alert('No se pudo vincular el usuario.');
     }
   };
 
@@ -587,14 +716,24 @@ export const MaestrosView: React.FC = () => {
     tipoOp: keyof PermisoAccion,
     checked: boolean
   ) => {
-    if (!esAdmin || esRolAdmin(rolTarget)) return;
+    if ((!esAdmin && !puedeEditarPerfiles) || esRolAdmin(rolTarget)) return;
 
     const prevMatriz = clonarProfundo(matrizPermisosGlobal);
     const nextMatriz = clonarProfundo(matrizPermisosGlobal);
 
-    if (!nextMatriz[rolTarget]) {
-      nextMatriz[rolTarget] = PermisosPorDefectoParaRol(rolTarget);
-    }
+    const estadoBaseRol = obtenerPermisosRolDesdeMatriz(nextMatriz, rolTarget);
+    // Limpiar posibles claves duplicadas con distinta grafía/acento del mismo rol
+    Object.keys(nextMatriz).forEach(k => {
+      if (k !== rolTarget) {
+        const kNorm = k.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const tNorm = rolTarget.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        if (kNorm === tNorm || (esRolBasico(k) && esRolBasico(rolTarget))) {
+          delete nextMatriz[k];
+        }
+      }
+    });
+
+    nextMatriz[rolTarget] = estadoBaseRol;
     if (!nextMatriz[rolTarget][permId] || typeof nextMatriz[rolTarget][permId] !== 'object') {
       nextMatriz[rolTarget][permId] = { ver: false, editar: false, crear: false, borrar: false };
     }
@@ -621,7 +760,7 @@ export const MaestrosView: React.FC = () => {
             type: 'set',
             collection: 'maestros',
             id: 'config_permisos_roles',
-            data: { schema_version: 2, roles: prevMatriz }
+            data: { schema_version: 3, roles: prevMatriz }
           }
         ],
         redoOps: [
@@ -629,7 +768,7 @@ export const MaestrosView: React.FC = () => {
             type: 'set',
             collection: 'maestros',
             id: 'config_permisos_roles',
-            data: { schema_version: 2, roles: nextMatriz }
+            data: { schema_version: 3, roles: nextMatriz }
           }
         ],
         showToast: true,
@@ -643,7 +782,7 @@ export const MaestrosView: React.FC = () => {
   };
 
   const restaurarPermisosDefectoRol = async (rolTarget: string) => {
-    if (!esAdmin || esRolAdmin(rolTarget)) return;
+    if ((!esAdmin && !puedeEditarPerfiles) || esRolAdmin(rolTarget)) return;
     if (
       !(await confirmarDialogo(
         `¿Restaurar los permisos recomendados por defecto para el rol "${rolTarget}"?`,
@@ -659,6 +798,15 @@ export const MaestrosView: React.FC = () => {
 
     const prevMatriz = clonarProfundo(matrizPermisosGlobal);
     const nextMatriz = clonarProfundo(matrizPermisosGlobal);
+    Object.keys(nextMatriz).forEach(k => {
+      if (k !== rolTarget) {
+        const kNorm = k.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const tNorm = rolTarget.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        if (kNorm === tNorm || (esRolBasico(k) && esRolBasico(rolTarget))) {
+          delete nextMatriz[k];
+        }
+      }
+    });
     nextMatriz[rolTarget] = PermisosPorDefectoParaRol(rolTarget);
 
     setMatrizPermisosGlobal(nextMatriz);
@@ -672,7 +820,7 @@ export const MaestrosView: React.FC = () => {
             type: 'set',
             collection: 'maestros',
             id: 'config_permisos_roles',
-            data: { schema_version: 2, roles: prevMatriz }
+            data: { schema_version: 3, roles: prevMatriz }
           }
         ],
         redoOps: [
@@ -680,7 +828,7 @@ export const MaestrosView: React.FC = () => {
             type: 'set',
             collection: 'maestros',
             id: 'config_permisos_roles',
-            data: { schema_version: 2, roles: nextMatriz }
+            data: { schema_version: 3, roles: nextMatriz }
           }
         ],
         showToast: true,
@@ -694,8 +842,8 @@ export const MaestrosView: React.FC = () => {
   };
 
   const handleGenerarCopiaManual = async () => {
-    if (!esAdmin) {
-      alert('Solo los usuarios con rol Administrador pueden generar copias de seguridad.');
+    if (!puedeCrearBackups) {
+      alert('Tu rol actual no tiene permisos para generar copias de seguridad.');
       return;
     }
     setGenerandoCopia(true);
@@ -718,8 +866,8 @@ export const MaestrosView: React.FC = () => {
   };
 
   const handleRestaurarCopia = async () => {
-    if (!esAdmin) {
-      alert('Solo los usuarios con rol Administrador pueden restaurar copias de seguridad.');
+    if (!puedeEditarBackups) {
+      alert('Tu rol actual no tiene permisos para restaurar copias de seguridad.');
       return;
     }
     const versionObj = versionesBackup.find((v) => v.id === versionSeleccionadaId);
@@ -773,7 +921,7 @@ export const MaestrosView: React.FC = () => {
 
   const handleGuardarConfigDrive = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!esAdmin) return;
+    if (!puedeEditarBackups) return;
     if (!driveConfig.folderId.trim()) {
       alert('Indica el ID o enlace de la carpeta de Google Drive.');
       return;
@@ -806,6 +954,9 @@ export const MaestrosView: React.FC = () => {
 
   const itemsActuales = getItemsActuales();
   const editable = puedeEditarActual();
+  const puedeCrearActual = puedeCrearEnSeccionActual();
+  const puedeRenombrarActual = puedeRenombrarEnSeccionActual();
+  const puedeBorrarActual = puedeBorrarEnSeccionActual();
   const esVistaPermisos =
     currentSection === 'Gestión de Perfiles' && currentKey === 'Permisos';
   const esVistaRoles = currentSection === 'Gestión de Perfiles' && currentKey === 'Roles';
@@ -867,6 +1018,15 @@ export const MaestrosView: React.FC = () => {
             </div>
           )}
           {Object.entries(ESTRUCTURA_MAESTROS).map(([seccion, claves]) => {
+            if (seccion === 'Gestión de Perfiles' && !puedeVerPerfiles) return null;
+            if (seccion === 'Copias de Seguridad' && !puedeVerBackups) return null;
+            if (
+              seccion !== 'Gestión de Perfiles' &&
+              seccion !== 'Copias de Seguridad' &&
+              !puedeVerMaestros
+            ) {
+              return null;
+            }
             const clavesVisibles = claves.filter(clv => {
               if (
                 seccion === 'Agenda' &&
@@ -928,12 +1088,12 @@ export const MaestrosView: React.FC = () => {
             )}
           </div>
 
-          {!esAdmin && !isSuperAdmin && currentSection !== 'Ejercicios' && (
+          {!editable && !esVistaPermisos && !esVistaModulosApp && (
             <div className="readonly-banner">
               <span className="ui-icon">🔒</span>
               <span>
-                Modo consulta: como Programador solo puedes editar los maestros de la sección{' '}
-                <strong>Ejercicios</strong>.
+                Modo consulta: tu perfil actual no tiene permisos de edición en la sección{' '}
+                <strong>{currentSection}</strong>.
               </span>
             </div>
           )}
@@ -984,7 +1144,7 @@ export const MaestrosView: React.FC = () => {
             </div>
           )}
 
-          {!esVistaPermisos && !esVistaBackups && editable && (
+          {!esVistaPermisos && !esVistaBackups && (puedeCrearActual || (editingItemId && puedeRenombrarActual)) && (
             <div className="add-item-bar" style={{ flexWrap: 'wrap' }}>
               {currentSection === 'Agenda' && currentKey === 'Horarios Small Groups' ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, flexWrap: 'wrap' }}>
@@ -1167,7 +1327,7 @@ export const MaestrosView: React.FC = () => {
                       <tr
                         key={item.id}
                         className="maestros-row"
-                        draggable={editable}
+                        draggable={puedeRenombrarActual}
                         onDragStart={() => {
                           dragIdxRef.current = idx;
                         }}
@@ -1176,7 +1336,7 @@ export const MaestrosView: React.FC = () => {
                       >
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            {editable && (
+                            {puedeRenombrarActual && (
                               <span
                                 className="drag-handle"
                                 title="Arrastra para cambiar el orden"
@@ -1218,37 +1378,41 @@ export const MaestrosView: React.FC = () => {
                           )}
                         </td>
                         <td style={{ textAlign: 'right' }}>
-                          {editable ? (
+                          {puedeRenombrarActual || puedeBorrarActual ? (
                             <div className="action-btns" style={{ justifyContent: 'flex-end' }}>
-                              <button
-                                type="button"
-                                className="btn-icon"
-                                title="Renombrar"
-                                onClick={() => iniciarEdicion(item.id, item.valor)}
-                              >
-                                <span className="ui-icon">✏️</span>
-                                <span>Editar</span>
-                              </button>
-                              <button
-                                type="button"
-                                className="btn-icon danger"
-                                title="Eliminar"
-                                onClick={() => solicitarBorrado(item.id, item.valor)}
-                              >
-                                <svg
-                                  width="15"
-                                  height="15"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
+                              {puedeRenombrarActual && (
+                                <button
+                                  type="button"
+                                  className="btn-icon"
+                                  title="Renombrar"
+                                  onClick={() => iniciarEdicion(item.id, item.valor)}
                                 >
-                                  <polyline points="3 6 5 6 21 6" />
-                                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                </svg>
-                              </button>
+                                  <span className="ui-icon">✏️</span>
+                                  <span>Editar</span>
+                                </button>
+                              )}
+                              {puedeBorrarActual && (
+                                <button
+                                  type="button"
+                                  className="btn-icon danger"
+                                  title="Eliminar"
+                                  onClick={() => solicitarBorrado(item.id, item.valor)}
+                                >
+                                  <svg
+                                    width="15"
+                                    height="15"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <polyline points="3 6 5 6 21 6" />
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                  </svg>
+                                </button>
+                              )}
                             </div>
                           ) : esVistaPermisos ? (
                             <span
@@ -1349,7 +1513,7 @@ export const MaestrosView: React.FC = () => {
                   <button
                     type="button"
                     className="btn-primary"
-                    disabled={!esAdmin || generandoCopia || restaurandoCopia}
+                    disabled={!puedeCrearBackups || generandoCopia || restaurandoCopia}
                     onClick={handleGenerarCopiaManual}
                     style={{ whiteSpace: 'nowrap', padding: '10px 18px' }}
                   >
@@ -1408,7 +1572,7 @@ export const MaestrosView: React.FC = () => {
                         )}
                       </button>
                     )}
-                    {esAdmin && (
+                    {puedeEditarBackups && (
                       <button
                         type="button"
                         className="btn-outline"
@@ -1431,7 +1595,7 @@ export const MaestrosView: React.FC = () => {
                   </div>
                 </div>
 
-                {mostrarConfigDrive && esAdmin && (
+                {mostrarConfigDrive && puedeEditarBackups && (
                   <form
                     onSubmit={handleGuardarConfigDrive}
                     style={{
@@ -1566,7 +1730,7 @@ export const MaestrosView: React.FC = () => {
                         fontSize: '0.9rem',
                         fontWeight: 600
                       }}
-                      disabled={!esAdmin || generandoCopia || restaurandoCopia}
+                      disabled={!puedeEditarBackups || generandoCopia || restaurandoCopia}
                       value={versionSeleccionadaId}
                       onChange={(e) => setVersionSeleccionadaId(e.target.value)}
                     >
@@ -1580,7 +1744,7 @@ export const MaestrosView: React.FC = () => {
                     <button
                       type="button"
                       className="btn-outline"
-                      disabled={!esAdmin || generandoCopia || restaurandoCopia || !versionSeleccionadaId}
+                      disabled={!puedeEditarBackups || generandoCopia || restaurandoCopia || !versionSeleccionadaId}
                       onClick={handleRestaurarCopia}
                       style={{
                         whiteSpace: 'nowrap',
@@ -1629,13 +1793,6 @@ export const MaestrosView: React.FC = () => {
                 </span>
               </div>
 
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: 0, marginBottom: 16 }}>
-                Asigna qué rol tiene cada cuenta de acceso de Firebase Authentication. La cuenta{' '}
-                <code>tvsala@goandtrain.com</code> utiliza el rol <strong>Proyector Sala</strong>{' '}
-                con acceso exclusivo a Pantalla Sala, y <code>ccalvotriana@gmail.com</code> cuenta con el rol{' '}
-                <strong>SuperAdmin</strong>.
-              </p>
-
               <div className="table-responsive" style={{ marginBottom: 18 }}>
                 <table className="maestros-table">
                   <thead>
@@ -1648,17 +1805,11 @@ export const MaestrosView: React.FC = () => {
                   </thead>
                   <tbody>
                     {usuariosAuthGlobal.map(u => {
-                      const esUserSuperAdmin =
-                        esRolSuperAdmin(u.rol) || esCorreoSuperAdmin(u.email || u.id);
                       const esProyector =
                         esRolProyectorSala(u.rol) ||
                         esCorreoProyectorSala(u.email || u.id);
                       const esBasico = esRolBasico(u.rol);
-                      const rolEfectivo = esUserSuperAdmin
-                        ? 'SuperAdmin'
-                        : esProyector
-                        ? 'Proyector Sala'
-                        : u.rol;
+                      const rolEfectivo = esProyector ? 'Proyector Sala' : u.rol;
                       const opcionesRol = [...rolesDisponibles];
                       if (rolEfectivo && !opcionesRol.includes(rolEfectivo)) {
                         opcionesRol.push(rolEfectivo);
@@ -1674,19 +1825,7 @@ export const MaestrosView: React.FC = () => {
                             {u.email || u.id}
                           </td>
                           <td>
-                            {esUserSuperAdmin ? (
-                              <span
-                                className="pill"
-                                style={{
-                                  background: '#f0fdfa',
-                                  color: '#0f766e',
-                                  border: '1px solid #99f6e4',
-                                  fontWeight: 700
-                                }}
-                              >
-                                SuperAdmin
-                              </span>
-                            ) : esProyector ? (
+                            {esProyector ? (
                               <span
                                 className="pill"
                                 style={{
@@ -1721,7 +1860,7 @@ export const MaestrosView: React.FC = () => {
                                 fontSize: '0.85rem',
                                 fontWeight: 600
                               }}
-                              disabled={!esAdmin || esUserSuperAdmin || esCorreoProyectorSala(u.email || u.id)}
+                              disabled={!esAdmin && !puedeEditarPerfiles}
                               value={rolEfectivo}
                               onChange={e => cambiarRolUsuario(u.id, e.target.value)}
                             >
@@ -1739,7 +1878,7 @@ export const MaestrosView: React.FC = () => {
                 </table>
               </div>
 
-              {esAdmin && (
+              {(esAdmin || puedeCrearPerfiles) && (
                 <div
                   style={{
                     background: '#f8fafc',
@@ -1785,6 +1924,12 @@ export const MaestrosView: React.FC = () => {
                         style={{ minHeight: 38 }}
                         value={newUserEmail}
                         onChange={e => setNewUserEmail(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            vincularNuevoUsuarioAuth();
+                          }
+                        }}
                       />
                     </div>
                     <div>
@@ -1806,6 +1951,12 @@ export const MaestrosView: React.FC = () => {
                         style={{ minHeight: 38 }}
                         value={newUserNombre}
                         onChange={e => setNewUserNombre(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            vincularNuevoUsuarioAuth();
+                          }
+                        }}
                       />
                     </div>
                     <div>
@@ -1851,16 +2002,14 @@ export const MaestrosView: React.FC = () => {
           {esVistaPermisos && (
             <div>
               <p style={{ fontSize: '0.86rem', color: 'var(--text-muted)', marginTop: 0, marginBottom: 16 }}>
-                Selecciona un rol en las pestañas para configurar sus permisos. El rol{' '}
-                <strong>Básico</strong> viene configurado para ver únicamente la planificación de{' '}
-                <strong>Hoy</strong> y marcar sesiones como completadas.
+                Selecciona un rol en las pestañas para configurar sus permisos. Al activar o desactivar cualquier casilla, el cambio se aplica inmediatamente en tiempo real a todos los usuarios con ese rol.
               </p>
 
               {/* Pestañas de Roles */}
               <div className="perm-role-tabs">
                 {rolesDisponibles.map(r => {
                   const active = r === rolSeleccionadoPermisos;
-                  const mapaR = matrizPermisosGlobal[r] || PermisosPorDefectoParaRol(r);
+                  const mapaR = obtenerPermisosRolDesdeMatriz(matrizPermisosGlobal, r);
                   const totalChecks = catalogoPermisosFiltrado.length * 4;
                   let activosCount = 0;
                   if (esRolAdmin(r)) {
@@ -1905,8 +2054,7 @@ export const MaestrosView: React.FC = () => {
                   : rolesDisponibles[0];
                 const isTargetAdmin = esRolAdmin(rolActivo);
                 const isTargetProyector = esRolProyectorSala(rolActivo);
-                const mapaRolActual =
-                  matrizPermisosGlobal[rolActivo] || PermisosPorDefectoParaRol(rolActivo);
+                const mapaRolActual = obtenerPermisosRolDesdeMatriz(matrizPermisosGlobal, rolActivo);
 
                 const porCategoria: Record<string, typeof CATALOGO_PERMISOS_APP> = {};
                 catalogoPermisosFiltrado.forEach(p => {
@@ -1968,7 +2116,7 @@ export const MaestrosView: React.FC = () => {
                             : 'Marca o desmarca las casillas para habilitar o restringir cada tipo de operación en este rol.'}
                         </div>
                       </div>
-                      {esAdmin && !isTargetAdmin && (
+                      {(esAdmin || puedeEditarPerfiles) && !isTargetAdmin && (
                         <button
                           type="button"
                           className="btn-outline"
@@ -2043,7 +2191,7 @@ export const MaestrosView: React.FC = () => {
                                       crear: false,
                                       borrar: false
                                     };
-                                const disabledAttr = !esAdmin || isTargetAdmin;
+                                const disabledAttr = (!esAdmin && !puedeEditarPerfiles) || isTargetAdmin;
 
                                 return (
                                   <tr key={p.id} className="maestros-row">

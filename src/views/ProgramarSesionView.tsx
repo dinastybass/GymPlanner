@@ -11,7 +11,11 @@ import { db } from '../firebase';
 import { updateDoc, writeBatch } from '../services/offlineSyncService';
 import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
-import { cargarCatalogoMaestros, extraerListaMaster } from '../services/maestrosService';
+import {
+  cargarCatalogoMaestros,
+  extraerListaMaster,
+  onCatalogoMaestrosChanged
+} from '../services/maestrosService';
 import {
   normalizarIntensidad,
   renderIntensityBadge,
@@ -36,8 +40,17 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
   sessionId,
   onNavigate
 }) => {
-  const { userName, esModuloActivo } = useAuth();
+  const { userName, esModuloActivo, hasPermission } = useAuth();
   const moduloPlantillasActivo = esModuloActivo('plantillas');
+  const puedeCrearEj = hasPermission('programar_sesiones', 'crear');
+  const puedeEditarEj = hasPermission('programar_sesiones', 'editar');
+  const puedeBorrarEj = hasPermission('programar_sesiones', 'borrar');
+  const puedeEnviarProgramacion =
+    hasPermission('enviar_programacion', 'ver') ||
+    hasPermission('enviar_programacion', 'crear') ||
+    hasPermission('enviar_programacion', 'editar');
+  const puedeVerClientes = hasPermission('clientes', 'ver');
+  const puedeVerFichaEjercicio = hasPermission('ejercicios', 'ver');
   const { pushAction, registerChangeListener } = useUndo();
 
   const [sesionActual, setSesionActual] = useState<any>(null);
@@ -139,9 +152,7 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
   // Modal Enviar Rutina Reutilizable
   const [sendModalOpen, setSendModalOpen] = useState(false);
 
-  const cargarTodo = useCallback(async () => {
-    if (!sessionId) return;
-    setLoading(true);
+  const aplicarMaestros = useCallback(async () => {
     try {
       const maestros = await cargarCatalogoMaestros();
       const bloques = extraerListaMaster(maestros, 'Ejercicios', [
@@ -179,6 +190,12 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
     } catch (e) {
       console.warn('Error cargando maestros en programar_sesion:', e);
     }
+  }, []);
+
+  const cargarTodo = useCallback(async () => {
+    if (!sessionId) return;
+    setLoading(true);
+    await aplicarMaestros();
 
     try {
       await limpiarSesionesAntiguasYEjerciciosHuerfanos();
@@ -283,11 +300,17 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [sessionId]);
+  }, [sessionId, aplicarMaestros]);
 
   useEffect(() => {
     cargarTodo();
   }, [cargarTodo]);
+
+  useEffect(() => {
+    return onCatalogoMaestrosChanged(() => {
+      aplicarMaestros();
+    });
+  }, [aplicarMaestros]);
 
   useEffect(() => {
     return registerChangeListener(() => {
@@ -999,10 +1022,10 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
         <div className="header-info">
           <h1>
             {esSmallGroup ? (
-              'Programar: Small Group'
-            ) : sesionActual.id_cliente ? (
+              puedeEditarEj || puedeCrearEj ? 'Programar: Small Group' : 'Programación: Small Group'
+            ) : sesionActual.id_cliente && puedeVerClientes ? (
               <>
-                Programar:{' '}
+                {puedeEditarEj || puedeCrearEj ? 'Programar:' : 'Programación:'}{' '}
                 <a
                   href={`#ficha_cliente/${sesionActual.id_cliente}`}
                   className="client-link"
@@ -1015,7 +1038,7 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
                 </a>
               </>
             ) : (
-              `Programar: ${nombreClienteHeader}`
+              `${puedeEditarEj || puedeCrearEj ? 'Programar:' : 'Programación:'} ${nombreClienteHeader}`
             )}
           </h1>
 
@@ -1032,7 +1055,7 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {sgClientesGrupo.map((c, idx) => (
                     <span key={idx} className="sg-client-tag">
-                      {c.id ? (
+                      {c.id && puedeVerClientes ? (
                         <a
                           href={`#ficha_cliente/${c.id}`}
                           className="client-link"
@@ -1058,32 +1081,38 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
           </div>
         </div>
 
-        <div className="header-actions">
-          {moduloPlantillasActivo && (
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => {
-                setSelectedPlantillaId(plantillasDisponibles[0]?.id || '');
-                setModalImportarOpen(true);
-              }}
-            >
-              <span className="ui-icon">📥</span>
-              <span>Importar Plantilla</span>
-            </button>
-          )}
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => abrirModalAnadir()}
-          >
-            + Añadir ejercicio
-          </button>
-          <button type="button" className="btn-outline" onClick={abrirModalEnviar}>
-            <span className="ui-icon">➡️</span>
-            <span>Enviar a</span>
-          </button>
-        </div>
+        {(puedeCrearEj || puedeEditarEj || puedeEnviarProgramacion) && (
+          <div className="header-actions">
+            {moduloPlantillasActivo && puedeCrearEj && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  setSelectedPlantillaId(plantillasDisponibles[0]?.id || '');
+                  setModalImportarOpen(true);
+                }}
+              >
+                <span className="ui-icon">📥</span>
+                <span>Importar Plantilla</span>
+              </button>
+            )}
+            {puedeCrearEj && (
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => abrirModalAnadir()}
+              >
+                + Añadir ejercicio
+              </button>
+            )}
+            {puedeEnviarProgramacion && (
+              <button type="button" className="btn-outline" onClick={abrirModalEnviar}>
+                <span className="ui-icon">➡️</span>
+                <span>Enviar a</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Barra de Intensidad Global de la Sesión */}
@@ -1099,37 +1128,41 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
             }}
           />
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <label
-            style={{
-              fontSize: '0.82rem',
-              color: 'var(--text-muted)',
-              fontWeight: 600
-            }}
-          >
-            Cambiar nivel:
-          </label>
-          <select
-            className="session-intensity-select"
-            value={intSesActual}
-            onChange={e => cambiarIntensidadSesion(e.target.value)}
-          >
-            {Array.from(new Set([...intensidadesMaster.map(normalizarIntensidad), intSesActual])).map(
-              intOption => (
-                <option key={intOption} value={intOption}>
-                  {formatIntensityOptionLabel(intOption)}
-                </option>
-              )
-            )}
-          </select>
-        </div>
+        {puedeEditarEj && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <label
+              style={{
+                fontSize: '0.82rem',
+                color: 'var(--text-muted)',
+                fontWeight: 600
+              }}
+            >
+              Cambiar nivel:
+            </label>
+            <select
+              className="session-intensity-select"
+              value={intSesActual}
+              onChange={e => cambiarIntensidadSesion(e.target.value)}
+            >
+              {Array.from(new Set([...intensidadesMaster.map(normalizarIntensidad), intSesActual])).map(
+                intOption => (
+                  <option key={intOption} value={intOption}>
+                    {formatIntensityOptionLabel(intOption)}
+                  </option>
+                )
+              )}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Session Preview */}
       <div className="session-preview">
         {itemsConIndice.length === 0 ? (
           <div className="empty-preview">
-            No hay ejercicios en esta sesión. Haz clic en "+ Añadir ejercicio" o importa una plantilla.
+            {puedeCrearEj
+              ? 'No hay ejercicios en esta sesión. Haz clic en "+ Añadir ejercicio" o importa una plantilla.'
+              : 'No hay ejercicios programados en esta sesión.'}
           </div>
         ) : (
           (() => {
@@ -1195,21 +1228,30 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
                         <span className="subgroup-name">{sub}</span>
                         {subPauta && <span className="subgroup-pauta">{subPauta}</span>}
                       </div>
-                      <button
-                        type="button"
-                        className="btn-add-subgroup-ex"
-                        onClick={() => abrirModalAnadir(b, sub || '', subPauta)}
-                      >
-                        + Añadir a este subgrupo
-                      </button>
+                      {puedeCrearEj && (
+                        <button
+                          type="button"
+                          className="btn-add-subgroup-ex"
+                          onClick={() => abrirModalAnadir(b, sub || '', subPauta)}
+                        >
+                          + Añadir a este subgrupo
+                        </button>
+                      )}
                     </div>
                   )}
                   <div
                     className={`ex-item ${sub ? 'in-subgroup' : ''} ${draggingIdx === renderIdx ? 'dragging' : ''} ${dragOverIdx === renderIdx && draggingIdx !== renderIdx ? 'drag-over' : ''}`}
                     data-render-idx={renderIdx}
-                    draggable
-                    onDragStart={() => handleDragStart(renderIdx)}
+                    draggable={puedeEditarEj}
+                    style={{
+                      cursor:
+                        puedeEditarEj || puedeVerFichaEjercicio ? 'pointer' : 'default'
+                    }}
+                    onDragStart={() => {
+                      if (puedeEditarEj) handleDragStart(renderIdx);
+                    }}
                     onDragOver={e => {
+                      if (!puedeEditarEj) return;
                       e.preventDefault();
                       if (dragOverIdx !== renderIdx) {
                         dragOverIndexRef.current = renderIdx;
@@ -1222,20 +1264,41 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
                       setDraggingIdx(null);
                       setDragOverIdx(null);
                     }}
-                    onDrop={() => handleDropOnIndex(renderIdx)}
-                    onClick={() => abrirModalEditar(idx)}
+                    onDrop={() => {
+                      if (puedeEditarEj) handleDropOnIndex(renderIdx);
+                    }}
+                    onClick={() => {
+                      if (puedeEditarEj) {
+                        abrirModalEditar(idx);
+                      } else if (puedeVerFichaEjercicio) {
+                        let targetEjId = ej.id_ejercicio || '';
+                        if (!targetEjId && catalogoEjercicios.length > 0) {
+                          const found = catalogoEjercicios.find(
+                            c =>
+                              (nombre && c.Nombre_Ejercicio === nombre) ||
+                              (acronimo && (c.Acrónimo === acronimo || c.Acronimo === acronimo))
+                          );
+                          if (found) targetEjId = found.id;
+                        }
+                        if (targetEjId) {
+                          onNavigate('ficha_ejercicio', targetEjId);
+                        }
+                      }
+                    }}
                   >
-                    <div
-                      className="drag-handle"
-                      title="Mantén pulsado y arrastra para reordenar"
-                      onClick={e => e.stopPropagation()}
-                      onTouchStart={e => handleTouchStartDrag(e, renderIdx)}
-                      onTouchMove={handleTouchMoveDrag}
-                      onTouchEnd={handleTouchEndDrag}
-                      onTouchCancel={handleTouchEndDrag}
-                    >
-                      ⋮⋮
-                    </div>
+                    {puedeEditarEj && (
+                      <div
+                        className="drag-handle"
+                        title="Mantén pulsado y arrastra para reordenar"
+                        onClick={e => e.stopPropagation()}
+                        onTouchStart={e => handleTouchStartDrag(e, renderIdx)}
+                        onTouchMove={handleTouchMoveDrag}
+                        onTouchEnd={handleTouchEndDrag}
+                        onTouchCancel={handleTouchEndDrag}
+                      >
+                        ⋮⋮
+                      </div>
+                    )}
                     <div className="ex-item-info">
                       <span className="ex-item-title">
                         {tituloMostrar}
@@ -1261,28 +1324,30 @@ export const ProgramarSesionView: React.FC<ProgramarSesionViewProps> = ({
                           }}
                         />
                       </span>
-                      <button
-                        type="button"
-                        className="btn-remove-ex"
-                        title="Quitar ejercicio"
-                        onClick={e => borrarEjercicio(e, idx)}
-                      >
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
+                      {puedeBorrarEj && (
+                        <button
+                          type="button"
+                          className="btn-remove-ex"
+                          title="Quitar ejercicio"
+                          onClick={e => borrarEjercicio(e, idx)}
                         >
-                          <polyline points="3 6 5 6 21 6" />
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                          <line x1="10" y1="11" x2="10" y2="17" />
-                          <line x1="14" y1="11" x2="14" y2="17" />
-                        </svg>
-                      </button>
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            <line x1="10" y1="11" x2="10" y2="17" />
+                            <line x1="14" y1="11" x2="14" y2="17" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
                   </div>
                 </React.Fragment>

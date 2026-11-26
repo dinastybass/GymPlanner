@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { User, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { PermisoAccion } from '../types';
 import {
@@ -15,7 +15,10 @@ import {
   esCorreoSuperAdmin,
   esCorreoProyectorSala,
   PermisosPorDefectoParaRol,
-  asegurarUsuariosEspecialesApp
+  obtenerPermisosRolDesdeMatriz,
+  asegurarUsuariosEspecialesApp,
+  obtenerMapaUsuariosConfigurados,
+  onCatalogoMaestrosChanged
 } from '../services/maestrosService';
 
 interface AuthContextType {
@@ -78,7 +81,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         let rolFinal = esTvSala
           ? 'Proyector Sala'
           : esSuper
-          ? 'SuperAdmin'
+          ? 'admin'
           : savedRole && savedRole !== 'Sin asignar'
           ? savedRole
           : 'Básico';
@@ -94,42 +97,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(currentUser);
 
         try {
-          let userDoc = await getDoc(doc(db, 'usuarios_app', emailKey));
-          if (!userDoc.exists() && email !== emailKey) {
-            userDoc = await getDoc(doc(db, 'usuarios_app', email));
+          let userDoc = null;
+          try {
+            userDoc = await getDoc(doc(db, 'usuarios_app', emailKey));
+            if (!userDoc.exists() && email !== emailKey) {
+              userDoc = await getDoc(doc(db, 'usuarios_app', email));
+            }
+          } catch {
+            userDoc = null;
           }
 
-          if (userDoc.exists()) {
+          if (userDoc && userDoc.exists()) {
             const data = userDoc.data();
             if (esTvSala) {
               rolFinal = 'Proyector Sala';
               nombreFinal =
                 data.nombre && data.nombre.toLowerCase() !== 'tvsala' ? data.nombre : 'TV Sala';
               aliasFinal = obtenerNombreCortoOAlias(nombreFinal, data.alias, 'TV Sala');
-              if (data.rol !== 'Proyector Sala' || data.es_programador !== false) {
-                await setDoc(
-                  doc(db, 'usuarios_app', emailKey),
-                  {
-                    email: emailKey,
-                    nombre: nombreFinal,
-                    alias: aliasFinal,
-                    rol: 'Proyector Sala',
-                    es_programador: false
-                  },
-                  { merge: true }
-                );
-              }
             } else if (esSuper) {
-              rolFinal = 'SuperAdmin';
+              rolFinal = 'admin';
               nombreFinal = data.nombre || data.alias || nombreFinal;
               aliasFinal = obtenerNombreCortoOAlias(data.nombre, data.alias, nombreFinal);
-              if (data.rol !== 'SuperAdmin') {
-                await setDoc(
-                  doc(db, 'usuarios_app', emailKey),
-                  { rol: 'SuperAdmin' },
-                  { merge: true }
-                );
-              }
             } else {
               const rolEnDoc = String(data.rol || '').trim();
               rolFinal =
@@ -137,18 +125,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               nombreFinal = data.nombre || data.alias || nombreFinal;
               aliasFinal = obtenerNombreCortoOAlias(data.nombre, data.alias, nombreFinal);
             }
-          } else {
-            await setDoc(
-              doc(db, 'usuarios_app', emailKey),
-              {
-                email: emailKey,
-                nombre: nombreFinal,
-                alias: esTvSala ? 'TV Sala' : aliasFinal,
-                rol: rolFinal,
-                es_programador: esSuper
-              },
-              { merge: true }
-            );
+          }
+
+          if (!esTvSala && !esSuper) {
+            try {
+              const usuariosCfg = await obtenerMapaUsuariosConfigurados();
+              const uCfg = usuariosCfg[emailKey] || usuariosCfg[email];
+              if (uCfg) {
+                const rolEnCfg = String(uCfg.rol || '').trim();
+                if (rolEnCfg && rolEnCfg.toLowerCase() !== 'sin asignar') {
+                  rolFinal = rolEnCfg;
+                }
+                if (uCfg.nombre || uCfg.alias) {
+                  nombreFinal = uCfg.nombre || uCfg.alias;
+                  aliasFinal = obtenerNombreCortoOAlias(uCfg.nombre, uCfg.alias, nombreFinal);
+                }
+              }
+            } catch {}
           }
 
           localStorage.setItem('userRole', rolFinal);
@@ -158,12 +151,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUserName(nombreFinal);
           setUserAlias(aliasFinal);
 
+          if (esSuper || esRolAdmin(rolFinal)) {
+            await asegurarUsuariosEspecialesApp();
+          }
+
           const [matriz, modulosCfg] = await Promise.all([
             cargarMatrizPermisos(),
-            cargarModulosActivos(true),
-            esSuper || esRolAdmin(rolFinal) ? asegurarUsuariosEspecialesApp() : Promise.resolve()
+            cargarModulosActivos(true)
           ]);
-          setPermissions(matriz[rolFinal] || PermisosPorDefectoParaRol(rolFinal));
+          setPermissions(obtenerPermisosRolDesdeMatriz(matriz, rolFinal));
           setModulosActivos(modulosCfg);
         } catch (err) {
           console.warn('Error cargando perfil de usuario:', err);
@@ -182,6 +178,96 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
+  // Sincronización inmediata al cambiar la caché compartida (misma pestaña u otras pestañas)
+  useEffect(() => {
+    return onCatalogoMaestrosChanged(async () => {
+      try {
+        const [matriz, modulosCfg] = await Promise.all([
+          cargarMatrizPermisos(),
+          cargarModulosActivos()
+        ]);
+        setModulosActivos(modulosCfg);
+        if (role) {
+          setPermissions(obtenerPermisosRolDesdeMatriz(matriz, role));
+        }
+      } catch (e) {
+        console.warn('Error sincronizando permisos/módulos:', e);
+      }
+    });
+  }, [role]);
+
+  // Escucha en tiempo real (Firestore onSnapshot) para aplicar al instante cambios de permisos, módulos o rol de usuario
+  useEffect(() => {
+    if (!user) return;
+    const email = user.email || '';
+    const emailKey = email.trim().toLowerCase();
+    const esTvSala = esCorreoProyectorSala(emailKey);
+    const esSuper = esCorreoSuperAdmin(emailKey);
+
+    const unsubPermisos = onSnapshot(
+      doc(db, 'maestros', 'config_permisos_roles'),
+      async () => {
+        try {
+          const matriz = await cargarMatrizPermisos(true);
+          if (role) {
+            setPermissions(obtenerPermisosRolDesdeMatriz(matriz, role));
+          }
+        } catch {
+          // ignore snapshot error
+        }
+      },
+      () => {}
+    );
+
+    const unsubModulos = onSnapshot(
+      doc(db, 'maestros', 'config_modulos_app'),
+      async () => {
+        try {
+          const modulosCfg = await cargarModulosActivos(true);
+          setModulosActivos(modulosCfg);
+        } catch {
+          // ignore snapshot error
+        }
+      },
+      () => {}
+    );
+
+    let unsubUserDoc: (() => void) | null = null;
+    if (emailKey && !esTvSala && !esSuper) {
+      unsubUserDoc = onSnapshot(
+        doc(db, 'usuarios_app', emailKey),
+        async (snap) => {
+          if (!snap.exists()) return;
+          const data = snap.data();
+          const nuevoRol = String(data.rol || '').trim();
+          const rolResuelto =
+            nuevoRol && nuevoRol.toLowerCase() !== 'sin asignar' ? nuevoRol : 'Básico';
+          if (rolResuelto !== role) {
+            localStorage.setItem('userRole', rolResuelto);
+            setRole(rolResuelto);
+            const matriz = await cargarMatrizPermisos();
+            setPermissions(obtenerPermisosRolDesdeMatriz(matriz, rolResuelto));
+          }
+          if (data.nombre || data.alias) {
+            const nuevoNombre = data.nombre || data.alias || userName;
+            const nuevoAlias = obtenerNombreCortoOAlias(data.nombre, data.alias, nuevoNombre);
+            localStorage.setItem('gym_user_name', nuevoNombre);
+            localStorage.setItem('gym_user_alias', nuevoAlias);
+            setUserName(nuevoNombre);
+            setUserAlias(nuevoAlias);
+          }
+        },
+        () => {}
+      );
+    }
+
+    return () => {
+      unsubPermisos();
+      unsubModulos();
+      if (unsubUserDoc) unsubUserDoc();
+    };
+  }, [user, role, userName]);
+
   const login = async (email: string, pass: string) => {
     const cred = await signInWithEmailAndPassword(auth, email, pass);
     const userEmail = (cred.user.email || email).trim();
@@ -189,7 +275,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const esTvSala = esCorreoProyectorSala(emailKey);
     const esSuper = esCorreoSuperAdmin(emailKey);
 
-    let rolFinal = esTvSala ? 'Proyector Sala' : esSuper ? 'SuperAdmin' : 'Básico';
+    let rolFinal = esTvSala ? 'Proyector Sala' : esSuper ? 'admin' : 'Básico';
     let nombreFinal = esTvSala
       ? 'TV Sala'
       : userEmail
@@ -198,42 +284,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let aliasFinal = obtenerNombreCortoOAlias(nombreFinal);
 
     try {
-      let snap = await getDoc(doc(db, 'usuarios_app', emailKey));
-      if (!snap.exists() && userEmail !== emailKey) {
-        snap = await getDoc(doc(db, 'usuarios_app', userEmail));
+      let snap = null;
+      try {
+        snap = await getDoc(doc(db, 'usuarios_app', emailKey));
+        if (!snap.exists() && userEmail !== emailKey) {
+          snap = await getDoc(doc(db, 'usuarios_app', userEmail));
+        }
+      } catch {
+        snap = null;
       }
 
-      if (snap.exists()) {
+      if (snap && snap.exists()) {
         const data = snap.data();
         if (esTvSala) {
           rolFinal = 'Proyector Sala';
           nombreFinal =
             data.nombre && data.nombre.toLowerCase() !== 'tvsala' ? data.nombre : 'TV Sala';
           aliasFinal = obtenerNombreCortoOAlias(nombreFinal, data.alias, 'TV Sala');
-          if (data.rol !== 'Proyector Sala' || data.es_programador !== false) {
-            await setDoc(
-              doc(db, 'usuarios_app', emailKey),
-              {
-                email: emailKey,
-                nombre: nombreFinal,
-                alias: aliasFinal,
-                rol: 'Proyector Sala',
-                es_programador: false
-              },
-              { merge: true }
-            );
-          }
         } else if (esSuper) {
-          rolFinal = 'SuperAdmin';
+          rolFinal = 'admin';
           nombreFinal = data.nombre || data.alias || nombreFinal;
           aliasFinal = obtenerNombreCortoOAlias(data.nombre, data.alias, nombreFinal);
-          if (data.rol !== 'SuperAdmin') {
-            await setDoc(
-              doc(db, 'usuarios_app', emailKey),
-              { rol: 'SuperAdmin' },
-              { merge: true }
-            );
-          }
         } else {
           const rolEnDoc = String(data.rol || '').trim();
           rolFinal =
@@ -241,18 +312,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           nombreFinal = data.nombre || data.alias || nombreFinal;
           aliasFinal = obtenerNombreCortoOAlias(data.nombre, data.alias, nombreFinal);
         }
-      } else {
-        await setDoc(
-          doc(db, 'usuarios_app', emailKey),
-          {
-            email: emailKey,
-            nombre: nombreFinal,
-            alias: esTvSala ? 'TV Sala' : aliasFinal,
-            rol: rolFinal,
-            es_programador: !esRolProyectorSala(rolFinal) && rolFinal !== 'Básico'
-          },
-          { merge: true }
-        );
+      }
+
+      if (!esTvSala && !esSuper) {
+        try {
+          const usuariosCfg = await obtenerMapaUsuariosConfigurados();
+          const uCfg = usuariosCfg[emailKey] || usuariosCfg[userEmail];
+          if (uCfg) {
+            const rolEnCfg = String(uCfg.rol || '').trim();
+            if (rolEnCfg && rolEnCfg.toLowerCase() !== 'sin asignar') {
+              rolFinal = rolEnCfg;
+            }
+            if (uCfg.nombre || uCfg.alias) {
+              nombreFinal = uCfg.nombre || uCfg.alias;
+              aliasFinal = obtenerNombreCortoOAlias(uCfg.nombre, uCfg.alias, nombreFinal);
+            }
+          }
+        } catch {}
       }
 
       localStorage.setItem('userRole', rolFinal);
@@ -262,11 +338,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUserName(nombreFinal);
       setUserAlias(aliasFinal);
 
+      if (esSuper || esRolAdmin(rolFinal)) {
+        await asegurarUsuariosEspecialesApp();
+      }
+
       const [matriz, modulosCfg] = await Promise.all([
         cargarMatrizPermisos(),
         cargarModulosActivos(true)
       ]);
-      setPermissions(matriz[rolFinal] || PermisosPorDefectoParaRol(rolFinal));
+      setPermissions(obtenerPermisosRolDesdeMatriz(matriz, rolFinal));
       setModulosActivos(modulosCfg);
     } catch (e) {
       console.warn('Error al resolver permisos tras login:', e);

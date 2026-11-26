@@ -1,15 +1,33 @@
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
 import {
   collection,
   getDocs,
   getDoc,
   doc,
   deleteField,
+  setDoc as fbSetDoc,
+  deleteDoc as fbDeleteDoc,
 } from 'firebase/firestore';
-import { setDoc, updateDoc, deleteDoc } from './offlineSyncService';
+import { setDoc, updateDoc } from './offlineSyncService';
 import { CatalogoPermiso, MatrizPermisos, PermisoAccion, UsuarioApp } from '../types';
+import {
+  getSharedCache,
+  setSharedCache,
+  removeSharedCache,
+  subscribeSharedCache,
+  SharedCacheChangeEvent
+} from './sharedCacheService';
 
 const CACHE_KEY = 'gym_maestros_doc_map_v8';
+const PROGRAMADORES_CACHE_KEY = 'gym_programadores_cache_v1';
+const MATRIZ_PERMISOS_CACHE_KEY = 'gym_matriz_permisos_cache_v3';
+
+export function onCatalogoMaestrosChanged(
+  callback: (event: SharedCacheChangeEvent) => void
+): () => void {
+  return subscribeSharedCache(callback);
+}
+
 
 export const DIAS_SEMANA_SG = [
   'Lunes',
@@ -165,68 +183,80 @@ export const CATALOGO_PERMISOS_APP: CatalogoPermiso[] = [
   {
     id: "planificacion",
     categoria: "Programación y Sala",
-    nombre: "Planificación Diaria",
-    descripcion: "Panel diario de sesiones de mañana, tarde y Small Groups, y cambio de estado de sesión."
+    nombre: "Hoy (Planificación Diaria y Estado de Sesión)",
+    descripcion: "Ver: acceder a la pestaña Hoy y consultar tarjetas del día. Editar: marcar sesiones como Completada o Pendiente (en Hoy, menú contextual de Agenda y Ficha)."
   },
   {
     id: "pantalla_sala",
     categoria: "Programación y Sala",
-    nombre: "Pantalla Sala (TV)",
-    descripcion: "Proyección en tiempo real de las sesiones y entrenamientos de la sala."
+    nombre: "Pantalla Sala (Modo TV / Proyector)",
+    descripcion: "Ver: proyección en tiempo real de las sesiones y entrenamientos del día en la sala."
   },
   {
     id: "programar_sesiones",
     categoria: "Programación y Sala",
-    nombre: "Programación de Sesiones",
-    descripcion: "Configurar bloques, subgrupos y ejercicios de una sesión, enviar/clonar rutinas y cargar plantillas."
+    nombre: "Programación de Sesiones (Rutina)",
+    descripcion: "Ver: abrir 'Programación' en modo lectura (desde Hoy, Agenda o Ficha). Crear: añadir ejercicios e importar plantillas. Editar: cambiar series, peso, intensidad y orden. Borrar: quitar ejercicios."
+  },
+  {
+    id: "enviar_programacion",
+    categoria: "Programación y Sala",
+    nombre: "Enviar / Clonar Programación",
+    descripcion: "Ver / Crear / Editar: usar la acción 'Enviar Programación' (en menú contextual de Agenda, Small Groups, Ficha de Cliente o dentro de la sesión) para clonar una rutina a otro cliente o fecha."
   },
   {
     id: "programaciones_pendientes",
     categoria: "Programación y Sala",
-    nombre: "Programaciones Pendientes",
-    descripcion: "Consulta y acceso rápido a las sesiones próximas pendientes de programar."
+    nombre: "Programaciones Pendientes (Próximas 2 Semanas)",
+    descripcion: "Ver: acceder al panel de sesiones individuales y Small Groups pendientes de programar desde Agenda."
   },
   {
     id: "agenda",
     categoria: "Agenda y Calendario",
-    nombre: "Agenda y Calendario",
-    descripcion: "Calendario de citas individuales y Small Groups, alta de planificaciones, reprogramación y bajas."
+    nombre: "Agenda y Calendario de Citas",
+    descripcion: "Ver: consultar calendario de citas. Crear: agendar citas (+ Planificar días, doble clic en hueco, ubicar sin fecha). Editar: opción 'Reprogramar'. Borrar: opción 'Cancelar o Eliminar'."
   },
   {
     id: "clientes",
     categoria: "Clientes",
     nombre: "Directorio y Fichas de Clientes",
-    descripcion: "Gestión de clientes, datos personales, estado, tipo, entrenador asignado, objetivos y lesiones."
+    descripcion: "Ver: acceder al listado y abrir la Ficha de Cliente (incluyendo enlaces desde Hoy y Agenda). Crear: alta de nuevos clientes. Editar: modificar datos personales, entrenador, objetivos y lesiones. Borrar: eliminar clientes."
   },
   {
     id: "progreso_pr",
     categoria: "Clientes",
     nombre: "Progreso y Marcas Personales (PR)",
-    descripcion: "Visualización y registro de pesos máximos levantados (PR) de cada cliente."
+    descripcion: "Ver: consultar pestaña Progreso e histórico de marcas en Ficha de Cliente. Crear / Editar: registrar nuevas marcas PR (desde Hoy o desde Ficha). Borrar: eliminar marcas PR."
   },
   {
     id: "ejercicios",
     categoria: "Catálogo y Plantillas",
-    nombre: "Catálogo de Ejercicios",
-    descripcion: "Base de datos de ejercicios, categorización técnica, vídeos y configuración de marcas PR."
+    nombre: "Catálogo y Fichas de Ejercicios",
+    descripcion: "Ver: consultar catálogo y abrir la Ficha Técnica de un ejercicio (también al pulsarlo en Hoy o en Programación). Crear: nuevo ejercicio. Editar: modificar ejercicios y sus maestros. Borrar: eliminar ejercicios."
   },
   {
     id: "plantillas",
     categoria: "Catálogo y Plantillas",
     nombre: "Plantillas de Entrenamiento",
-    descripcion: "Catálogo de plantillas predefinidas por tipo de sesión, nivel e intensidad."
+    descripcion: "Ver: consultar catálogo y detalle de plantillas. Crear: crear nuevas plantillas. Editar: modificar metadatos y ejercicios de la plantilla. Borrar: eliminar plantillas."
   },
   {
     id: "maestros",
     categoria: "Administración y Configuración",
-    nombre: "Gestión de Maestros",
-    descripcion: "Configuración de desplegables y valores maestros de Ejercicios, Sesiones, Clientes y Agenda."
+    nombre: "Gestión de Maestros (Desplegables)",
+    descripcion: "Ver: consultar listas de Configuración (Ejercicios, Sesiones, Clientes, Agenda). Crear: añadir valores. Editar: renombrar y reordenar valores. Borrar: eliminar valores maestros."
   },
   {
     id: "perfiles_roles",
     categoria: "Administración y Configuración",
-    nombre: "Gestión de Perfiles (Roles y Permisos)",
-    descripcion: "Administración de roles del sistema, asignación a usuarios y matriz de permisos por rol."
+    nombre: "Gestión de Perfiles (Roles, Usuarios y Permisos)",
+    descripcion: "Ver: consultar roles, usuarios y matriz de permisos. Crear: crear roles y vincular usuarios. Editar: cambiar rol asignado y activar/desactivar casillas de permisos. Borrar: eliminar roles."
+  },
+  {
+    id: "copias_seguridad",
+    categoria: "Administración y Configuración",
+    nombre: "Copias de Seguridad (Google Drive)",
+    descripcion: "Ver: consultar historial de copias de seguridad. Crear: generar copia de seguridad manual. Editar: restaurar una copia o configurar la conexión con Google Drive."
   }
 ];
 
@@ -251,67 +281,77 @@ export function generarIdItem(valor: string): string {
 }
 
 export function limpiarCacheMaestros(): void {
-  try {
-    sessionStorage.removeItem(CACHE_KEY);
-  } catch (e) {
-    // ignore
-  }
+  removeSharedCache(CACHE_KEY, true);
+}
+
+export function limpiarCacheProgramadores(): void {
+  removeSharedCache(PROGRAMADORES_CACHE_KEY, true);
 }
 
 export async function cargarTodosLosMaestros(forzar = false): Promise<Record<string, Record<string, { id: string; valor: string; orden: number }[]>>> {
   if (!forzar) {
-    try {
-      const cached = sessionStorage.getItem(CACHE_KEY);
-      if (cached) return JSON.parse(cached);
-    } catch (e) { }
+    const cached = getSharedCache<Record<string, Record<string, { id: string; valor: string; orden: number }[]>>>(CACHE_KEY);
+    if (cached && typeof cached === 'object' && Object.keys(cached).length > 0) {
+      return cached;
+    }
   }
 
-  const snap = await getDocs(collection(db, "maestros"));
   const mapa: Record<string, Record<string, { id: string; valor: string; orden: number }[]>> = {};
 
-  snap.forEach(docSnap => {
-    const d = docSnap.data();
-    const sec = d.seccion;
-    const rawClv = d.clave;
-    const valoresObj = d.valores || {};
+  try {
+    const snap = await getDocs(collection(db, "maestros"));
 
-    if (!sec || !rawClv) return;
-    // Normalizar clave "Grupos de Ejercicios" -> "Músculos"
-    const clv =
-      sec === 'Ejercicios' &&
-      (rawClv === 'Grupos de Ejercicios' || rawClv === 'Grupo muscular' || rawClv === 'Musculos')
-        ? 'Músculos'
-        : rawClv;
+    snap.forEach(docSnap => {
+      if (docSnap.id.startsWith('config_') || docSnap.id.startsWith('backup_')) return;
+      const d = docSnap.data();
+      const sec = d.seccion;
+      const rawClv = d.clave;
+      const valoresObj = d.valores || {};
 
-    if (!mapa[sec]) mapa[sec] = {};
-    if (!mapa[sec][clv]) mapa[sec][clv] = [];
+      if (!sec || !rawClv) return;
+      // Normalizar clave "Grupos de Ejercicios" -> "Músculos"
+      const clv =
+        sec === 'Ejercicios' &&
+        (rawClv === 'Grupos de Ejercicios' || rawClv === 'Grupo muscular' || rawClv === 'Musculos')
+          ? 'Músculos'
+          : rawClv;
 
-    for (const [itemId, itemData] of Object.entries(valoresObj as Record<string, any>)) {
-      const rawValStr = String(itemData.valor).trim();
-      const valStr =
-        sec === 'Agenda' && clv === 'Horarios Small Groups'
-          ? parsearHorarioSmallGroup(rawValStr).formateado
-          : sec === 'Agenda' && clv === 'Festivos'
-          ? parsearFestivoMaestro(rawValStr)?.formateado || rawValStr
-          : rawValStr;
-      if (!mapa[sec][clv].some(existing => existing.id === itemId)) {
-        mapa[sec][clv].push({
-          id: itemId,
-          valor: valStr,
-          orden: Number(itemData.orden ?? 99)
-        });
+      if (!mapa[sec]) mapa[sec] = {};
+      if (!mapa[sec][clv]) mapa[sec][clv] = [];
+
+      for (const [itemId, itemData] of Object.entries(valoresObj as Record<string, any>)) {
+        if (!itemData || typeof itemData !== 'object' || itemData.valor === undefined) continue;
+        const rawValStr = String(itemData.valor).trim();
+        if (sec === 'Gestión de Perfiles' && clv === 'Roles' && esRolSuperAdmin(rawValStr)) {
+          continue;
+        }
+        const valStr =
+          sec === 'Agenda' && clv === 'Horarios Small Groups'
+            ? parsearHorarioSmallGroup(rawValStr).formateado
+            : sec === 'Agenda' && clv === 'Festivos'
+            ? parsearFestivoMaestro(rawValStr)?.formateado || rawValStr
+            : rawValStr;
+        if (!mapa[sec][clv].some(existing => existing.id === itemId)) {
+          mapa[sec][clv].push({
+            id: itemId,
+            valor: valStr,
+            orden: Number(itemData.orden ?? 99)
+          });
+        }
       }
-    }
 
-    mapa[sec][clv].sort((a, b) => {
-      if (a.orden !== b.orden) return a.orden - b.orden;
-      return a.valor.localeCompare(b.valor);
+      mapa[sec][clv].sort((a, b) => {
+        if (a.orden !== b.orden) return a.orden - b.orden;
+        return a.valor.localeCompare(b.valor);
+      });
+
+      if (sec === 'Ejercicios' && clv === 'Músculos') {
+        mapa[sec]['Grupos de Ejercicios'] = mapa[sec]['Músculos'];
+      }
     });
-
-    if (sec === 'Ejercicios' && clv === 'Músculos') {
-      mapa[sec]['Grupos de Ejercicios'] = mapa[sec]['Músculos'];
-    }
-  });
+  } catch (e) {
+    console.warn('Aviso al cargar colección maestros:', e);
+  }
 
   if (!mapa["Sesiones"]) mapa["Sesiones"] = {};
   if (
@@ -336,9 +376,7 @@ export async function cargarTodosLosMaestros(forzar = false): Promise<Record<str
     mapa["Agenda"]["Meses de margen para reprogramar"] = [{ id: "1", valor: "1", orden: 1 }];
   }
 
-  try {
-    sessionStorage.setItem(CACHE_KEY, JSON.stringify(mapa));
-  } catch (e) { }
+  setSharedCache(CACHE_KEY, mapa, forzar);
 
   return mapa;
 }
@@ -674,32 +712,21 @@ export const MODULOS_ACTIVOS_DEFAULT: Record<ModuloAppId, boolean> = {
 const MODULOS_CACHE_KEY = 'gym_modulos_activos_cache_v1';
 
 export function limpiarCacheModulosActivos(): void {
-  try {
-    sessionStorage.removeItem(MODULOS_CACHE_KEY);
-  } catch (e) {
-    // ignore
-  }
+  removeSharedCache(MODULOS_CACHE_KEY, true);
 }
 
 export async function cargarModulosActivos(
   forzar = false
 ): Promise<Record<ModuloAppId, boolean>> {
   if (!forzar) {
-    try {
-      const cached = sessionStorage.getItem(MODULOS_CACHE_KEY);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (parsed && typeof parsed === 'object') {
-          return {
-            plantillas: parsed.plantillas !== false,
-            tv: parsed.tv !== false,
-            small_group: parsed.small_group !== false,
-            go_kids: parsed.go_kids !== false
-          };
-        }
-      }
-    } catch (e) {
-      // ignore
+    const parsed = getSharedCache<Record<string, any>>(MODULOS_CACHE_KEY);
+    if (parsed && typeof parsed === 'object') {
+      return {
+        plantillas: parsed.plantillas !== false,
+        tv: parsed.tv !== false,
+        small_group: parsed.small_group !== false,
+        go_kids: parsed.go_kids !== false
+      };
     }
   }
 
@@ -707,9 +734,7 @@ export async function cargarModulosActivos(
     const snap = await getDoc(doc(db, 'maestros', 'config_modulos_app'));
     if (!snap.exists()) {
       const init = { ...MODULOS_ACTIVOS_DEFAULT };
-      try {
-        sessionStorage.setItem(MODULOS_CACHE_KEY, JSON.stringify(init));
-      } catch (e) {}
+      setSharedCache(MODULOS_CACHE_KEY, init, forzar);
       return init;
     }
     const raw = snap.data()?.modulos || {};
@@ -719,9 +744,7 @@ export async function cargarModulosActivos(
       small_group: raw.small_group !== false,
       go_kids: raw.go_kids !== false
     };
-    try {
-      sessionStorage.setItem(MODULOS_CACHE_KEY, JSON.stringify(result));
-    } catch (e) {}
+    setSharedCache(MODULOS_CACHE_KEY, result, forzar);
     return result;
   } catch (e) {
     console.warn('Error cargando config_modulos_app:', e);
@@ -743,10 +766,7 @@ export async function guardarModulosActivos(
     modulos: limpio,
     updated_at: new Date().toISOString()
   });
-  limpiarCacheModulosActivos();
-  try {
-    sessionStorage.setItem(MODULOS_CACHE_KEY, JSON.stringify(limpio));
-  } catch (e) {}
+  setSharedCache(MODULOS_CACHE_KEY, limpio, true);
 }
 
 export function normalizarPermisosAccion(
@@ -778,9 +798,16 @@ export function PermisosPorDefectoParaRol(nombreRol: string): Record<string, Per
     } else if (isProyector) {
       mapa[p.id] = { ver: p.id === 'pantalla_sala', editar: false, crear: false, borrar: false };
     } else if (isBasico) {
-      // Rol Básico: solo ver la planificación de Hoy y marcar sesiones como completadas
+      // Rol Básico configurado en la matriz:
+      // - Hoy (planificacion): Ver y Editar (marcar Completada / Pendiente)
+      // - Agenda (agenda): solo Ver (sin Reprogramar, sin Agendar, sin Cancelar/Eliminar)
+      // - Programación de Sesiones (programar_sesiones): solo Ver (modo lectura)
+      // - Ejercicios (ejercicios): solo Ver (catálogo y ficha técnica)
+      // - Todo lo demás (incluyendo Enviar Programación y Clientes): desactivado
       if (p.id === 'planificacion') {
         mapa[p.id] = { ver: true, editar: true, crear: false, borrar: false };
+      } else if (p.id === 'agenda' || p.id === 'programar_sesiones' || p.id === 'ejercicios') {
+        mapa[p.id] = { ver: true, editar: false, crear: false, borrar: false };
       } else {
         mapa[p.id] = { ver: false, editar: false, crear: false, borrar: false };
       }
@@ -796,18 +823,68 @@ export function PermisosPorDefectoParaRol(nombreRol: string): Record<string, Per
       // Programador / Entrenador
       if (p.id === 'pantalla_sala') {
         mapa[p.id] = { ver: true, editar: false, crear: false, borrar: false };
-      } else if (p.id === 'planificacion' || p.id === 'programaciones_pendientes') {
+      } else if (p.id === 'planificacion' || p.id === 'programaciones_pendientes' || p.id === 'enviar_programacion') {
         mapa[p.id] = { ver: true, editar: true, crear: true, borrar: false };
       } else if (p.id === 'clientes') {
         mapa[p.id] = { ver: true, editar: true, crear: false, borrar: false };
       } else if (p.id === 'maestros' || p.id === 'perfiles_roles') {
         mapa[p.id] = { ver: true, editar: false, crear: false, borrar: false };
+      } else if (p.id === 'copias_seguridad') {
+        mapa[p.id] = { ver: false, editar: false, crear: false, borrar: false };
       } else {
         mapa[p.id] = { ver: true, editar: true, crear: true, borrar: true };
       }
     }
   });
   return mapa;
+}
+
+function buscarEntradaRolEnObjeto(
+  matriz: Record<string, any> | null | undefined,
+  nombreRol: string
+): Record<string, any> | undefined {
+  if (!matriz || typeof matriz !== 'object') return undefined;
+  if (matriz[nombreRol] && typeof matriz[nombreRol] === 'object') {
+    return matriz[nombreRol];
+  }
+
+  const targetNorm = String(nombreRol || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  const matchingKey = Object.keys(matriz).find(k => {
+    const kNorm = String(k || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+    if (kNorm === targetNorm) return true;
+    if (esRolBasico(nombreRol) && esRolBasico(k)) return true;
+    if (esRolAdmin(nombreRol) && esRolAdmin(k)) return true;
+    if (esRolProyectorSala(nombreRol) && esRolProyectorSala(k)) return true;
+    return false;
+  });
+
+  return matchingKey ? matriz[matchingKey] : undefined;
+}
+
+export function obtenerPermisosRolDesdeMatriz(
+  matriz: MatrizPermisos | null | undefined,
+  nombreRol: string
+): Record<string, PermisoAccion> {
+  const defaults = PermisosPorDefectoParaRol(nombreRol);
+  const entradaRol = buscarEntradaRolEnObjeto(matriz, nombreRol);
+  if (!entradaRol) {
+    return defaults;
+  }
+
+  const resultado: Record<string, PermisoAccion> = {};
+  CATALOGO_PERMISOS_APP.forEach(p => {
+    resultado[p.id] = normalizarPermisosAccion(entradaRol?.[p.id], defaults[p.id]);
+  });
+  return resultado;
 }
 
 export async function asegurarRolesYPermisosIniciales(): Promise<{ roles: string[]; matriz: MatrizPermisos }> {
@@ -878,23 +955,59 @@ export async function asegurarRolesYPermisosIniciales(): Promise<{ roles: string
         console.warn("No se pudo guardar rol Básico en maestros:", errRol);
       }
     }
+    const tieneProyector = rolesExistentes.some(r => esRolProyectorSala(r));
+    if (!tieneProyector) {
+      try {
+        await guardarValorMaestro("Gestión de Perfiles", "Roles", "Proyector Sala");
+      } catch (errRol) {
+        console.warn("No se pudo guardar rol Proyector Sala en maestros:", errRol);
+      }
+    }
 
     const rolesSet = new Set(['admin', 'programador', 'Básico', 'Proyector Sala', ...rolesExistentes]);
 
     const matrizRef = doc(db, "maestros", "config_permisos_roles");
     const matrizSnap = await getDoc(matrizRef);
-    const esVersionActual = matrizSnap.exists() && matrizSnap.data().schema_version === 2;
-    const rolesExistentesMatriz = esVersionActual ? (matrizSnap.data().roles || {}) : {};
+    const schemaVersion = matrizSnap.exists() ? Number(matrizSnap.data()?.schema_version || 0) : 0;
+    const esVersion3 = schemaVersion === 3;
+    const rolesExistentesMatriz = schemaVersion >= 2 ? (matrizSnap.data()?.roles || {}) : {};
     const matrizLimpia: MatrizPermisos = {};
 
     Array.from(rolesSet).forEach(rol => {
       const defaultsRol = PermisosPorDefectoParaRol(rol);
-      const prevRol = rolesExistentesMatriz[rol] || {};
+      // En la migración a schema_version 3, el rol Básico queda inicializado con sus permisos limpios marcados en la matriz
+      if (!esVersion3 && esRolBasico(rol)) {
+        matrizLimpia[rol] = { ...defaultsRol };
+        return;
+      }
+      const prevRol = buscarEntradaRolEnObjeto(rolesExistentesMatriz, rol) || {};
       matrizLimpia[rol] = {};
       CATALOGO_PERMISOS_APP.forEach(p => {
-        matrizLimpia[rol][p.id] = normalizarPermisosAccion(prevRol[p.id], defaultsRol[p.id]);
+        if (!esVersion3 && p.id === 'enviar_programacion' && prevRol[p.id] === undefined && prevRol.programar_sesiones) {
+          const puedeEnviarPrev = Boolean(prevRol.programar_sesiones.editar || prevRol.programar_sesiones.crear);
+          matrizLimpia[rol][p.id] = {
+            ver: puedeEnviarPrev,
+            editar: puedeEnviarPrev,
+            crear: puedeEnviarPrev,
+            borrar: false
+          };
+        } else {
+          matrizLimpia[rol][p.id] = normalizarPermisosAccion(prevRol[p.id], defaultsRol[p.id]);
+        }
       });
     });
+
+    if (!esVersion3) {
+      try {
+        await setDoc(matrizRef, {
+          schema_version: 3,
+          roles: matrizLimpia,
+          updated_at: new Date().toISOString()
+        });
+      } catch {
+        // Silencioso si el usuario actual no tiene permisos de escritura en maestros
+      }
+    }
 
     return { roles: Array.from(rolesSet), matriz: matrizLimpia };
   } catch (e) {
@@ -906,25 +1019,33 @@ export async function asegurarRolesYPermisosIniciales(): Promise<{ roles: string
   }
 }
 
-export async function cargarMatrizPermisos(): Promise<MatrizPermisos> {
+export async function cargarMatrizPermisos(forzar = false): Promise<MatrizPermisos> {
+  if (!forzar) {
+    const cached = getSharedCache<MatrizPermisos>(MATRIZ_PERMISOS_CACHE_KEY);
+    if (cached && typeof cached === 'object' && Object.keys(cached).length > 0) {
+      return cached;
+    }
+  }
   try {
     const matrizRef = doc(db, "maestros", "config_permisos_roles");
     const snap = await getDoc(matrizRef);
-    if (!snap.exists() || snap.data().schema_version !== 2) {
+    if (!snap.exists() || snap.data().schema_version !== 3) {
       const init = await asegurarRolesYPermisosIniciales();
+      setSharedCache(MATRIZ_PERMISOS_CACHE_KEY, init.matriz, forzar);
       return init.matriz;
     }
     const rolesRaw = snap.data().roles || {};
     const rolesNormalizados: MatrizPermisos = {};
     const todosLosRoles = new Set(['admin', 'programador', 'Básico', 'Proyector Sala', ...Object.keys(rolesRaw)]);
     for (const rol of todosLosRoles) {
-      const mapaRol = rolesRaw[rol];
+      const mapaRol = buscarEntradaRolEnObjeto(rolesRaw, rol);
       const defaultsRol = PermisosPorDefectoParaRol(rol);
       rolesNormalizados[rol] = {};
       CATALOGO_PERMISOS_APP.forEach(p => {
         rolesNormalizados[rol][p.id] = normalizarPermisosAccion(mapaRol ? mapaRol[p.id] : undefined, defaultsRol[p.id]);
       });
     }
+    setSharedCache(MATRIZ_PERMISOS_CACHE_KEY, rolesNormalizados, forzar);
     return rolesNormalizados;
   } catch (e) {
     const init = await asegurarRolesYPermisosIniciales();
@@ -935,67 +1056,387 @@ export async function cargarMatrizPermisos(): Promise<MatrizPermisos> {
 export async function guardarMatrizPermisos(nuevaMatriz: MatrizPermisos): Promise<void> {
   const matrizRef = doc(db, "maestros", "config_permisos_roles");
   await setDoc(matrizRef, {
-    schema_version: 2,
+    schema_version: 3,
     roles: nuevaMatriz,
     updated_at: new Date().toISOString()
   });
+  setSharedCache(MATRIZ_PERMISOS_CACHE_KEY, nuevaMatriz, true);
+}
+
+const LOCAL_USUARIOS_CONFIG_KEY = 'gym_config_usuarios_app_v1';
+
+function leerCacheLocalUsuariosConfig(): Record<string, any> {
+  const parsed = getSharedCache<Record<string, any>>(LOCAL_USUARIOS_CONFIG_KEY);
+  if (parsed && typeof parsed === 'object') {
+    return { ...parsed };
+  }
+  return {};
+}
+
+function guardarCacheLocalUsuariosConfig(mapa: Record<string, any>, emitNotification = false): void {
+  setSharedCache(LOCAL_USUARIOS_CONFIG_KEY, { ...mapa }, emitNotification);
+}
+
+export async function obtenerMapaUsuariosConfigurados(): Promise<Record<string, any>> {
+  const localMap = leerCacheLocalUsuariosConfig();
+  try {
+    const cfgSnap = await getDoc(doc(db, 'maestros', 'config_usuarios_app'));
+    if (cfgSnap.exists()) {
+      const remoteUsuarios = cfgSnap.data()?.usuarios || {};
+      const merged = {
+        ...remoteUsuarios,
+        ...localMap
+      };
+      guardarCacheLocalUsuariosConfig(merged);
+      return merged;
+    }
+  } catch {
+    // Usar caché local si falla la lectura remota
+  }
+  return localMap;
+}
+
+export async function guardarUsuarioAppEnFirestore(
+  docId: string,
+  payload: Record<string, any>
+): Promise<{
+  prevUserDocData: Record<string, any> | null;
+  nextUserDocData: Record<string, any>;
+  targetDocId: string;
+}> {
+  const cleanKey = String(payload.email || docId).trim().toLowerCase() || docId;
+  const localPrev = leerCacheLocalUsuariosConfig();
+
+  // Si el usuario autenticado es SuperAdmin, asegurar antes que su propio documento en usuarios_app tenga rol: 'admin' para que las reglas de Firestore autoricen la escritura
+  if (esCorreoSuperAdmin(auth.currentUser?.email)) {
+    try {
+      const superRef = doc(db, 'usuarios_app', SUPERADMIN_EMAIL);
+      const superSnap = await getDoc(superRef);
+      if (superSnap.exists() && superSnap.data()?.rol !== 'admin') {
+        await fbSetDoc(superRef, { rol: 'admin' }, { merge: true });
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  let targetDocId = cleanKey;
+  let prevUserDocData: Record<string, any> | null = null;
+
+  try {
+    const userRefPrimary = doc(db, 'usuarios_app', docId);
+    const snapPrimary = await getDoc(userRefPrimary);
+    if (snapPrimary.exists()) {
+      targetDocId = docId;
+      prevUserDocData = JSON.parse(JSON.stringify(snapPrimary.data()));
+    } else if (cleanKey !== docId) {
+      const userRefClean = doc(db, 'usuarios_app', cleanKey);
+      const snapClean = await getDoc(userRefClean);
+      if (snapClean.exists()) {
+        targetDocId = cleanKey;
+        prevUserDocData = JSON.parse(JSON.stringify(snapClean.data()));
+      }
+    }
+  } catch {
+    prevUserDocData = null;
+  }
+
+  const nextUserDocData: Record<string, any> = {
+    ...(prevUserDocData || {}),
+    ...(localPrev[docId] || {}),
+    ...(localPrev[cleanKey] || {}),
+    ...payload,
+    email: payload.email || (cleanKey.includes('@') ? cleanKey : prevUserDocData?.email || '')
+  };
+
+  // 1. Escribir directamente en la colección usuarios_app de Firestore
+  await fbSetDoc(doc(db, 'usuarios_app', targetDocId), nextUserDocData, { merge: true });
+
+  // 2. Actualizar caché local y espejo en maestros/config_usuarios_app
+  const usuariosPrev: Record<string, any> = {
+    ...localPrev,
+    [cleanKey]: nextUserDocData
+  };
+  if (targetDocId !== cleanKey) {
+    usuariosPrev[targetDocId] = nextUserDocData;
+  }
+  guardarCacheLocalUsuariosConfig(usuariosPrev, true);
+  limpiarCacheProgramadores();
+
+  try {
+    const cfgRef = doc(db, 'maestros', 'config_usuarios_app');
+    await setDoc(
+      cfgRef,
+      {
+        schema_version: 1,
+        seccion: 'Gestión de Perfiles',
+        clave: 'Usuarios App',
+        usuarios: usuariosPrev,
+        updated_at: new Date().toISOString()
+      },
+      { merge: true }
+    );
+  } catch {
+    // Silencioso si falla espejo secundario
+  }
+
+  return { prevUserDocData, nextUserDocData, targetDocId };
 }
 
 export async function asegurarUsuariosEspecialesApp(): Promise<void> {
   try {
-    const tvRef = doc(db, 'usuarios_app', PROYECTOR_SALA_EMAIL);
-    const tvSnap = await getDoc(tvRef);
-    const tvData = tvSnap.exists() ? tvSnap.data() : null;
-    if (
-      !tvData ||
-      tvData.rol !== 'Proyector Sala' ||
-      tvData.es_programador !== false ||
-      tvData.email !== PROYECTOR_SALA_EMAIL
-    ) {
-      await setDoc(
-        tvRef,
-        {
-          email: PROYECTOR_SALA_EMAIL,
-          nombre: tvData?.nombre && tvData.nombre !== 'tvsala' ? tvData.nombre : 'TV Sala',
-          alias: tvData?.alias || 'TV Sala',
-          rol: 'Proyector Sala',
-          es_programador: false
-        },
-        { merge: true }
-      );
+    // 1. Si es SuperAdmin, garantizar que su documento en usuarios_app tenga rol 'admin' en Firestore para cumplir las reglas de seguridad
+    if (esCorreoSuperAdmin(auth.currentUser?.email)) {
+      try {
+        const superRef = doc(db, 'usuarios_app', SUPERADMIN_EMAIL);
+        const superSnap = await getDoc(superRef);
+        if (superSnap.exists() && superSnap.data()?.rol !== 'admin') {
+          await fbSetDoc(superRef, { rol: 'admin' }, { merge: true });
+        }
+      } catch {
+        // Silencioso
+      }
     }
 
-    const oldInvitadoRef = doc(db, 'usuarios_app', 'invitado@goandtrain.com');
-    const oldInvitadoSnap = await getDoc(oldInvitadoRef);
-    if (oldInvitadoSnap.exists()) {
-      await deleteDoc(oldInvitadoRef);
+    const actuales = await obtenerMapaUsuariosConfigurados();
+    let huboCambios = false;
+
+    // 2. Asegurar tvsala@goandtrain.com en usuarios_app de Firestore
+    const tvPayload = {
+      email: PROYECTOR_SALA_EMAIL,
+      nombre: actuales[PROYECTOR_SALA_EMAIL]?.nombre || 'TV Sala',
+      alias: actuales[PROYECTOR_SALA_EMAIL]?.alias || 'TV Sala',
+      rol: 'Proyector Sala',
+      es_programador: false
+    };
+    try {
+      const tvRef = doc(db, 'usuarios_app', PROYECTOR_SALA_EMAIL);
+      const tvSnap = await getDoc(tvRef);
+      if (
+        !tvSnap.exists() ||
+        tvSnap.data()?.rol !== 'Proyector Sala' ||
+        tvSnap.data()?.es_programador !== false
+      ) {
+        await fbSetDoc(tvRef, tvPayload, { merge: true });
+      }
+    } catch {
+      // Silencioso si el usuario actual no tiene permisos de escritura en usuarios_app
     }
-  } catch (e) {
-    console.warn('No se pudo asegurar tvsala@goandtrain.com en usuarios_app:', e);
+    if (!actuales[PROYECTOR_SALA_EMAIL]) {
+      actuales[PROYECTOR_SALA_EMAIL] = tvPayload;
+      huboCambios = true;
+    }
+
+    // 3. Asegurar invitado@goandtrain.com en usuarios_app de Firestore
+    const invitadoPrev = actuales['invitado@goandtrain.com'];
+    const invitadoPayload = {
+      email: 'invitado@goandtrain.com',
+      nombre: invitadoPrev?.nombre || 'Básico',
+      alias: invitadoPrev?.alias || invitadoPrev?.nombre || 'Básico',
+      rol: invitadoPrev?.rol || 'Básico',
+      es_programador:
+        invitadoPrev?.rol && !esRolBasico(invitadoPrev.rol) && !esRolProyectorSala(invitadoPrev.rol)
+          ? invitadoPrev.es_programador !== false
+          : false
+    };
+    try {
+      const invRef = doc(db, 'usuarios_app', 'invitado@goandtrain.com');
+      const invSnap = await getDoc(invRef);
+      if (!invSnap.exists()) {
+        await fbSetDoc(invRef, invitadoPayload, { merge: true });
+      }
+    } catch {
+      // Silencioso si el usuario actual no tiene permisos de escritura en usuarios_app
+    }
+    if (!actuales['invitado@goandtrain.com']) {
+      actuales['invitado@goandtrain.com'] = invitadoPayload;
+      huboCambios = true;
+    }
+
+    // 4. Sincronizar cualquier otro usuario vinculado en config_usuarios_app que aún no exista en usuarios_app de Firestore
+    for (const [keyId, rawUser] of Object.entries(actuales)) {
+      if (!rawUser || typeof rawUser !== 'object') continue;
+      const emailU = String(rawUser.email || (keyId.includes('@') ? keyId : '')).trim().toLowerCase();
+      if (!emailU || esCorreoSuperAdmin(emailU)) continue;
+      try {
+        const uRef = doc(db, 'usuarios_app', emailU);
+        const uSnap = await getDoc(uRef);
+        if (!uSnap.exists()) {
+          await fbSetDoc(
+            uRef,
+            {
+              email: emailU,
+              nombre: rawUser.nombre || rawUser.alias || emailU,
+              alias: rawUser.alias || rawUser.nombre || emailU,
+              rol: rawUser.rol || 'Básico',
+              es_programador: Boolean(rawUser.es_programador)
+            },
+            { merge: true }
+          );
+        }
+      } catch {
+        // Silencioso
+      }
+    }
+
+    if (huboCambios) {
+      guardarCacheLocalUsuariosConfig(actuales);
+      try {
+        await setDoc(
+          doc(db, 'maestros', 'config_usuarios_app'),
+          {
+            schema_version: 1,
+            seccion: 'Gestión de Perfiles',
+            clave: 'Usuarios App',
+            usuarios: actuales,
+            updated_at: new Date().toISOString()
+          },
+          { merge: true }
+        );
+      } catch {
+        // Silencioso
+      }
+    }
+  } catch {
+    // Silencioso en segundo plano
   }
 }
 
 export async function cargarUsuariosAutenticacion(): Promise<UsuarioApp[]> {
   try {
     await asegurarUsuariosEspecialesApp();
-    const snap = await getDocs(collection(db, "usuarios_app"));
-    const lista: UsuarioApp[] = [];
-    snap.forEach(docSnap => {
-      const d = docSnap.data();
-      lista.push({
-        id: docSnap.id,
-        email: d.email || (docSnap.id.includes('@') ? docSnap.id : ''),
-        nombre: d.nombre || d.alias || d.nombre_corto || docSnap.id,
-        alias: d.alias || d.nombre_corto || d.nombre || '',
-        rol: d.rol || 'Sin asignar',
-        es_programador: d.es_programador !== false
+
+    const mapaUsuarios = new Map<string, UsuarioApp>();
+
+    try {
+      const snap = await getDocs(collection(db, "usuarios_app"));
+      snap.forEach(docSnap => {
+        const d = docSnap.data();
+        const emailDoc = String(d.email || (docSnap.id.includes('@') ? docSnap.id : '')).trim();
+        const emailLower = emailDoc.toLowerCase();
+        // Ocultar al usuario SuperAdmin y el rol SuperAdmin para que nunca aparezca como admin ni como otro rol
+        if (
+          esCorreoSuperAdmin(emailLower) ||
+          esCorreoSuperAdmin(docSnap.id) ||
+          esRolSuperAdmin(d.rol || '')
+        ) {
+          return;
+        }
+        if (esCorreoProyectorSala(emailLower)) {
+          mapaUsuarios.set(PROYECTOR_SALA_EMAIL, {
+            id: PROYECTOR_SALA_EMAIL,
+            email: PROYECTOR_SALA_EMAIL,
+            nombre: d.nombre && d.nombre.toLowerCase() !== 'tvsala' ? d.nombre : 'TV Sala',
+            alias: d.alias || 'TV Sala',
+            rol: 'Proyector Sala',
+            es_programador: false
+          });
+          return;
+        }
+        const keyMap = emailLower || docSnap.id;
+        mapaUsuarios.set(keyMap, {
+          id: keyMap,
+          email: emailDoc,
+          nombre: d.nombre || d.alias || d.nombre_corto || docSnap.id,
+          alias: d.alias || d.nombre_corto || d.nombre || '',
+          rol: d.rol || 'Sin asignar',
+          es_programador:
+            d.es_programador !== false &&
+            !esRolBasico(d.rol || '') &&
+            !esRolProyectorSala(d.rol || '')
+        });
       });
-    });
+    } catch (e) {
+      console.warn("Aviso leyendo colección usuarios_app:", e);
+    }
+
+    const usuariosCfg = await obtenerMapaUsuariosConfigurados();
+    for (const [docId, rawU] of Object.entries(usuariosCfg)) {
+      if (!rawU || typeof rawU !== 'object') continue;
+      const emailDoc = String(rawU.email || (docId.includes('@') ? docId : '')).trim();
+      const emailLower = emailDoc.toLowerCase();
+      if (
+        esCorreoSuperAdmin(emailLower) ||
+        esCorreoSuperAdmin(docId) ||
+        esRolSuperAdmin(rawU.rol || '')
+      ) {
+        continue;
+      }
+      const keyMap = emailLower || docId;
+      const existing = mapaUsuarios.get(keyMap) || mapaUsuarios.get(docId);
+      if (esCorreoProyectorSala(emailLower)) {
+        mapaUsuarios.set(PROYECTOR_SALA_EMAIL, {
+          id: PROYECTOR_SALA_EMAIL,
+          email: PROYECTOR_SALA_EMAIL,
+          nombre: rawU.nombre || existing?.nombre || 'TV Sala',
+          alias: rawU.alias || existing?.alias || 'TV Sala',
+          rol: 'Proyector Sala',
+          es_programador: false
+        });
+      } else {
+        const rolResuelto = rawU.rol || existing?.rol || 'Básico';
+        const esProgResuelto =
+          esRolBasico(rolResuelto) || esRolProyectorSala(rolResuelto)
+            ? false
+            : rawU.es_programador !== undefined
+            ? rawU.es_programador !== false
+            : (existing?.es_programador ?? true);
+        mapaUsuarios.set(keyMap, {
+          id: keyMap,
+          email: emailDoc || existing?.email || '',
+          nombre: rawU.nombre || existing?.nombre || docId,
+          alias: rawU.alias || existing?.alias || rawU.nombre || '',
+          rol: rolResuelto,
+          es_programador: esProgResuelto
+        });
+      }
+    }
+
+    if (!mapaUsuarios.has(PROYECTOR_SALA_EMAIL)) {
+      mapaUsuarios.set(PROYECTOR_SALA_EMAIL, {
+        id: PROYECTOR_SALA_EMAIL,
+        email: PROYECTOR_SALA_EMAIL,
+        nombre: 'TV Sala',
+        alias: 'TV Sala',
+        rol: 'Proyector Sala',
+        es_programador: false
+      });
+    }
+
+    if (!mapaUsuarios.has('invitado@goandtrain.com')) {
+      mapaUsuarios.set('invitado@goandtrain.com', {
+        id: 'invitado@goandtrain.com',
+        email: 'invitado@goandtrain.com',
+        nombre: 'Básico',
+        alias: 'Básico',
+        rol: 'Básico',
+        es_programador: false
+      });
+    }
+
+    const lista = Array.from(mapaUsuarios.values());
     lista.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
     return lista;
   } catch (e) {
-    console.warn("Error cargando usuarios_app:", e);
-    return [];
+    console.warn("Aviso cargando usuarios de autenticación:", e);
+    return [
+      {
+        id: 'invitado@goandtrain.com',
+        email: 'invitado@goandtrain.com',
+        nombre: 'Básico',
+        alias: 'Básico',
+        rol: 'Básico',
+        es_programador: false
+      },
+      {
+        id: PROYECTOR_SALA_EMAIL,
+        email: PROYECTOR_SALA_EMAIL,
+        nombre: 'TV Sala',
+        alias: 'TV Sala',
+        rol: 'Proyector Sala',
+        es_programador: false
+      }
+    ];
   }
 }
 
@@ -1058,32 +1499,24 @@ export function extraerListaMaster(
   return [];
 }
 
-const PROGRAMADORES_CACHE_KEY = 'gym_programadores_cache_v1';
-
 export async function getListaProgramadores(forzar = false): Promise<string[]> {
   if (!forzar) {
-    try {
-      const cached = sessionStorage.getItem(PROGRAMADORES_CACHE_KEY);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {}
+    const parsed = getSharedCache<string[]>(PROGRAMADORES_CACHE_KEY);
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
   }
 
   try {
-    const snap = await getDocs(collection(db, 'usuarios_app'));
+    const usuarios = await cargarUsuariosAutenticacion();
     const vistos = new Set<string>();
     const lista: string[] = [];
 
-    snap.forEach(docSnap => {
-      const d = docSnap.data();
-      if (d.es_programador === false) return;
-      if (esRolProyectorSala(d.rol || '')) return;
-      if (esCorreoProyectorSala(d.email || docSnap.id)) {
+    usuarios.forEach(u => {
+      if (u.es_programador === false) return;
+      if (esRolProyectorSala(u.rol || '') || esRolBasico(u.rol || '')) return;
+      if (esCorreoProyectorSala(u.email || u.id)) {
         return;
       }
-      const nombre = String(d.alias || d.nombre_corto || d.nombre || '').trim();
+      const nombre = String(u.alias || u.nombre || '').trim();
       const norm = limpiarNombreDoc(nombre);
       if (nombre && !vistos.has(norm)) {
         vistos.add(norm);
@@ -1102,9 +1535,7 @@ export async function getListaProgramadores(forzar = false): Promise<string[]> {
     });
 
     const finalLista = lista.length > 0 ? lista : ['Maite', 'Andrés'];
-    try {
-      sessionStorage.setItem(PROGRAMADORES_CACHE_KEY, JSON.stringify(finalLista));
-    } catch (e) {}
+    setSharedCache(PROGRAMADORES_CACHE_KEY, finalLista, forzar);
     return finalLista;
   } catch (e) {
     console.warn('Error cargando usuarios_app para programadores:', e);

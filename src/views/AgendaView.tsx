@@ -9,7 +9,12 @@ import {
   doc
 } from 'firebase/firestore';
 import { setDoc, deleteDoc } from '../services/offlineSyncService';
-import { getValoresMaestro, obtenerFechaLimiteReprogramacionUTC, extraerMapaFestivos } from '../services/maestrosService';
+import {
+  getValoresMaestro,
+  obtenerFechaLimiteReprogramacionUTC,
+  extraerMapaFestivos,
+  onCatalogoMaestrosChanged
+} from '../services/maestrosService';
 import { CustomDropdown } from '../components/CustomDropdown';
 import { SendRoutineModal } from '../components/SendRoutineModal';
 import { ReprogramarSesionModal } from '../components/ReprogramarSesionModal';
@@ -170,8 +175,21 @@ function formatearSesionAgenda(id: string, data: any = {}, mesesMargen = 1) {
 }
 
 export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
-  const { esModuloActivo } = useAuth();
+  const { esModuloActivo, hasPermission } = useAuth();
   const moduloSmallGroupActivo = esModuloActivo('small_group');
+  const puedeCrearAgenda = hasPermission('agenda', 'crear');
+  const puedeEditarAgenda = hasPermission('agenda', 'editar');
+  const puedeBorrarAgenda = hasPermission('agenda', 'borrar');
+  const puedeEditarEstadoSesion = hasPermission('planificacion', 'editar');
+  const puedeVerProgramacion = hasPermission('programar_sesiones', 'ver');
+  const puedeEditarProgramacion =
+    hasPermission('programar_sesiones', 'editar') || hasPermission('programar_sesiones', 'crear');
+  const puedeEnviarProgramacion =
+    hasPermission('enviar_programacion', 'ver') ||
+    hasPermission('enviar_programacion', 'crear') ||
+    hasPermission('enviar_programacion', 'editar');
+  const puedeVerPendientes = hasPermission('programaciones_pendientes', 'ver');
+  const puedeVerClientes = hasPermission('clientes', 'ver');
   const { pushAction, registerChangeListener, showToast } = useUndo();
 
   const [currentView, setCurrentView] = useState<'individuales' | 'sg'>(() => {
@@ -547,6 +565,37 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     });
     return unregister;
   }, [registerChangeListener, loadAgenda]);
+
+  useEffect(() => {
+    return onCatalogoMaestrosChanged(async () => {
+      try {
+        const [diasDB, horasIndDB, horasSGDB, ocupacionDB, mesesMargenDB, festivosDB] = await Promise.all([
+          getValoresMaestro('Agenda', 'Días de la semana'),
+          getValoresMaestro('Agenda', 'Horarios Sesiones Individuales'),
+          getValoresMaestro('Agenda', 'Horarios Small Groups'),
+          getValoresMaestro('Agenda', 'Ocupación máxima'),
+          getValoresMaestro('Agenda', 'Meses de margen para reprogramar'),
+          getValoresMaestro('Agenda', 'Festivos')
+        ]);
+        setFestivosMap(extraerMapaFestivos(festivosDB));
+        if (diasDB.length > 0) {
+          setDiasSemana(prev => (JSON.stringify(prev) === JSON.stringify(diasDB) ? prev : diasDB));
+        }
+        if (horasIndDB.length > 0) setTimeSlots(horasIndDB);
+        if (horasSGDB.length > 0) setSgTimeSlotsRaw(horasSGDB);
+        if (ocupacionDB.length > 0) {
+          const parsedOcup = parseInt(String(ocupacionDB[0]).trim(), 10);
+          if (!isNaN(parsedOcup) && parsedOcup > 0) setOcupacionMaxima(parsedOcup);
+        }
+        if (mesesMargenDB.length > 0) {
+          const parsedMargen = parseInt(String(mesesMargenDB[0]).trim(), 10);
+          if (!isNaN(parsedMargen) && parsedMargen >= 0) setMesesMargenReprog(parsedMargen);
+        }
+      } catch (e) {
+        console.warn('Error sincronizando maestros de agenda entre pestañas:', e);
+      }
+    });
+  }, []);
 
   // Close floating menu on click outside
   useEffect(() => {
@@ -971,6 +1020,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
 
   // Choice modal & Slot double-click handlers
   const handleAbrirModalPlanificarGeneral = () => {
+    if (!puedeCrearAgenda) return;
     const mesActualStr = `${currentMonthDate.getUTCFullYear()}-${String(currentMonthDate.getUTCMonth() + 1).padStart(2, '0')}`;
     setSlotContext({
       modo: 'general',
@@ -983,6 +1033,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
   };
 
   const handlePrepararModalAgendarSlot = (dateStrID: string, timeKey: string, tipoPlan: 'Individual' | 'Small Group') => {
+    if (!puedeCrearAgenda) return;
     const mesActualStr = `${currentMonthDate.getUTCFullYear()}-${String(currentMonthDate.getUTCMonth() + 1).padStart(2, '0')}`;
     setSlotContext({ modo: 'slot', dateStrID, timeKey, tipoPlan, defaultMes: mesActualStr });
     setChoiceModalOpen(true);
@@ -1361,22 +1412,26 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
         )}
 
         <div className="filters-right-actions">
-          <button
-            type="button"
-            className="btn-outline btn-agenda-top"
-            onClick={() => onNavigate('pendientes')}
-          >
-            <span className="desktop-text">Programaciones pendientes</span>
-            <span className="mobile-text">Pendientes</span>
-          </button>
-          <button
-            type="button"
-            className="btn-primary btn-agenda-top"
-            onClick={handleAbrirModalPlanificarGeneral}
-          >
-            <span className="desktop-text">+ Planificar Días de Cliente</span>
-            <span className="mobile-text">+ Planificar</span>
-          </button>
+          {puedeVerPendientes && (
+            <button
+              type="button"
+              className="btn-outline btn-agenda-top"
+              onClick={() => onNavigate('pendientes')}
+            >
+              <span className="desktop-text">Programaciones pendientes</span>
+              <span className="mobile-text">Pendientes</span>
+            </button>
+          )}
+          {puedeCrearAgenda && (
+            <button
+              type="button"
+              className="btn-primary btn-agenda-top"
+              onClick={handleAbrirModalPlanificarGeneral}
+            >
+              <span className="desktop-text">+ Planificar Días de Cliente</span>
+              <span className="mobile-text">+ Planificar</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1680,40 +1735,48 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                                                     </span>
                                                   </React.Fragment>
                                                 ))}
-                                                <div className="sg-slot-actions">
-                                                  <a
-                                                    href="#programar"
-                                                    className={`sg-routine-btn ${sgInfo.isPending ? 'pending' : ''}`}
-                                                    style={{ padding: '6px 8px', fontSize: '0.78rem' }}
-                                                    onClick={(e) => {
-                                                      e.preventDefault();
-                                                      e.stopPropagation();
-                                                      onNavigate('programar_sesion', sgInfo.firstId);
-                                                    }}
-                                                  >
-                                                    <span className="ui-icon">{sgInfo.isPending ? '📋' : '✅'}</span>
-                                                    <span>{sgInfo.isPending ? 'Programar SG' : 'Rutina SG'}</span>
-                                                  </a>
-                                                  {!sgInfo.isPending && sgInfo.ejercicios.length > 0 && (
-                                                    <button
-                                                      type="button"
-                                                      className="sg-send-btn"
-                                                      title="Enviar programación de este Small Group"
+                                                {puedeVerProgramacion && (
+                                                  <div className="sg-slot-actions">
+                                                    <a
+                                                      href="#programar"
+                                                      className={`sg-routine-btn ${sgInfo.isPending ? 'pending' : ''}`}
+                                                      style={{ padding: '6px 8px', fontSize: '0.78rem' }}
                                                       onClick={(e) => {
                                                         e.preventDefault();
                                                         e.stopPropagation();
-                                                        setSendEjercicios(sgInfo.ejercicios);
-                                                        setSendTipoSesion('Small Group');
-                                                        setSendIntensidad(sgInfo.intensidad || 'MED');
-                                                        setSendClientId('');
-                                                        setSendSessionId(sgInfo.firstId);
-                                                        setSendModalOpen(true);
+                                                        onNavigate('programar_sesion', sgInfo.firstId);
                                                       }}
                                                     >
-                                                      <span className="ui-icon">➡️</span>
-                                                    </button>
-                                                  )}
-                                                </div>
+                                                      <span className="ui-icon">{sgInfo.isPending ? '📋' : '✅'}</span>
+                                                      <span>
+                                                        {!puedeEditarProgramacion
+                                                          ? 'Ver Rutina SG'
+                                                          : sgInfo.isPending
+                                                          ? 'Programar SG'
+                                                          : 'Rutina SG'}
+                                                      </span>
+                                                    </a>
+                                                    {puedeEnviarProgramacion && !sgInfo.isPending && sgInfo.ejercicios.length > 0 && (
+                                                      <button
+                                                        type="button"
+                                                        className="sg-send-btn"
+                                                        title="Enviar programación de este Small Group"
+                                                        onClick={(e) => {
+                                                          e.preventDefault();
+                                                          e.stopPropagation();
+                                                          setSendEjercicios(sgInfo.ejercicios);
+                                                          setSendTipoSesion('Small Group');
+                                                          setSendIntensidad(sgInfo.intensidad || 'MED');
+                                                          setSendClientId('');
+                                                          setSendSessionId(sgInfo.firstId);
+                                                          setSendModalOpen(true);
+                                                        }}
+                                                      >
+                                                        <span className="ui-icon">➡️</span>
+                                                      </button>
+                                                    )}
+                                                  </div>
+                                                )}
                                               </>
                                             ) : (
                                               <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Sin clientes</span>
@@ -1965,39 +2028,47 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
                                                 </span>
                                               </React.Fragment>
                                             ))}
-                                            <div className="sg-slot-actions">
-                                              <a
-                                                href="#programar"
-                                                className={`sg-routine-btn ${sgInfo.isPending ? 'pending' : ''}`}
-                                                onClick={(e) => {
-                                                  e.preventDefault();
-                                                  e.stopPropagation();
-                                                  onNavigate('programar_sesion', sgInfo.firstId);
-                                                }}
-                                              >
-                                                <span className="ui-icon">{sgInfo.isPending ? '📋' : '✅'}</span>
-                                                <span>{sgInfo.isPending ? 'Programar SG' : 'Rutina SG'}</span>
-                                              </a>
-                                              {!sgInfo.isPending && sgInfo.ejercicios.length > 0 && (
-                                                <button
-                                                  type="button"
-                                                  className="sg-send-btn"
-                                                  title="Enviar programación de este Small Group"
+                                            {puedeVerProgramacion && (
+                                              <div className="sg-slot-actions">
+                                                <a
+                                                  href="#programar"
+                                                  className={`sg-routine-btn ${sgInfo.isPending ? 'pending' : ''}`}
                                                   onClick={(e) => {
                                                     e.preventDefault();
                                                     e.stopPropagation();
-                                                    setSendEjercicios(sgInfo.ejercicios);
-                                                    setSendTipoSesion('Small Group');
-                                                    setSendIntensidad(sgInfo.intensidad || 'MED');
-                                                    setSendClientId('');
-                                                    setSendSessionId(sgInfo.firstId);
-                                                    setSendModalOpen(true);
+                                                    onNavigate('programar_sesion', sgInfo.firstId);
                                                   }}
                                                 >
-                                                  <span className="ui-icon">➡️</span>
-                                                </button>
-                                              )}
-                                            </div>
+                                                  <span className="ui-icon">{sgInfo.isPending ? '📋' : '✅'}</span>
+                                                  <span>
+                                                    {!puedeEditarProgramacion
+                                                      ? 'Ver Rutina SG'
+                                                      : sgInfo.isPending
+                                                      ? 'Programar SG'
+                                                      : 'Rutina SG'}
+                                                  </span>
+                                                </a>
+                                                {puedeEnviarProgramacion && !sgInfo.isPending && sgInfo.ejercicios.length > 0 && (
+                                                  <button
+                                                    type="button"
+                                                    className="sg-send-btn"
+                                                    title="Enviar programación de este Small Group"
+                                                    onClick={(e) => {
+                                                      e.preventDefault();
+                                                      e.stopPropagation();
+                                                      setSendEjercicios(sgInfo.ejercicios);
+                                                      setSendTipoSesion('Small Group');
+                                                      setSendIntensidad(sgInfo.intensidad || 'MED');
+                                                      setSendClientId('');
+                                                      setSendSessionId(sgInfo.firstId);
+                                                      setSendModalOpen(true);
+                                                    }}
+                                                  >
+                                                    <span className="ui-icon">➡️</span>
+                                                  </button>
+                                                )}
+                                              </div>
+                                            )}
                                           </>
                                         )}
                                       </div>
@@ -2028,7 +2099,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
         >
           <div className="session-action-menu-header">
             <div className="session-action-menu-client">
-              {activeMenu.idCliente ? (
+              {activeMenu.idCliente && puedeVerClientes ? (
                 <a
                   href="#ficha"
                   onClick={(e) => {
@@ -2083,7 +2154,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
           </div>
 
           <div className="session-action-menu-list">
-            {!activeMenu.acciones.sin_fecha && (
+            {!activeMenu.acciones.sin_fecha && puedeEditarEstadoSesion && (
               <button
                 type="button"
                 className="session-action-item"
@@ -2098,25 +2169,26 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
               </button>
             )}
 
-            {!(
-              String(activeMenu.acciones.tipo_sesion || '').toLowerCase().includes('small') ||
-              String(activeMenu.acciones.tipo_sesion || '').toLowerCase().includes('group')
-            ) && (
-              <button
-                type="button"
-                className="session-action-item"
-                onClick={() => {
-                  const id = activeMenu.idSesion;
-                  setActiveMenu(null);
-                  onNavigate('programar_sesion', id);
-                }}
-              >
-                <span>🏋️</span>
-                <span>Programación</span>
-              </button>
-            )}
+            {puedeVerProgramacion &&
+              !(
+                String(activeMenu.acciones.tipo_sesion || '').toLowerCase().includes('small') ||
+                String(activeMenu.acciones.tipo_sesion || '').toLowerCase().includes('group')
+              ) && (
+                <button
+                  type="button"
+                  className="session-action-item"
+                  onClick={() => {
+                    const id = activeMenu.idSesion;
+                    setActiveMenu(null);
+                    onNavigate('programar_sesion', id);
+                  }}
+                >
+                  <span>🏋️</span>
+                  <span>Programación</span>
+                </button>
+              )}
 
-            {activeMenu.acciones.puedeReprogramar && (
+            {puedeEditarAgenda && activeMenu.acciones.puedeReprogramar && (
               <button
                 type="button"
                 className="session-action-item"
@@ -2129,7 +2201,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
               </button>
             )}
 
-            {activeMenu.acciones.puedeEnviar && (
+            {puedeEnviarProgramacion && activeMenu.acciones.puedeEnviar && (
               <button
                 type="button"
                 className="session-action-item send"
@@ -2153,7 +2225,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
               </button>
             )}
 
-            {activeMenu.acciones.puedeEliminar && (
+            {puedeBorrarAgenda && activeMenu.acciones.puedeEliminar && (
               <button
                 type="button"
                 className="session-action-item danger"

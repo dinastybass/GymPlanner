@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { collection, getDocs, query, where, doc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
-import { getListaProgramadores } from '../services/maestrosService';
+import { useAuth } from '../context/AuthContext';
+import {
+  getListaProgramadores,
+  onCatalogoMaestrosChanged
+} from '../services/maestrosService';
 import { esSesionCompletada, esSesionCancelada } from '../utils/helpers';
 
 interface ProgramacionesPendientesViewProps {
@@ -19,6 +23,12 @@ const diasSemanaMap: Record<number, string> = {
 };
 
 export const ProgramacionesPendientesView: React.FC<ProgramacionesPendientesViewProps> = ({ onNavigate }) => {
+  const { hasPermission } = useAuth();
+  const puedeVerClientes = hasPermission('clientes', 'ver');
+  const puedeVerProgramacion = hasPermission('programar_sesiones', 'ver');
+  const puedeEditarProgramacion =
+    hasPermission('programar_sesiones', 'editar') || hasPermission('programar_sesiones', 'crear');
+
   const [currentView, setCurrentView] = useState<'individuales' | 'small_groups'>('individuales');
   const [clientesDataMap, setClientesDataMap] = useState<Record<string, { nombre: string; programador: string }>>({});
   const [programadoresMaestros, setProgramadoresMaestros] = useState<string[]>(['Javi', 'Carlos']);
@@ -84,25 +94,27 @@ export const ProgramacionesPendientesView: React.FC<ProgramacionesPendientesView
       });
 
       // Auto-sync SG routines if one session in the group has exercises
-      const batch = writeBatch(db);
-      let huboAutoreparacion = false;
+      if (puedeEditarProgramacion) {
+        const batch = writeBatch(db);
+        let huboAutoreparacion = false;
 
-      for (const timeKey in gruposSG) {
-        const grupo = gruposSG[Number(timeKey)];
-        const sesionConRutina = grupo.find(s => Array.isArray(s.ejercicios) && s.ejercicios.length > 0);
-        if (sesionConRutina) {
-          grupo.forEach(s => {
-            if (!Array.isArray(s.ejercicios) || s.ejercicios.length === 0) {
-              s.ejercicios = sesionConRutina.ejercicios;
-              batch.update(doc(db, 'agenda_sesiones', s.id), { ejercicios: sesionConRutina.ejercicios });
-              huboAutoreparacion = true;
-            }
-          });
+        for (const timeKey in gruposSG) {
+          const grupo = gruposSG[Number(timeKey)];
+          const sesionConRutina = grupo.find(s => Array.isArray(s.ejercicios) && s.ejercicios.length > 0);
+          if (sesionConRutina) {
+            grupo.forEach(s => {
+              if (!Array.isArray(s.ejercicios) || s.ejercicios.length === 0) {
+                s.ejercicios = sesionConRutina.ejercicios;
+                batch.update(doc(db, 'agenda_sesiones', s.id), { ejercicios: sesionConRutina.ejercicios });
+                huboAutoreparacion = true;
+              }
+            });
+          }
         }
-      }
 
-      if (huboAutoreparacion) {
-        await batch.commit();
+        if (huboAutoreparacion) {
+          await batch.commit();
+        }
       }
 
       const pendientes: any[] = [];
@@ -126,6 +138,17 @@ export const ProgramacionesPendientesView: React.FC<ProgramacionesPendientesView
   useEffect(() => {
     initPage();
   }, [initPage]);
+
+  useEffect(() => {
+    return onCatalogoMaestrosChanged(async () => {
+      try {
+        const progs = await getListaProgramadores();
+        if (progs.length > 0) setProgramadoresMaestros(progs);
+      } catch (e) {
+        console.warn('Error sincronizando programadores entre pestañas:', e);
+      }
+    });
+  }, []);
 
   const toggleTrainer = (trainer: string) => {
     setCollapsedTrainers(prev => ({ ...prev, [trainer]: !prev[trainer] }));
@@ -246,7 +269,7 @@ export const ProgramacionesPendientesView: React.FC<ProgramacionesPendientesView
                             <polyline points="6 9 12 15 18 9" />
                           </svg>
                         </span>
-                        {idCliente ? (
+                        {idCliente && puedeVerClientes ? (
                           <a
                             href={`#ficha_cliente/${idCliente}`}
                             className="client-link"
@@ -293,13 +316,15 @@ export const ProgramacionesPendientesView: React.FC<ProgramacionesPendientesView
                                   <td>{diaStr}</td>
                                   <td>{horaStr}</td>
                                   <td style={{ textAlign: 'right' }}>
-                                    <button
-                                      type="button"
-                                      className="btn-action"
-                                      onClick={() => onNavigate('programar_sesion', s.id)}
-                                    >
-                                      Programar sesión
-                                    </button>
+                                    {puedeVerProgramacion && (
+                                      <button
+                                        type="button"
+                                        className="btn-action"
+                                        onClick={() => onNavigate('programar_sesion', s.id)}
+                                      >
+                                        {puedeEditarProgramacion ? 'Programar sesión' : 'Ver sesión'}
+                                      </button>
+                                    )}
                                   </td>
                                 </tr>
                               );
@@ -368,13 +393,15 @@ export const ProgramacionesPendientesView: React.FC<ProgramacionesPendientesView
                   <td>{diaStr}</td>
                   <td>{horaStr}</td>
                   <td style={{ textAlign: 'right' }}>
-                    <button
-                      type="button"
-                      className="btn-action"
-                      onClick={() => onNavigate('programar_sesion', s.id)}
-                    >
-                      Programar sesión
-                    </button>
+                    {puedeVerProgramacion && (
+                      <button
+                        type="button"
+                        className="btn-action"
+                        onClick={() => onNavigate('programar_sesion', s.id)}
+                      >
+                        {puedeEditarProgramacion ? 'Programar sesión' : 'Ver sesión'}
+                      </button>
+                    )}
                   </td>
                 </tr>
               );

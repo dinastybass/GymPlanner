@@ -2,7 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { collection, getDocs, query, where, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { updateDoc, addDoc } from '../services/offlineSyncService';
-import { cargarCatalogoMaestros, extraerListaMaster } from '../services/maestrosService';
+import {
+  cargarCatalogoMaestros,
+  extraerListaMaster,
+  onCatalogoMaestrosChanged
+} from '../services/maestrosService';
 import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
 import {
@@ -38,7 +42,9 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
   const { pushAction, registerChangeListener } = useUndo();
 
   const puedeEditarEstadoSesion = hasPermission('planificacion', 'editar');
-  const puedeProgramarSesiones = hasPermission('programar_sesiones', 'ver') && hasPermission('programar_sesiones', 'editar');
+  const puedeVerProgramacionSesiones = hasPermission('programar_sesiones', 'ver');
+  const puedeEditarProgramacionSesiones =
+    hasPermission('programar_sesiones', 'editar') || hasPermission('programar_sesiones', 'crear');
   const puedeVerClientes = hasPermission('clientes', 'ver');
   const puedeVerEjercicios = hasPermission('ejercicios', 'ver');
   const puedeVerPantallaSala = esModuloActivo('tv') && hasPermission('pantalla_sala', 'ver');
@@ -107,29 +113,33 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
     saving: false
   });
 
+  const aplicarMaestros = useCallback(async () => {
+    try {
+      const maestros = await cargarCatalogoMaestros();
+      const bloques = extraerListaMaster(maestros, 'Ejercicios', [
+        'Bloque de la sesión en que se recomienda',
+        'Bloque de recomendación'
+      ]);
+      if (bloques.length > 0) setOrdenBloques(bloques);
+
+      const dias = extraerListaMaster(maestros, 'Agenda', ['Días de la semana', 'Dias de la semana']);
+      if (dias.length > 0) setDiasSemanaPills(dias);
+
+      const horariosInd = extraerListaMaster(maestros, 'Agenda', ['Horarios Sesiones Individuales']);
+      if (horariosInd.length > 0) {
+        const man = horariosInd.filter(h => parseInt(h.split(':')[0], 10) < 14).sort();
+        const tar = horariosInd.filter(h => parseInt(h.split(':')[0], 10) >= 14).sort();
+        if (man.length > 0) setRangoManana(`${man[0]}-${man[man.length - 1]}`);
+        if (tar.length > 0) setRangoTarde(`${tar[0]}-${tar[tar.length - 1]}`);
+      }
+    } catch (e) {
+      console.warn('Error cargando maestros en planificación:', e);
+    }
+  }, []);
+
   useEffect(() => {
     const init = async () => {
-      try {
-        const maestros = await cargarCatalogoMaestros();
-        const bloques = extraerListaMaster(maestros, 'Ejercicios', [
-          'Bloque de la sesión en que se recomienda',
-          'Bloque de recomendación'
-        ]);
-        if (bloques.length > 0) setOrdenBloques(bloques);
-
-        const dias = extraerListaMaster(maestros, 'Agenda', ['Días de la semana', 'Dias de la semana']);
-        if (dias.length > 0) setDiasSemanaPills(dias);
-
-        const horariosInd = extraerListaMaster(maestros, 'Agenda', ['Horarios Sesiones Individuales']);
-        if (horariosInd.length > 0) {
-          const man = horariosInd.filter(h => parseInt(h.split(':')[0], 10) < 14).sort();
-          const tar = horariosInd.filter(h => parseInt(h.split(':')[0], 10) >= 14).sort();
-          if (man.length > 0) setRangoManana(`${man[0]}-${man[man.length - 1]}`);
-          if (tar.length > 0) setRangoTarde(`${tar[0]}-${tar[tar.length - 1]}`);
-        }
-      } catch (e) {
-        console.warn('Error cargando maestros en planificación:', e);
-      }
+      await aplicarMaestros();
 
       try {
         const snapClientes = await getDocs(collection(db, 'clientes'));
@@ -153,15 +163,25 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
       }
     };
     init();
-  }, []);
+  }, [aplicarMaestros]);
+
+  useEffect(() => {
+    return onCatalogoMaestrosChanged(() => {
+      aplicarMaestros();
+    });
+  }, [aplicarMaestros]);
 
   const fetchDaySessions = useCallback(async () => {
     setLoading(true);
     try {
-      if (typeof navigator === 'undefined' || navigator.onLine) {
-        await revertirVencimientosAutomaticos();
-        await limpiarSesionesAntiguasYEjerciciosHuerfanos();
-        await procesarCaducidadSesionesSinFechaPorMeses();
+      if (puedeEditarProgramacionSesiones && (typeof navigator === 'undefined' || navigator.onLine)) {
+        try {
+          await revertirVencimientosAutomaticos();
+          await limpiarSesionesAntiguasYEjerciciosHuerfanos();
+          await procesarCaducidadSesionesSinFechaPorMeses();
+        } catch {
+          // Silencioso si el rol actual no tiene permisos de mantenimiento
+        }
       }
       const y = currentDate.getFullYear();
       const m = currentDate.getMonth();
@@ -192,7 +212,7 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
     } finally {
       setLoading(false);
     }
-  }, [currentDate]);
+  }, [currentDate, puedeEditarProgramacionSesiones]);
 
   useEffect(() => {
     fetchDaySessions();
@@ -629,7 +649,7 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
           >
             {statusContent}
           </div>
-          {puedeProgramarSesiones && (
+          {puedeVerProgramacionSesiones && (
             <a
               href={`#programar_sesion/${s.id}`}
               className="link"
@@ -639,7 +659,7 @@ export const PlanificacionView: React.FC<PlanificacionViewProps> = ({ onNavigate
                 onNavigate('programar_sesion', s.id);
               }}
             >
-              + Añadir Ejercicio
+              {puedeEditarProgramacionSesiones ? '+ Añadir Ejercicio' : 'Ver Programación'}
             </a>
           )}
         </div>

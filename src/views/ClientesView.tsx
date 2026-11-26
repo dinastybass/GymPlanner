@@ -6,7 +6,8 @@ import { useUndo } from '../context/UndoContext';
 import {
   cargarCatalogoMaestros,
   extraerListaMaster,
-  getListaProgramadores
+  getListaProgramadores,
+  onCatalogoMaestrosChanged
 } from '../services/maestrosService';
 import { coincideBusqueda, normalizarTextoBusqueda } from '../utils/helpers';
 import { confirmarDialogo } from '../utils/confirmDialog';
@@ -16,8 +17,10 @@ interface ClientesViewProps {
 }
 
 export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
-  const { role, esModuloActivo } = useAuth();
+  const { esModuloActivo, hasPermission } = useAuth();
   const moduloGoKidsActivo = esModuloActivo('go_kids');
+  const puedeCrearCliente = hasPermission('clientes', 'crear');
+  const puedeBorrarCliente = hasPermission('clientes', 'borrar');
   const { pushAction, registerChangeListener } = useUndo();
 
   const [clientesData, setClientesData] = useState<any[]>([]);
@@ -135,31 +138,42 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
     }
   }, []);
 
+  const aplicarMaestros = useCallback(async () => {
+    try {
+      const maestros = await cargarCatalogoMaestros();
+      const tipos = extraerListaMaster(maestros, 'Clientes', ['Tipo de Cliente', 'Tipo de cliente']);
+      if (tipos.length > 0) setTiposClienteMaster(tipos);
+
+      const estados = extraerListaMaster(maestros, 'Clientes', ['Estado Cliente', 'Estado cliente']);
+      if (estados.length > 0) setEstadosClienteMaster(estados);
+
+      const progs = await getListaProgramadores();
+      if (progs.length > 0) setProgramadoresList(progs);
+    } catch (e) {
+      console.warn('Error cargando maestros en clientes:', e);
+    }
+  }, []);
+
   useEffect(() => {
     const init = async () => {
-      try {
-        const maestros = await cargarCatalogoMaestros();
-        const tipos = extraerListaMaster(maestros, 'Clientes', ['Tipo de Cliente', 'Tipo de cliente']);
-        if (tipos.length > 0) setTiposClienteMaster(tipos);
-
-        const estados = extraerListaMaster(maestros, 'Clientes', ['Estado Cliente', 'Estado cliente']);
-        if (estados.length > 0) setEstadosClienteMaster(estados);
-
-        const progs = await getListaProgramadores();
-        if (progs.length > 0) setProgramadoresList(progs);
-      } catch (e) {
-        console.warn('Error cargando maestros en clientes:', e);
-      }
+      await aplicarMaestros();
       await cargarClientes();
     };
     init();
-  }, [cargarClientes]);
+  }, [aplicarMaestros, cargarClientes]);
+
+  useEffect(() => {
+    return onCatalogoMaestrosChanged(() => {
+      aplicarMaestros();
+    });
+  }, [aplicarMaestros]);
 
   useEffect(() => {
     return registerChangeListener(() => {
+      aplicarMaestros();
       cargarClientes();
     });
-  }, [registerChangeListener, cargarClientes]);
+  }, [registerChangeListener, aplicarMaestros, cargarClientes]);
 
   const handleSort = (col: 'nombre_completo' | 'alias') => {
     if (sortCol === col) {
@@ -279,7 +293,6 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
     }
   };
 
-  const isProgramadorOnly = role === 'programador';
 
   const filtrados = clientesData.filter(c => {
     const matchText =
@@ -332,7 +345,7 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
     <div className="container">
       <div className="page-header">
         <h1>Fichas de clientes</h1>
-        {!isProgramadorOnly && (
+        {puedeCrearCliente && (
           <button type="button" className="btn-primary" onClick={abrirModalAlta}>
             + Nuevo cliente
           </button>
@@ -549,11 +562,11 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
                                   </th>
                                   <th
                                     className="col-cli-objetivo"
-                                    style={{ width: isProgramadorOnly ? '45%' : '35%' }}
+                                    style={{ width: !puedeBorrarCliente ? '45%' : '35%' }}
                                   >
                                     Objetivo global
                                   </th>
-                                  {!isProgramadorOnly && (
+                                  {puedeBorrarCliente && (
                                     <th className="col-cli-acciones" style={{ width: '10%', textAlign: 'right' }}>
                                       Acciones
                                     </th>
@@ -594,7 +607,7 @@ export const ClientesView: React.FC<ClientesViewProps> = ({ onNavigate }) => {
                                         )}
                                     </td>
                                     <td className="col-cli-objetivo text-light">{c.objetivo_global}</td>
-                                    {!isProgramadorOnly && (
+                                    {puedeBorrarCliente && (
                                       <td className="col-cli-acciones" style={{ textAlign: 'right' }}>
                                         <button
                                           type="button"
