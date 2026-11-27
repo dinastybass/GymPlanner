@@ -615,6 +615,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     weekNum: number;
     col: number;
     row: number;
+    esMediaHora: boolean;
     clientes: { nombre: string; idSesion: string; isPending: boolean; isCompleted: boolean }[];
     dateStrID: string;
     position?: 'left' | 'right';
@@ -655,6 +656,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     const isCompleted = esSesionCompletada(data);
     const isPending = !isCompleted && (!data.ejercicios || data.ejercicios.length === 0);
     const timeStr = fecha.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+    const esMediaHora = fecha.getUTCMinutes() === 30 || timeStr.endsWith(':30');
     const diffDays = Math.floor(Math.abs(fecha.getTime() - startDateCalendar.getTime()) / (1000 * 60 * 60 * 24));
     const weekNum = Math.floor(diffDays / 7) + 1;
     const dayIndex = fecha.getUTCDay();
@@ -680,6 +682,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
             weekNum,
             col,
             row,
+            esMediaHora,
             clientes: [{ nombre: info.nombreCliente, idSesion: info.id, isPending, isCompleted }],
             dateStrID: fecha.toISOString().split('T')[0]
           });
@@ -693,9 +696,8 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ onNavigate }) => {
     events.sort((a, b) => a.row - b.row);
     for (let i = 0; i < events.length; i++) {
       const evt = events[i];
-      evt.position = 'left';
+      evt.position = evt.esMediaHora ? 'right' : 'left';
       if (i > 0 && events[i - 1].row + 2 > evt.row) {
-        evt.position = events[i - 1].position === 'left' ? 'right' : 'left';
         evt.isOverlapping = true;
         events[i - 1].isOverlapping = true;
       }
