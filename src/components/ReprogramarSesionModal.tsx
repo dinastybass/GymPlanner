@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../firebase';
 import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
-import { getValoresMaestro } from '../services/maestrosService';
+import {
+  getValoresMaestro,
+  onCatalogoMaestrosChanged
+} from '../services/maestrosService';
 import {
   reprogramarSesionConFechaOrdenCronologico,
   asignarFechaASesionSinFechaConCascadaAtras,
@@ -204,6 +207,42 @@ export const ReprogramarSesionModal: React.FC<ReprogramarSesionModalProps> = ({
       cargarDatosReprogramacion();
     }
   }, [isOpen, sessionId, cargarDatosReprogramacion]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    return onCatalogoMaestrosChanged(async () => {
+      try {
+        const [diasDB, horasIndDB, horasSGDB] = await Promise.all([
+          getValoresMaestro('Agenda', 'Días de la semana'),
+          getValoresMaestro('Agenda', 'Horarios Sesiones Individuales'),
+          getValoresMaestro('Agenda', 'Horarios Small Groups')
+        ]);
+        if (diasDB.length > 0) setDiasSemana(diasDB);
+        if (horasIndDB.length > 0) setHorariosInd(horasIndDB);
+        if (horasSGDB.length > 0) {
+          const horasExtraidas = Array.from(
+            new Set(
+              horasSGDB
+                .map(item => {
+                  const partes = String(item).trim().split(/\s+/);
+                  return partes.length > 1 ? partes[partes.length - 1] : partes[0];
+                })
+                .filter(h => /^\d{1,2}:\d{2}$/.test(h))
+            )
+          ).sort();
+          setHorariosSG(
+            horasExtraidas.length > 0
+              ? horasExtraidas
+              : horasIndDB.length > 0
+              ? horasIndDB
+              : HORARIOS_IND_DEFAULT
+          );
+        }
+      } catch (e) {
+        console.warn('Error sincronizando horarios en modal de reprogramación:', e);
+      }
+    });
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

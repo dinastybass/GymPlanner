@@ -4,7 +4,10 @@ import { collection, getDocs, getDoc, doc, query, where } from 'firebase/firesto
 import { setDoc, updateDoc, writeBatch } from '../services/offlineSyncService';
 import { EjercicioSesion } from '../types';
 import { CustomDropdown } from './CustomDropdown';
-import { getValoresMaestro } from '../services/maestrosService';
+import {
+  getValoresMaestro,
+  onCatalogoMaestrosChanged
+} from '../services/maestrosService';
 import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
 import {
@@ -224,25 +227,33 @@ export const SendRoutineModal: React.FC<SendRoutineModalProps> = ({
       });
 
     // Cargar maestros para plantillas
-    getValoresMaestro('Sesiones', 'Tipo de Sesión').then(res => {
-      setTiposSesion(res);
-      if (res.length > 0) {
-        const matched = defaultTipoSesion
-          ? res.find(t => t.toLowerCase() === defaultTipoSesion.toLowerCase())
-          : undefined;
-        setPlantillaTipo(matched || res[0]);
-      }
+    const cargarMaestrosModal = () => {
+      getValoresMaestro('Sesiones', 'Tipo de Sesión').then(res => {
+        setTiposSesion(res);
+        if (res.length > 0) {
+          const matched = defaultTipoSesion
+            ? res.find(t => t.toLowerCase() === defaultTipoSesion.toLowerCase())
+            : undefined;
+          setPlantillaTipo(prev => prev || matched || res[0]);
+        }
+      });
+      getValoresMaestro('Ejercicios', 'Niveles').then(res => {
+        setNiveles(res);
+        if (res.length > 0) setPlantillaNivel(prev => prev || res[0]);
+      });
+      getValoresMaestro('Sesiones', 'Intensidad de la Sesión').then(res => {
+        if (res && res.length > 0) setIntensidades(res);
+      });
+      getValoresMaestro('Ejercicios', 'Bloque de la sesión en que se recomienda').then(res => {
+        if (res && res.length > 0) setOrdenBloques(res);
+      });
+    };
+
+    cargarMaestrosModal();
+    const unsub = onCatalogoMaestrosChanged(() => {
+      cargarMaestrosModal();
     });
-    getValoresMaestro('Ejercicios', 'Niveles').then(res => {
-      setNiveles(res);
-      if (res.length > 0 && !plantillaNivel) setPlantillaNivel(res[0]);
-    });
-    getValoresMaestro('Sesiones', 'Intensidad de la Sesión').then(res => {
-      if (res && res.length > 0) setIntensidades(res);
-    });
-    getValoresMaestro('Ejercicios', 'Bloque de la sesión en que se recomienda').then(res => {
-      if (res && res.length > 0) setOrdenBloques(res);
-    });
+    return () => unsub();
   }, [isOpen, defaultIntensity, defaultTipoSesion, excludeSessionId]);
 
   // Cargar sesiones no completadas del cliente seleccionado

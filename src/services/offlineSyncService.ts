@@ -112,6 +112,7 @@ function leerColaPendiente(): Map<string, PendingOfflineMutation> {
     if (Array.isArray(arr)) {
       for (const item of arr) {
         if (item && item.key && item.collection && item.docId) {
+          if (item.collection === 'usuarios_app') continue;
           map.set(item.key, {
             ...item,
             data: item.data ? deserializeFromStorage(item.data) : undefined,
@@ -221,9 +222,10 @@ function enriquecerPayloadConTimestamps(
     fieldTimestamps[k] = nowMs;
   }
 
-  // En colecciones de maestros internas (ej. chunks de backup) no añadimos metadatos extra
+  // En colecciones de maestros y usuarios_app no añadimos metadatos extra
   if (
     collectionName === 'maestros' ||
+    collectionName === 'usuarios_app' ||
     !TRACKED_COLLECTIONS.has(collectionName)
   ) {
     return { enrichedData: { ...rawData }, nowMs, fieldTimestamps };
@@ -340,14 +342,14 @@ async function ejecutarEscrituraNoBloqueante(
   keys: string[],
   timestampMs: number
 ): Promise<void> {
-  writePromise
+  const handledPromise = writePromise
     .then(() => {
       if (isBrowserOnline) {
         confirmarMutacionSincronizada(keys, timestampMs);
       }
     })
     .catch(err => {
-      console.warn('Error en escritura Firestore en segundo plano:', err);
+      console.warn('Aviso en escritura Firestore en segundo plano:', err);
       // Si estamos online y Firestore rechazó la escritura (ej. permisos), limpiar de la cola para que no quede colgada como pendiente
       if (isBrowserOnline && err?.code !== 'unavailable') {
         confirmarMutacionSincronizada(keys, timestampMs);
@@ -362,7 +364,7 @@ async function ejecutarEscrituraNoBloqueante(
 
   // Si estamos online pero la conexión del gimnasio es inestable o lenta (> 450ms), no bloquear la pantalla
   await Promise.race([
-    writePromise,
+    handledPromise,
     new Promise<void>(resolve => setTimeout(resolve, 450))
   ]);
 }

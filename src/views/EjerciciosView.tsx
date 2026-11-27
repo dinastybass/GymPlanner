@@ -1,8 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
-import { cargarCatalogoMaestros, extraerListaMaster } from '../services/maestrosService';
+import {
+  cargarCatalogoMaestros,
+  extraerListaMaster,
+  onCatalogoMaestrosChanged
+} from '../services/maestrosService';
 import { coincideBusqueda } from '../utils/helpers';
 import { confirmarDialogo } from '../utils/confirmDialog';
 import {
@@ -27,7 +32,11 @@ type MultiFieldKey =
   | 'zonas'
   | 'posiciones';
 
-export const EjerciciosView: React.FC<EjerciciosViewProps> = () => {
+export const EjerciciosView: React.FC<EjerciciosViewProps> = ({ onNavigate }) => {
+  const { hasPermission } = useAuth();
+  const puedeCrearEjercicio = hasPermission('ejercicios', 'crear');
+  const puedeEditarEjercicio = hasPermission('ejercicios', 'editar');
+  const puedeBorrarEjercicio = hasPermission('ejercicios', 'borrar');
   const { pushAction, registerChangeListener } = useUndo();
 
   const [ejerciciosData, setEjerciciosData] = useState<any[]>([]);
@@ -159,58 +168,69 @@ export const EjerciciosView: React.FC<EjerciciosViewProps> = () => {
     }
   }, []);
 
+  const aplicarMaestros = useCallback(async () => {
+    try {
+      const maestros = await cargarCatalogoMaestros();
+      const nivs = extraerListaMaster(maestros, 'Ejercicios', ['Niveles', 'Nivel de Dificultad']);
+      if (nivs.length > 0) setOrdenNiveles([...nivs, 'Sin nivel']);
+
+      const bloqs = extraerListaMaster(maestros, 'Ejercicios', [
+        'Bloques',
+        'Bloque de la sesión en que se recomienda',
+        'Bloque de recomendación'
+      ]);
+      if (bloqs.length > 0) setOrdenBloques([...bloqs, 'General']);
+
+      setPatronesList(
+        extraerListaMaster(maestros, 'Ejercicios', ['Patrón Motor', 'Patrón de movimiento'])
+      );
+      setMusculosList(
+        extraerListaMaster(maestros, 'Ejercicios', [
+          'Músculos',
+          'Grupos de Ejercicios',
+          'Grupo muscular'
+        ])
+      );
+      setMaterialesList(
+        extraerListaMaster(maestros, 'Ejercicios', ['Materiales', 'Material sugerido'])
+      );
+      setSubcategoriasList(
+        extraerListaMaster(maestros, 'Ejercicios', ['Subcategorías', 'Subcategoría'])
+      );
+      setZonasList(
+        extraerListaMaster(maestros, 'Ejercicios', [
+          'Zona / Articulación',
+          'Zona / Articulación (para movilidad/activación)'
+        ])
+      );
+      setPosicionesList(extraerListaMaster(maestros, 'Ejercicios', ['Posición']));
+      const sers = extraerListaMaster(maestros, 'Ejercicios', ['Series y Repeticiones']);
+      if (sers.length > 0) setSeriesList(sers);
+    } catch (e) {
+      console.warn('Error cargando maestros en ejercicios:', e);
+    }
+  }, []);
+
   useEffect(() => {
     const init = async () => {
-      try {
-        const maestros = await cargarCatalogoMaestros();
-        const nivs = extraerListaMaster(maestros, 'Ejercicios', ['Niveles', 'Nivel de Dificultad']);
-        if (nivs.length > 0) setOrdenNiveles([...nivs, 'Sin nivel']);
-
-        const bloqs = extraerListaMaster(maestros, 'Ejercicios', [
-          'Bloques',
-          'Bloque de la sesión en que se recomienda',
-          'Bloque de recomendación'
-        ]);
-        if (bloqs.length > 0) setOrdenBloques([...bloqs, 'General']);
-
-        setPatronesList(
-          extraerListaMaster(maestros, 'Ejercicios', ['Patrón Motor', 'Patrón de movimiento'])
-        );
-        setMusculosList(
-          extraerListaMaster(maestros, 'Ejercicios', [
-            'Músculos',
-            'Grupos de Ejercicios',
-            'Grupo muscular'
-          ])
-        );
-        setMaterialesList(
-          extraerListaMaster(maestros, 'Ejercicios', ['Materiales', 'Material sugerido'])
-        );
-        setSubcategoriasList(
-          extraerListaMaster(maestros, 'Ejercicios', ['Subcategorías', 'Subcategoría'])
-        );
-        setZonasList(
-          extraerListaMaster(maestros, 'Ejercicios', [
-            'Zona / Articulación',
-            'Zona / Articulación (para movilidad/activación)'
-          ])
-        );
-        setPosicionesList(extraerListaMaster(maestros, 'Ejercicios', ['Posición']));
-        const sers = extraerListaMaster(maestros, 'Ejercicios', ['Series y Repeticiones']);
-        if (sers.length > 0) setSeriesList(sers);
-      } catch (e) {
-        console.warn('Error cargando maestros en ejercicios:', e);
-      }
+      await aplicarMaestros();
       await cargarEjercicios();
     };
     init();
-  }, [cargarEjercicios]);
+  }, [aplicarMaestros, cargarEjercicios]);
+
+  useEffect(() => {
+    return onCatalogoMaestrosChanged(() => {
+      aplicarMaestros();
+    });
+  }, [aplicarMaestros]);
 
   useEffect(() => {
     return registerChangeListener(() => {
+      aplicarMaestros();
       cargarEjercicios();
     });
-  }, [registerChangeListener, cargarEjercicios]);
+  }, [registerChangeListener, aplicarMaestros, cargarEjercicios]);
 
   const abrirModalNuevo = () => {
     setEditingId(null);
@@ -571,9 +591,11 @@ export const EjerciciosView: React.FC<EjerciciosViewProps> = () => {
     <div className="container">
       <div className="page-header">
         <h1>Catálogo de ejercicios</h1>
-        <button type="button" className="btn-primary" onClick={abrirModalNuevo}>
-          + Nuevo ejercicio
-        </button>
+        {puedeCrearEjercicio && (
+          <button type="button" className="btn-primary" onClick={abrirModalNuevo}>
+            + Nuevo ejercicio
+          </button>
+        )}
       </div>
 
       <div className="controls-bar">
@@ -772,8 +794,18 @@ export const EjerciciosView: React.FC<EjerciciosViewProps> = () => {
                                     <td>
                                       <span
                                         className="acronimo-link"
-                                        title="Haz clic para editar este ejercicio"
-                                        onClick={() => abrirModalEditar(e.id)}
+                                        title={
+                                          puedeEditarEjercicio
+                                            ? 'Haz clic para editar este ejercicio'
+                                            : 'Haz clic para ver la ficha del ejercicio'
+                                        }
+                                        onClick={() => {
+                                          if (puedeEditarEjercicio) {
+                                            abrirModalEditar(e.id);
+                                          } else {
+                                            onNavigate?.('ficha_ejercicio', e.id);
+                                          }
+                                        }}
                                       >
                                         {e.acronimo}
                                       </span>
@@ -786,33 +818,57 @@ export const EjerciciosView: React.FC<EjerciciosViewProps> = () => {
                                         </span>
                                       )}
                                     </td>
-                                    <td>{e.nombre}</td>
+                                    <td>
+                                      <a
+                                        href={`#ficha_ejercicio/${e.id}`}
+                                        style={{
+                                          color: 'inherit',
+                                          textDecoration: 'none',
+                                          fontWeight: 500
+                                        }}
+                                        title="Ver ficha técnica del ejercicio"
+                                        onClick={ev => {
+                                          ev.preventDefault();
+                                          onNavigate?.('ficha_ejercicio', e.id);
+                                        }}
+                                        onMouseOver={ev =>
+                                          (ev.currentTarget.style.textDecoration = 'underline')
+                                        }
+                                        onMouseOut={ev =>
+                                          (ev.currentTarget.style.textDecoration = 'none')
+                                        }
+                                      >
+                                        {e.nombre}
+                                      </a>
+                                    </td>
                                     <td>{e.patrones.join(', ') || '-'}</td>
                                     <td>{e.musculos.join(', ') || '-'}</td>
                                     <td>{e.materiales.join(', ') || '-'}</td>
                                     <td style={{ textAlign: 'right' }}>
-                                      <button
-                                        type="button"
-                                        className="btn-icon del"
-                                        title="Eliminar"
-                                        onClick={() => eliminarEjercicio(e.id, e.nombre)}
-                                      >
-                                        <svg
-                                          width="16"
-                                          height="16"
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          strokeWidth="2"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
+                                      {puedeBorrarEjercicio && (
+                                        <button
+                                          type="button"
+                                          className="btn-icon del"
+                                          title="Eliminar"
+                                          onClick={() => eliminarEjercicio(e.id, e.nombre)}
                                         >
-                                          <polyline points="3 6 5 6 21 6" />
-                                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                          <line x1="10" y1="11" x2="10" y2="17" />
-                                          <line x1="14" y1="11" x2="14" y2="17" />
-                                        </svg>
-                                      </button>
+                                          <svg
+                                            width="16"
+                                            height="16"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                          >
+                                            <polyline points="3 6 5 6 21 6" />
+                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                            <line x1="10" y1="11" x2="10" y2="17" />
+                                            <line x1="14" y1="11" x2="14" y2="17" />
+                                          </svg>
+                                        </button>
+                                      )}
                                     </td>
                                   </tr>
                                 ))}

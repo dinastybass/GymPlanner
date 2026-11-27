@@ -1,8 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
-import { cargarCatalogoMaestros, extraerListaMaster } from '../services/maestrosService';
+import {
+  cargarCatalogoMaestros,
+  extraerListaMaster,
+  onCatalogoMaestrosChanged
+} from '../services/maestrosService';
 import {
   normalizarIntensidad,
   renderIntensityBadge,
@@ -18,6 +23,10 @@ interface PlantillasViewProps {
 const clonarProfundo = (obj: any) => (obj ? JSON.parse(JSON.stringify(obj)) : obj);
 
 export const PlantillasView: React.FC<PlantillasViewProps> = ({ onNavigate }) => {
+  const { hasPermission } = useAuth();
+  const puedeCrearPlantilla = hasPermission('plantillas', 'crear');
+  const puedeEditarPlantilla = hasPermission('plantillas', 'editar');
+  const puedeBorrarPlantilla = hasPermission('plantillas', 'borrar');
   const { pushAction, registerChangeListener } = useUndo();
 
   const [plantillasData, setPlantillasData] = useState<any[]>([]);
@@ -71,39 +80,50 @@ export const PlantillasView: React.FC<PlantillasViewProps> = ({ onNavigate }) =>
     }
   }, []);
 
+  const aplicarMaestros = useCallback(async () => {
+    try {
+      const maestros = await cargarCatalogoMaestros();
+      const tipos = extraerListaMaster(maestros, 'Sesiones', [
+        'Tipo de Sesión',
+        'Tipo de sesión',
+        'Tipos de Sesión'
+      ]);
+      if (tipos.length > 0) setTiposSesionMaster(tipos);
+
+      const nivs = extraerListaMaster(maestros, 'Ejercicios', ['Niveles', 'Nivel de Dificultad']);
+      if (nivs.length > 0) setNivelesMaster([...nivs, 'Todos los niveles']);
+
+      const ints = extraerListaMaster(maestros, 'Sesiones', [
+        'Intensidad de la Sesión',
+        'Intensidad de la sesión',
+        'Intensidad'
+      ]);
+      if (ints.length > 0) setIntensidadesMaster(ints);
+    } catch (e) {
+      console.warn('Error cargando maestros en plantillas:', e);
+    }
+  }, []);
+
   useEffect(() => {
     const init = async () => {
-      try {
-        const maestros = await cargarCatalogoMaestros();
-        const tipos = extraerListaMaster(maestros, 'Sesiones', [
-          'Tipo de Sesión',
-          'Tipo de sesión',
-          'Tipos de Sesión'
-        ]);
-        if (tipos.length > 0) setTiposSesionMaster(tipos);
-
-        const nivs = extraerListaMaster(maestros, 'Ejercicios', ['Niveles', 'Nivel de Dificultad']);
-        if (nivs.length > 0) setNivelesMaster([...nivs, 'Todos los niveles']);
-
-        const ints = extraerListaMaster(maestros, 'Sesiones', [
-          'Intensidad de la Sesión',
-          'Intensidad de la sesión',
-          'Intensidad'
-        ]);
-        if (ints.length > 0) setIntensidadesMaster(ints);
-      } catch (e) {
-        console.warn('Error cargando maestros en plantillas:', e);
-      }
+      await aplicarMaestros();
       await cargarPlantillas();
     };
     init();
-  }, [cargarPlantillas]);
+  }, [aplicarMaestros, cargarPlantillas]);
+
+  useEffect(() => {
+    return onCatalogoMaestrosChanged(() => {
+      aplicarMaestros();
+    });
+  }, [aplicarMaestros]);
 
   useEffect(() => {
     return registerChangeListener(() => {
+      aplicarMaestros();
       cargarPlantillas();
     });
-  }, [registerChangeListener, cargarPlantillas]);
+  }, [registerChangeListener, aplicarMaestros, cargarPlantillas]);
 
   const abrirModalNueva = () => {
     setEditingPlantillaId(null);
@@ -294,9 +314,11 @@ export const PlantillasView: React.FC<PlantillasViewProps> = ({ onNavigate }) =>
             Crea y organiza plantillas de entrenamiento para reutilizarlas rápidamente
           </div>
         </div>
-        <button type="button" className="btn-primary" onClick={abrirModalNueva}>
-          + Nueva Plantilla
-        </button>
+        {puedeCrearPlantilla && (
+          <button type="button" className="btn-primary" onClick={abrirModalNueva}>
+            + Nueva Plantilla
+          </button>
+        )}
       </div>
 
       <div id="accordionsContainer">
@@ -396,36 +418,40 @@ export const PlantillasView: React.FC<PlantillasViewProps> = ({ onNavigate }) =>
                               <td style={{ color: 'var(--text-muted)' }}>{numEj} ejercicios</td>
                               <td style={{ textAlign: 'right' }}>
                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                                  <button
-                                    type="button"
-                                    className="btn-icon"
-                                    title="Editar nombre, tipo de sesión y nivel"
-                                    onClick={e => abrirModalEditarPlantilla(e, p)}
-                                  >
-                                    <span className="ui-icon">✏️</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="btn-icon danger"
-                                    title="Eliminar plantilla"
-                                    onClick={e => borrarPlantilla(e, p.id, p.nombre)}
-                                  >
-                                    <svg
-                                      width="16"
-                                      height="16"
-                                      viewBox="0 0 24 24"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      strokeWidth="2"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
+                                  {puedeEditarPlantilla && (
+                                    <button
+                                      type="button"
+                                      className="btn-icon"
+                                      title="Editar nombre, tipo de sesión y nivel"
+                                      onClick={e => abrirModalEditarPlantilla(e, p)}
                                     >
-                                      <polyline points="3 6 5 6 21 6" />
-                                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                      <line x1="10" y1="11" x2="10" y2="17" />
-                                      <line x1="14" y1="11" x2="14" y2="17" />
-                                    </svg>
-                                  </button>
+                                      <span className="ui-icon">✏️</span>
+                                    </button>
+                                  )}
+                                  {puedeBorrarPlantilla && (
+                                    <button
+                                      type="button"
+                                      className="btn-icon danger"
+                                      title="Eliminar plantilla"
+                                      onClick={e => borrarPlantilla(e, p.id, p.nombre)}
+                                    >
+                                      <svg
+                                        width="16"
+                                        height="16"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                      >
+                                        <polyline points="3 6 5 6 21 6" />
+                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                        <line x1="10" y1="11" x2="10" y2="17" />
+                                        <line x1="14" y1="11" x2="14" y2="17" />
+                                      </svg>
+                                    </button>
+                                  )}
                                 </div>
                               </td>
                             </tr>

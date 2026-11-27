@@ -29,7 +29,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   const puedeVerClientes = hasPermission('clientes', 'ver');
   const puedeVerEjercicios = hasPermission('ejercicios', 'ver');
   const puedeVerPlantillas = hasPermission('plantillas', 'ver');
-  const puedeVerMaestros = hasPermission('maestros', 'ver') || hasPermission('perfiles_roles', 'ver');
+  const puedeVerMaestros =
+    hasPermission('maestros', 'ver') ||
+    hasPermission('perfiles_roles', 'ver') ||
+    hasPermission('copias_seguridad', 'ver');
 
   const isPlanificacion = activeTab === 'planificacion';
   const isAgenda = activeTab === 'agenda' || activeTab === 'pendientes' || activeTab === 'programar_sesion';
